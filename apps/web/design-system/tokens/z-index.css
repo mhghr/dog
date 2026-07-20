@@ -1,0 +1,15 @@
+/* ════════════════════════════════════════════════════════════════
+   Z-INDEX TOKENS — centralised stacking-context scale.
+   Use via `z-dropdown` / `z-modal` utility classes.
+   ════════════════════════════════════════════════════════════════ */
+
+@theme inline {
+  --z-base: 0;
+  --z-above: 1;
+  --z-dropdown: 20;
+  --z-sticky: 30;
+  --z-banner: 40;
+  --z-overlay: 50;
+  --z-modal: 60;
+  --z-toast: 70;
+}

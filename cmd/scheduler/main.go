@@ -1,0 +1,153 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
+
+	"monitoring-platform/internal/config"
+	"monitoring-platform/internal/heartbeat"
+	"monitoring-platform/internal/httpserver"
+	"monitoring-platform/internal/logging"
+	"monitoring-platform/internal/metrics"
+	"monitoring-platform/internal/postgres"
+	"monitoring-platform/internal/queue"
+	"monitoring-platform/internal/scheduler"
+)
+
+func main() {
+	cfg := config.Load()
+
+	httpserver.RunHealthcheckCommand(cfg.HealthAddress)
+
+	logger := logging.New(cfg.LogLevel, cfg.LogFormat, "scheduler")
+
+	if err := cfg.Require("DATABASE_URL", "REDIS_ADDRESS"); err != nil {
+		logger.Error("invalid configuration", "error", err)
+		os.Exit(1)
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	pool, err := postgres.NewPool(ctx, cfg.DatabaseURL)
+	if err != nil {
+		logger.Error("connect to postgres failed", "error", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
+
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     cfg.RedisAddress,
+		Password: cfg.RedisPassword,
+		DB:       cfg.RedisDB,
+	})
+	defer redisClient.Close()
+
+	probeQueue := queue.NewRedisQueue(redisClient, queue.StreamConfig{
+		Stream:     cfg.QueueStream,
+		Group:      cfg.QueueGroup,
+		DeadLetter: cfg.QueueDeadLetter,
+		MaxLen:     cfg.QueueMaxLen,
+	}, logger)
+
+	if err := probeQueue.EnsureGroup(ctx); err != nil {
+		logger.Error("ensure consumer group failed", "error", err)
+		os.Exit(1)
+	}
+
+	locationID, err := resolveLocationID(ctx, cfg, pool)
+	if err != nil {
+		logger.Error("resolve probe location failed", "error", err)
+		os.Exit(1)
+	}
+	logger.Info("probe location resolved", "location_id", locationID, "code", cfg.ProbeLocationCode)
+
+	registry := metrics.NewRegistry()
+	schedulerMetrics := metrics.NewSchedulerMetrics(registry)
+
+	monitorRepo := postgres.NewMonitorRepository(pool)
+
+	service := scheduler.New(
+		monitorRepo,
+		probeQueue,
+		locationID,
+		cfg.SchedulerBatchSize,
+		cfg.SchedulerInterval,
+		logger,
+		schedulerMetrics,
+	)
+
+	go heartbeat.Run(ctx, redisClient, "scheduler", "scheduler", 3*time.Second, 10*time.Second)
+
+	healthServer := httpserver.New(cfg.HealthAddress, healthMux(pool, redisClient, metrics.Handler(registry)))
+	go func() {
+		if err := httpserver.Run(ctx, healthServer, logger); err != nil {
+			logger.Error("health server failed", "error", err)
+		}
+	}()
+
+	if err := service.Run(ctx); err != nil && ctx.Err() == nil {
+		logger.Error("scheduler failed", "error", err)
+		os.Exit(1)
+	}
+
+	logger.Info("scheduler stopped")
+}
+
+// resolveLocationID prefers an explicit PROBE_LOCATION_ID and otherwise looks
+// the location up by PROBE_LOCATION_CODE (seeded as local-dev).
+func resolveLocationID(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (string, error) {
+	if cfg.ProbeLocationID != "" {
+		return cfg.ProbeLocationID, nil
+	}
+
+	locations := postgres.NewLocationRepository(pool)
+	location, err := locations.GetByCode(ctx, cfg.ProbeLocationCode)
+	if err != nil {
+		return "", fmt.Errorf("lookup probe location by code %q: %w", cfg.ProbeLocationCode, err)
+	}
+
+	return location.ID, nil
+}
+
+func healthMux(pool *pgxpool.Pool, redisClient *redis.Client, promHandler http.Handler) http.Handler {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/health/live", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	})
+
+	mux.HandleFunc("/health/ready", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+		defer cancel()
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if err := pool.Ping(ctx); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"status":"unavailable","dependencies":{"postgres":"error"}}`))
+			return
+		}
+
+		if err := redisClient.Ping(ctx).Err(); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"status":"unavailable","dependencies":{"redis":"error"}}`))
+			return
+		}
+
+		_, _ = w.Write([]byte(`{"status":"ok","dependencies":{"postgres":"ok","redis":"ok"}}`))
+	})
+
+	mux.Handle("/metrics", promHandler)
+
+	return mux
+}

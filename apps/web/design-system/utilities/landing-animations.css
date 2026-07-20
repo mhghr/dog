@@ -1,0 +1,162 @@
+/* ════════════════════════════════════════════════════════════════
+   LANDING ANIMATIONS — scroll-triggered entrance, stagger, reveal.
+   Per Emil's framework: CSS transitions + transform/opacity only.
+   Respects prefers-reduced-motion.
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── Scroll-reveal base — elements animate in as they enter viewport ── */
+@utility reveal-up {
+  opacity: 0;
+  transform: translateY(24px);
+  animation: reveal-up 600ms var(--ease-out) forwards;
+}
+
+@utility reveal-up-sm {
+  opacity: 0;
+  transform: translateY(12px);
+  animation: reveal-up 450ms var(--ease-out) forwards;
+}
+
+@utility reveal-fade {
+  opacity: 0;
+  animation: reveal-fade 500ms var(--ease-out) forwards;
+}
+
+@utility reveal-scale {
+  opacity: 0;
+  transform: scale(0.95);
+  animation: reveal-scale 500ms var(--ease-out) forwards;
+}
+
+/* ── Stagger children — each direct child inherits staggering ── */
+@utility stagger-children {
+  & > * {
+    opacity: 0;
+    transform: translateY(20px);
+    animation: reveal-up 500ms var(--ease-out) forwards;
+  }
+
+  & > :nth-child(1) { animation-delay: 0ms; }
+  & > :nth-child(2) { animation-delay: 60ms; }
+  & > :nth-child(3) { animation-delay: 120ms; }
+  & > :nth-child(4) { animation-delay: 180ms; }
+  & > :nth-child(5) { animation-delay: 240ms; }
+  & > :nth-child(6) { animation-delay: 300ms; }
+  & > :nth-child(7) { animation-delay: 360ms; }
+  & > :nth-child(8) { animation-delay: 420ms; }
+  & > :nth-child(9) { animation-delay: 480ms; }
+  & > :nth-child(10) { animation-delay: 540ms; }
+}
+
+/* ── Hero-specific animations ── */
+@utility hero-enter-title {
+  opacity: 0;
+  transform: translateY(16px);
+  animation: hero-title 650ms var(--ease-out) 120ms forwards;
+}
+
+@utility hero-enter-subtitle {
+  opacity: 0;
+  transform: translateY(12px);
+  animation: hero-title 500ms var(--ease-out) 250ms forwards;
+}
+
+@utility hero-enter-cta {
+  opacity: 0;
+  transform: translateY(8px);
+  animation: hero-title 400ms var(--ease-out) 380ms forwards;
+}
+
+@utility hero-enter-preview {
+  opacity: 0;
+  transform: translateY(20px) scale(0.97);
+  animation: hero-preview 700ms var(--ease-out) 200ms forwards;
+}
+
+/* ── Float — subtle bobbing for decorative elements ── */
+@utility float {
+  animation: float 6s ease-in-out infinite;
+}
+
+@utility float-slow {
+  animation: float 8s ease-in-out infinite;
+}
+
+/* ── Shimmer — loading/text placeholder ── */
+@utility shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklch, var(--primary) 6%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s linear infinite;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   KEYFRAMES
+   ════════════════════════════════════════════════════════════════ */
+
+@keyframes reveal-up {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes reveal-fade {
+  to { opacity: 1; }
+}
+
+@keyframes reveal-scale {
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes hero-title {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes hero-preview {
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Reduced motion — strip all transforms, keep opacity ── */
+@media (prefers-reduced-motion: reduce) {
+  .reveal-up,
+  .reveal-up-sm,
+  .reveal-scale,
+  .hero-enter-title,
+  .hero-enter-subtitle,
+  .hero-enter-cta,
+  .hero-enter-preview,
+  .stagger-children > * {
+    opacity: 1;
+    transform: none;
+    animation: reveal-fade 200ms var(--ease-out) forwards;
+  }
+
+  .float,
+  .float-slow {
+    animation: none;
+  }
+}

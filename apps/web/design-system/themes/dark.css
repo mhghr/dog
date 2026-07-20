@@ -1,0 +1,51 @@
+/* ════════════════════════════════════════════════════════════════
+   THEME: Dark — Neon Cyber. Deep navy with electric cyan glow.
+   ════════════════════════════════════════════════════════════════ */
+
+.dark {
+  --brand-accent: #22D3EE;
+  --glass-opacity: 48%;
+
+  --background: #060B14;
+  --foreground: #E8EDF4;
+  --card: #0B1220;
+  --card-foreground: var(--foreground);
+  --popover: #0F1628;
+  --popover-foreground: var(--foreground);
+
+  --primary: var(--brand-accent);
+  --primary-foreground: #060B14;
+
+  --secondary: #111830;
+  --secondary-foreground: var(--foreground);
+  --muted: #0E1528;
+  --muted-foreground: #8896B4;
+  --accent: #152040;
+  --accent-foreground: var(--foreground);
+
+  --destructive: #F87171;
+  --success: #4ADE80;
+  --warning: #FBBF24;
+  --info: #38BDF8;
+
+  --border: rgb(255 255 255 / 8%);
+  --input: rgb(255 255 255 / 11%);
+  --ring: #22D3EE;
+
+  --chart-1: var(--brand-accent);
+  --chart-2: #4ADE80;
+  --chart-3: #38BDF8;
+  --chart-4: #FBBF24;
+  --chart-5: #F87171;
+
+  --sidebar: #040912;
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: #0E1628;
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: rgb(255 255 255 / 5%);
+  --sidebar-ring: var(--ring);
+
+  color-scheme: dark;
+}

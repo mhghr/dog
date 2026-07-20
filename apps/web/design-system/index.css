@@ -1,0 +1,19 @@
+/* ════════════════════════════════════════════════════════════════
+   DESIGN SYSTEM — master import.
+   Imported by globals.css.  Controls everything: tokens → brand →
+   themes → base → utilities.
+   ════════════════════════════════════════════════════════════════ */
+
+@import "./tokens/colors.css";
+@import "./tokens/typography.css";
+@import "./tokens/radii.css";
+@import "./tokens/motion.css";
+@import "./tokens/shadows.css";
+@import "./tokens/z-index.css";
+@import "./tokens/spacing.css";
+@import "./brands/default.css";
+@import "./themes/light.css";
+@import "./themes/dark.css";
+@import "./base.css";
+@import "./utilities.css";
+@import "./utilities/landing-animations.css";

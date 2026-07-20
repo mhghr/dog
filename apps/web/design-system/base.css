@@ -1,0 +1,72 @@
+/* ════════════════════════════════════════════════════════════════
+   BASE LAYER — element defaults, scroll behaviour, cursors,
+   selection, body background gradient, reduced-motion.
+   ════════════════════════════════════════════════════════════════ */
+
+@layer base {
+  * {
+    border-color: var(--border);
+    outline-color: color-mix(in oklch, var(--ring) 50%, transparent);
+  }
+  html {
+    font-family: var(--font-sans);
+    scrollbar-gutter: stable;
+    overflow-x: clip;
+  }
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: clip;
+    background-image:
+      radial-gradient(
+        60rem 40rem at 85% -10%,
+        color-mix(in oklch, var(--primary) 8%, transparent),
+        transparent
+      ),
+      radial-gradient(
+        50rem 35rem at -10% 40%,
+        color-mix(in oklch, var(--primary) 5%, transparent),
+        transparent
+      );
+    background-attachment: fixed;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--heading-font);
+  }
+  a,
+  button,
+  select,
+  summary,
+  [role="button"],
+  [role="tab"],
+  [role="menuitem"],
+  [role="switch"],
+  [role="checkbox"],
+  [role="radio"],
+  [data-slot^="dropdown-menu-item"],
+  [data-slot^="select-item"] {
+    cursor: pointer;
+  }
+  :disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+  ::selection {
+    background: color-mix(in oklch, var(--primary) 20%, transparent);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

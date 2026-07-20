@@ -1,0 +1,20 @@
+/* ════════════════════════════════════════════════════════════════
+   MOTION TOKENS — durations and easing curves.
+   Built-ins replaced with punchy custom curves for a premium feel.
+   ════════════════════════════════════════════════════════════════ */
+
+@theme inline {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+
+  --default-transition-duration: 180ms;
+  --default-transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+
+  /* Duration scale — use these instead of arbitrary `duration-*` values. */
+  --duration-fast: 120ms;
+  --duration-normal: 180ms;
+  --duration-slow: 250ms;
+  --duration-dialog: 200ms;
+  --duration-drawer: 300ms;
+}

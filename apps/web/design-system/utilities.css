@@ -1,0 +1,154 @@
+/* ════════════════════════════════════════════════════════════════
+   UTILITIES — app-level design-system utilities.
+   ════════════════════════════════════════════════════════════════ */
+
+/* Faint blueprint grid — marketing surfaces only. */
+@utility bg-grid-faint {
+  background-image:
+    linear-gradient(to right, color-mix(in oklch, var(--border) 55%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklch, var(--border) 55%, transparent) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+
+/* Glass surface */
+@utility glass {
+  background-color: var(--card);
+  @supports (backdrop-filter: blur(1px)) {
+    background-color: color-mix(in oklch, var(--card) var(--glass-opacity), transparent);
+    backdrop-filter: blur(14px) saturate(150%);
+  }
+}
+
+/* ── Neon dark-mode utilities ─────────────────────────────── */
+
+/* Neon glow — soft outer glow for active/primary elements */
+@utility neon-glow {
+  box-shadow:
+    0 0 12px -2px color-mix(in oklch, var(--primary) 40%, transparent),
+    0 0 2px color-mix(in oklch, var(--primary) 20%, transparent);
+}
+
+/* Neon ring — subtle glowing border effect */
+@utility neon-ring {
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--primary) 30%, transparent);
+}
+
+/* Neon text — glowing text effect (use sparingly) */
+@utility neon-text {
+  text-shadow:
+    0 0 10px color-mix(in oklch, var(--primary) 50%, transparent),
+    0 0 30px color-mix(in oklch, var(--primary) 20%, transparent);
+}
+
+/* Neon border — glowing border for cards in dark mode */
+@utility neon-border {
+  border-color: color-mix(in oklch, var(--primary) 25%, transparent);
+  box-shadow: 0 0 8px -4px color-mix(in oklch, var(--primary) 30%, transparent);
+}
+
+/* ── Monitoring-specific utilities ────────────────────────── */
+
+/* Status dot — live pulse indicator */
+@utility status-dot {
+  @apply relative flex size-2 shrink-0 rounded-full;
+  &::after {
+    content: "";
+    @apply absolute inset-0 rounded-full bg-inherit;
+    animation: status-pulse 2s ease-out infinite;
+  }
+}
+
+@utility status-dot-up { @apply bg-success; &::after { background-color: var(--success); } }
+@utility status-dot-down { @apply bg-destructive; &::after { background-color: var(--destructive); } }
+@utility status-dot-warning { @apply bg-warning; &::after { background-color: var(--warning); } }
+
+/* Live glow — breathing ring for live indicators */
+@utility live-glow {
+  box-shadow: 0 0 0 0 color-mix(in oklch, var(--success) 60%, transparent);
+  animation: live-glow-pulse 2s ease-out infinite;
+}
+
+/* Stat card — elevated metric surface */
+@utility stat-card {
+  @apply rounded-xl border border-border/60 bg-card p-5 transition-colors hover:border-border;
+}
+
+@keyframes status-pulse {
+  0% { transform: scale(1); opacity: 0.7; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+
+@keyframes live-glow-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--success) 60%, transparent); }
+  70% { box-shadow: 0 0 0 8px color-mix(in oklch, var(--success) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--success) 0%, transparent); }
+}
+
+/* ── Scanline overlay — terminal aesthetic (dark mode only) ── */
+@utility scanlines {
+  &::after {
+    content: "";
+    @apply pointer-events-none absolute inset-0 z-10 opacity-[0.03];
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgb(0 0 0 / 0.3) 2px,
+      rgb(0 0 0 / 0.3) 4px
+    );
+  }
+}
+
+/* ── Theme toggle — sun/moon morph animation ──────────────── */
+
+.theme-toggle {
+  color: var(--muted-foreground);
+}
+
+.theme-toggle svg {
+  transition: transform 0.44s var(--ease-out);
+  transform: rotate(40deg);
+}
+
+.theme-toggle .sun-moon {
+  transform-origin: center center;
+  transition: transform 0.44s var(--ease-out);
+  transform: scale(1);
+}
+
+.theme-toggle .sun-ray {
+  transform-origin: center center;
+  transform: scale(0);
+}
+
+.theme-toggle .moon-mask-circle {
+  transition: transform 0.64s cubic-bezier(0.41, 0.64, 0.32, 1.575);
+  transform: translate(0px, 0px);
+}
+
+.theme-toggle.dark svg {
+  transform: rotate(90deg);
+}
+
+.theme-toggle.dark .moon-mask-circle {
+  transform: translate(16px, -3px);
+}
+
+.theme-toggle.dark .sun-moon {
+  transform: scale(0.55);
+}
+
+.theme-toggle.dark .sun-ray {
+  animation: sun-ray-show 0.4s var(--ease-out) 0s 1 forwards;
+}
+
+.theme-toggle.dark .sun-ray:nth-child(2) { animation-delay: 0.05s; }
+.theme-toggle.dark .sun-ray:nth-child(3) { animation-delay: 0.1s; }
+.theme-toggle.dark .sun-ray:nth-child(4) { animation-delay: 0.15s; }
+.theme-toggle.dark .sun-ray:nth-child(5) { animation-delay: 0.2s; }
+.theme-toggle.dark .sun-ray:nth-child(6) { animation-delay: 0.25s; }
+
+@keyframes sun-ray-show {
+  0% { transform: scale(0); }
+  100% { transform: scale(1); }
+}

@@ -1,0 +1,14 @@
+/* ════════════════════════════════════════════════════════════════
+   SHADOW TOKENS — semantic shadow scale.
+   Components use `shadow-subtle`, `shadow-modal`, etc.
+   Values adapt per theme via CSS custom properties.
+   ════════════════════════════════════════════════════════════════ */
+
+@theme inline {
+  --shadow-subtle: var(--shadow-xs);
+  --shadow-card: var(--shadow-sm);
+  --shadow-dropdown: var(--shadow-md);
+  --shadow-popover: var(--shadow-lg);
+  --shadow-modal: var(--shadow-2xl);
+  --shadow-floating: var(--shadow-xl);
+}

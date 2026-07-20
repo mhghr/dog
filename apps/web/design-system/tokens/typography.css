@@ -1,0 +1,22 @@
+/* ════════════════════════════════════════════════════════════════
+   TYPOGRAPHY TOKENS — font families, sizes, weights, tracking,
+   line-height.  Uses `rem` for sizes so they scale with the user's
+   root font-size preference.
+   ════════════════════════════════════════════════════════════════ */
+
+@theme inline {
+  --font-sans: var(--sans-font);
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --font-heading: var(--heading-font);
+  --font-display: var(--display-font);
+
+  /* Caption scale — used in marketing mock-ups and mono labels.
+     Added because the default Tailwind scale bottoms out at text-xs
+     (0.75rem / 12 px) while design calls for smaller mono labels. */
+  --text-caption-sm: 0.5625rem;
+  --text-caption-sm--line-height: 1rem;
+  --text-caption: 0.625rem;
+  --text-caption--line-height: 1rem;
+  --text-caption-lg: 0.6875rem;
+  --text-caption-lg--line-height: 1rem;
+}

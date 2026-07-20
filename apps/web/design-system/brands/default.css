@@ -1,0 +1,22 @@
+/* ════════════════════════════════════════════════════════════════
+   BRAND: Default
+   ════════════════════════════════════════════════════════════════ */
+
+:root {
+  --brand-hue: 225;
+  --brand-tint: 0.003;
+  --brand-accent: #4F5DE0;
+  --brand-accent-foreground: #FFFFFF;
+  --radius: 0.625rem;
+  --glass-opacity: 70%;
+
+  --sans-font: var(--font-estedad), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --heading-font: var(--font-estedad), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --display-font: var(--heading-font);
+}
+
+html[lang="fa"] {
+  --sans-font: var(--font-bakh), var(--font-estedad), ui-sans-serif, system-ui, sans-serif;
+  --heading-font: var(--font-bakh), var(--font-estedad), ui-sans-serif, system-ui, sans-serif;
+  --display-font: var(--font-plasma), var(--font-bakh), var(--font-estedad), ui-sans-serif, system-ui, sans-serif;
+}
