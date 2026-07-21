@@ -47,13 +47,13 @@ func (r *ResultRepository) InsertAndUpdateMonitor(ctx context.Context, result *d
 		INSERT INTO probe_results (
 			id, job_id, monitor_id, probe_location_id, status, success,
 			error_code, error_message, duration_millis, metrics, attributes,
-			started_at, finished_at
+			started_at, finished_at, attempt
 		)
 		VALUES (
 			$1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::monitor_status, $6,
-			NULLIF($7, ''), NULLIF($8, ''), $9, $10::jsonb, $11::jsonb, $12, $13
+			NULLIF($7, ''), NULLIF($8, ''), $9, $10::jsonb, $11::jsonb, $12, $13, $14
 		)
-		ON CONFLICT (job_id) DO NOTHING`,
+		ON CONFLICT (job_id, probe_location_id, COALESCE(attributes->>'attempt', '1')) DO NOTHING`,
 		result.ID,
 		result.JobID,
 		result.MonitorID,
@@ -67,6 +67,7 @@ func (r *ResultRepository) InsertAndUpdateMonitor(ctx context.Context, result *d
 		attributesJSON,
 		result.StartedAt,
 		result.FinishedAt,
+		getAttemptFromAttributes(result.Attributes),
 	)
 	if err != nil {
 		return false, fmt.Errorf("insert probe result: %w", err)
@@ -83,7 +84,8 @@ func (r *ResultRepository) InsertAndUpdateMonitor(ctx context.Context, result *d
 			last_checked_at = $3,
 			updated_at = NOW()
 		WHERE id = $1::uuid
-		  AND enabled = TRUE`,
+		  AND enabled = TRUE
+		  AND (last_checked_at IS NULL OR last_checked_at < $3)`,
 		result.MonitorID,
 		string(result.Status),
 		result.FinishedAt,
@@ -389,4 +391,20 @@ func (r *ResultRepository) DashboardSummary(ctx context.Context) (domain.Dashboa
 	}
 
 	return summary, nil
+}
+
+func getAttemptFromAttributes(attrs map[string]any) int {
+	if attrs == nil {
+		return 1
+	}
+	switch v := attrs["attempt"].(type) {
+	case float64:
+		return int(v)
+	case int:
+		return v
+	case int64:
+		return int(v)
+	default:
+		return 1
+	}
 }

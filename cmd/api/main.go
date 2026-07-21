@@ -8,6 +8,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
+	"monitoring-platform/internal/agents"
 	"monitoring-platform/internal/alerting"
 	"monitoring-platform/internal/api"
 	"monitoring-platform/internal/auth"
@@ -78,6 +79,8 @@ func main() {
 	alertEngine := alerting.NewEngine(alertRepo, logger)
 	alertNotifier := alerting.NewNotifier(channelRepo, logger)
 
+	agentRepo := agents.NewRepository(pool)
+
 	if cfg.AuthJWTSecret == "dev-insecure-jwt-secret-change-me" && !cfg.IsDevelopment() {
 		logger.Error("AUTH_JWT_SECRET must be set outside development")
 		os.Exit(1)
@@ -140,6 +143,7 @@ func main() {
 		Redis:         redisClient,
 		Victoria:      victoria,
 		Prom:          metrics.Handler(registry),
+		AgentRepo:     agentRepo,
 	})
 
 	server := httpserver.New(cfg.HTTPAddress, router)

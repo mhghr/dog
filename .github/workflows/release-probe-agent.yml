@@ -1,0 +1,140 @@
+name: Release Probe Agent
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            goos: linux
+            goarch: amd64
+          - os: linux
+            arch: arm64
+            goos: linux
+            goarch: arm64
+          - os: windows
+            arch: amd64
+            goos: windows
+            goarch: amd64
+            ext: .exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Build probe-agent
+        run: |
+          CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+            go build -trimpath -ldflags="-s -w -X main.version=${{ github.ref_name }}" \
+            -o probe-agent-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }} \
+            ./cmd/probe-agent
+
+      - name: Generate SHA256
+        run: |
+          sha256sum probe-agent-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }} > \
+            probe-agent-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: probe-agent-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            probe-agent-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}
+            probe-agent-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}.sha256
+
+  checksums:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: probe-agent-*
+          merge-multiple: true
+
+      - name: Create checksums.txt
+        run: |
+          sha256sum probe-agent-* > checksums.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: checksums
+          path: checksums.txt
+
+  release:
+    needs: [build, checksums]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: probe-agent-*
+          merge-multiple: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: checksums
+
+      - name: Create release manifest
+        run: |
+          cat > release-manifest.json << 'MANIFEST'
+          {
+            "version": "${{ github.ref_name }}",
+            "channel": "stable",
+            "minimum_protocol": 1,
+            "maximum_protocol": 1,
+            "artifacts": {
+              "linux-amd64": {
+                "url": "${{ github.server_url }}/${{ github.repository }}/releases/download/${{ github.ref_name }}/probe-agent-linux-amd64",
+                "sha256": "$(sha256sum probe-agent-linux-amd64 | cut -d' ' -f1)"
+              },
+              "linux-arm64": {
+                "url": "${{ github.server_url }}/${{ github.repository }}/releases/download/${{ github.ref_name }}/probe-agent-linux-arm64",
+                "sha256": "$(sha256sum probe-agent-linux-arm64 | cut -d' ' -f1)"
+              },
+              "windows-amd64": {
+                "url": "${{ github.server_url }}/${{ github.repository }}/releases/download/${{ github.ref_name }}/probe-agent-windows-amd64.exe",
+                "sha256": "$(sha256sum probe-agent-windows-amd64.exe | cut -d' ' -f1)"
+              }
+            }
+          }
+          MANIFEST
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          body: |
+            ## Probe Agent ${{ github.ref_name }}
+
+            ### Artifacts
+            - `probe-agent-linux-amd64`
+            - `probe-agent-linux-arm64`
+            - `probe-agent-windows-amd64.exe`
+
+            ### Changes
+            - Probe Agent binary (replaces `monitoring-worker`)
+            - Agent enrollment API
+            - Admin approval/reject/revoke management
+            - Result idempotency with (job_id, location, attempt) constraint
+            - Result ordering fix (older results won't overwrite newer status)
+            - Probe agent database migration
+
+            See [monitoring.md](./monitoring.md) sections 234-235 for full architecture.
+          files: |
+            probe-agent-*
+            checksums.txt
+            release-manifest.json
+          draft: false
+          prerelease: false
+          generate_release_notes: true

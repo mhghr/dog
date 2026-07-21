@@ -1,0 +1,131 @@
+package agents
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
+
+type AgentStatus string
+
+const (
+	AgentPending   AgentStatus = "pending"
+	AgentApproved  AgentStatus = "approved"
+	AgentActive    AgentStatus = "active"
+	AgentOffline   AgentStatus = "offline"
+	AgentDisabled  AgentStatus = "disabled"
+	AgentRejected  AgentStatus = "rejected"
+	AgentRevoked   AgentStatus = "revoked"
+	AgentDraining  AgentStatus = "draining"
+	AgentUpdating  AgentStatus = "updating"
+)
+
+type ProbeAgent struct {
+	ID                 uuid.UUID
+	LocationID         uuid.UUID
+	Name               string
+	Hostname           string
+	MachineFingerprint string
+	PublicKey          string
+	CertificateSerial  string
+	Version            string
+	OperatingSystem    string
+	Architecture       string
+	PublicIP           string
+	PrivateIPs         []string
+	Capabilities       []string
+	MaxConcurrency     int32
+	Status             AgentStatus
+	ApprovedBy         *uuid.UUID
+	ApprovedAt         *time.Time
+	LastSeenAt         *time.Time
+	RevokedAt          *time.Time
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+}
+
+type EnrollmentToken struct {
+	ID                  uuid.UUID
+	TokenHash           []byte
+	RequestedLocationID uuid.UUID
+	ExpiresAt           time.Time
+	UsedAt              *time.Time
+	CreatedBy           uuid.UUID
+	CreatedAt           time.Time
+}
+
+type AuditEntry struct {
+	ID            uuid.UUID
+	AgentID       uuid.UUID
+	ActorUserID   *uuid.UUID
+	Action        string
+	PreviousState []byte
+	NextState     []byte
+	RemoteIP      string
+	CreatedAt     time.Time
+}
+
+type EnrollRequest struct {
+	EnrollmentToken    string
+	Hostname           string
+	MachineFingerprint string
+	PublicKey          string
+	Version            string
+	OperatingSystem    string
+	Architecture       string
+	PrivateIPs         []string
+	Capabilities       []string
+	MaxConcurrency     int32
+	RequestedLocation  string
+}
+
+type EnrollResponse struct {
+	RequestID uuid.UUID
+	Status    AgentStatus
+	Message   string
+}
+
+type ApproveRequest struct {
+	AgentID uuid.UUID
+}
+
+type ApproveResponse struct {
+	AgentID       uuid.UUID
+	Certificate   string
+	SerialNumber  string
+	NotBefore     time.Time
+	NotAfter      time.Time
+}
+
+var validTransitions = map[AgentStatus][]AgentStatus{
+	AgentPending:  {AgentApproved, AgentRejected},
+	AgentApproved: {AgentActive, AgentDisabled, AgentRevoked},
+	AgentActive:   {AgentOffline, AgentDisabled, AgentRevoked, AgentDraining, AgentUpdating},
+	AgentOffline:  {AgentActive, AgentDisabled, AgentRevoked},
+	AgentDisabled: {AgentApproved},
+	AgentRejected: {},
+	AgentRevoked:  {},
+	AgentDraining: {AgentOffline, AgentActive},
+	AgentUpdating: {AgentActive, AgentOffline},
+}
+
+func CanTransition(from, to AgentStatus) bool {
+	targets, ok := validTransitions[from]
+	if !ok {
+		return false
+	}
+	for _, t := range targets {
+		if t == to {
+			return true
+		}
+	}
+	return false
+}
+
+func IsFinalStatus(s AgentStatus) bool {
+	return s == AgentRejected || s == AgentRevoked
+}
+
+func IsOperational(s AgentStatus) bool {
+	return s == AgentActive || s == AgentDraining || s == AgentUpdating
+}

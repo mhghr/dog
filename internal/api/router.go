@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
+	"monitoring-platform/internal/agents"
 	"monitoring-platform/internal/alerting"
 	"monitoring-platform/internal/auth"
 	"monitoring-platform/internal/config"
@@ -44,6 +45,7 @@ type Deps struct {
 	Redis       *redis.Client
 	Victoria    *metrics.VictoriaClient
 	Prom        http.Handler
+	AgentRepo   *agents.Repository
 }
 
 func NewRouter(deps Deps) http.Handler {
@@ -86,6 +88,10 @@ func NewRouter(deps Deps) http.Handler {
 		// Public, unauthenticated status page projection.
 		r.Get("/status-pages/public/{slug}", handler.publicStatusPage)
 
+		// Agent enrollment (public, token-authenticated)
+		r.Post("/agent/v1/enroll", handler.agentEnroll)
+
+		// Public auth
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/google/exchange", handler.googleExchange)
 			r.Post("/google/mobile", handler.googleMobile)
@@ -155,10 +161,24 @@ func NewRouter(deps Deps) http.Handler {
 					r.Post("/", handler.createNotificationChannel)
 				})
 
-				r.Get("/alerts", handler.listAlerts)
-				r.Get("/alerts/{alertID}", handler.getAlert)
+			r.Get("/alerts", handler.listAlerts)
+			r.Get("/alerts/{alertID}", handler.getAlert)
+
+			r.Route("/admin/probe-agents", func(r chi.Router) {
+				r.Get("/", handler.listAgents)
+				r.Get("/{agentID}", handler.getAgent)
+				r.Post("/{agentID}/approve", handler.approveAgent)
+				r.Post("/{agentID}/reject", handler.rejectAgent)
+				r.Post("/{agentID}/disable", handler.disableAgent)
+				r.Post("/{agentID}/enable", handler.enableAgent)
+				r.Post("/{agentID}/revoke", handler.revokeAgent)
+				r.Post("/{agentID}/drain", handler.drainAgent)
 			})
+
+			r.Post("/admin/probe-agent-enrollment-tokens", handler.createEnrollmentToken)
 		})
+	})
+
 	})
 
 	router.Group(func(r chi.Router) {
