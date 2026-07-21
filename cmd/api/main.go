@@ -8,6 +8,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
+	"monitoring-platform/internal/alerting"
 	"monitoring-platform/internal/api"
 	"monitoring-platform/internal/auth"
 	"monitoring-platform/internal/config"
@@ -70,6 +71,12 @@ func main() {
 	userRepo := postgres.NewUserRepository(pool)
 	refreshTokenRepo := postgres.NewRefreshTokenRepository(pool)
 	otpRepo := postgres.NewOTPRepository(pool)
+	orgRepo := postgres.NewOrganizationRepository(pool)
+
+	alertRepo := postgres.NewAlertRepository(pool)
+	channelRepo := postgres.NewChannelRepository(pool)
+	alertEngine := alerting.NewEngine(alertRepo, logger)
+	alertNotifier := alerting.NewNotifier(channelRepo, logger)
 
 	if cfg.AuthJWTSecret == "dev-insecure-jwt-secret-change-me" && !cfg.IsDevelopment() {
 		logger.Error("AUTH_JWT_SECRET must be set outside development")
@@ -86,6 +93,7 @@ func main() {
 		userRepo,
 		refreshTokenRepo,
 		otpRepo,
+		orgRepo,
 		tokenIssuer,
 		googleVerifier,
 		&auth.LogSender{Logger: logger},
@@ -111,21 +119,27 @@ func main() {
 	go watchQueueDepth(ctx, probeQueue, ingestionMetrics)
 
 	router := api.NewRouter(api.Deps{
-		Config:      cfg,
-		Logger:      logger,
-		Monitors:    monitorRepo,
-		Results:     resultRepo,
-		Locations:   locationRepo,
-		StatusPages: postgres.NewStatusPageRepository(pool),
-		Ingestion:   ingestionService,
-		Auth:        authService,
-		Issuer:      tokenIssuer,
-		Bus:         bus,
-		Queue:       probeQueue,
-		Pool:        pool,
-		Redis:       redisClient,
-		Victoria:    victoria,
-		Prom:        metrics.Handler(registry),
+		Config:        cfg,
+		Logger:        logger,
+		Monitors:      monitorRepo,
+		Results:       resultRepo,
+		Locations:     locationRepo,
+		StatusPages:   postgres.NewStatusPageRepository(pool),
+		Orgs:          postgres.NewOrganizationRepository(pool),
+		Projects:      postgres.NewProjectRepository(pool),
+		AlertRepo:     alertRepo,
+		ChannelRepo:   channelRepo,
+		AlertEngine:   alertEngine,
+		Notifier:      alertNotifier,
+		Ingestion:     ingestionService,
+		Auth:          authService,
+		Issuer:        tokenIssuer,
+		Bus:           bus,
+		Queue:         probeQueue,
+		Pool:          pool,
+		Redis:         redisClient,
+		Victoria:      victoria,
+		Prom:          metrics.Handler(registry),
 	})
 
 	server := httpserver.New(cfg.HTTPAddress, router)

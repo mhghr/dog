@@ -6,6 +6,7 @@ type ProbeResult struct {
 	ID              string         `json:"id"`
 	JobID           string         `json:"job_id"`
 	MonitorID       string         `json:"monitor_id"`
+	MonitorName     string         `json:"monitor_name"`
 	ProbeLocationID string         `json:"probe_location_id"`
 	Status          MonitorStatus  `json:"status"`
 	Success         bool           `json:"success"`

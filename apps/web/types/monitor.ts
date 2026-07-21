@@ -1,12 +1,8 @@
-export type MonitorType =
-  | "http"
-  | "tcp"
-  | "dns"
-  | "ping"
-  | "tls"
-  | "domain_expiration"
-  | "smtp"
-  | "ntp";
+export const MONITOR_TYPE_VALUES = [
+  "http", "tcp", "dns", "ping", "tls", "domain_expiration", "smtp", "ntp",
+] as const;
+
+export type MonitorType = (typeof MONITOR_TYPE_VALUES)[number];
 
 export type MonitorStatus = "up" | "down" | "unknown" | "paused";
 

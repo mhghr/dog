@@ -8,6 +8,7 @@ import { Direction } from "radix-ui";
 
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ProjectProvider } from "@/components/project-context";
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
   const locale = useLocale();
@@ -33,7 +34,9 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
         disableTransitionOnChange
       >
         <QueryClientProvider client={queryClient}>
-          <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
+          <ProjectProvider>
+            <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
+          </ProjectProvider>
           <Toaster position="bottom-center" />
         </QueryClientProvider>
       </ThemeProvider>

@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from "next-intl";
 
 import { BrandMark } from "@/components/layout/brand-mark";
 import { ConsoleBreadcrumbs } from "@/components/layout/console-breadcrumbs";
+import { ProjectSwitcher } from "@/components/layout/project-switcher";
 import { LanguageSwitcher } from "@/components/layout/language-switcher";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -21,31 +22,34 @@ import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/s
 import { useLogout, useMe } from "@/hooks/use-auth";
 import { useLiveResults } from "@/hooks/use-live-results";
 import { Link, usePathname, useRouter } from "@/i18n/navigation";
-import { MonitorCheck, PanelTop, Settings } from "lucide-react";
+import { MonitorCheck, PanelTop } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AppIcon } from "@/lib/icons";
 import {
   Gauge,
+  GearSix,
   List,
   MapPin,
   SignOut,
   SquaresFour,
   UserCircle,
+  Warning,
 } from "@/lib/icons";
 
 interface NavigationItem {
   href: string;
-  labelKey: "dashboard" | "monitors" | "statusPages" | "locations" | "system" | "settings";
+  labelKey: "dashboard" | "monitors" | "alerts" | "statusPages" | "locations" | "system" | "settings";
   icon: AppIcon;
 }
 
 const NAVIGATION: NavigationItem[] = [
-  { href: "/app/dashboard", labelKey: "dashboard", icon: LayoutDashboard },
+  { href: "/app/dashboard", labelKey: "dashboard", icon: SquaresFour },
   { href: "/app/nodes", labelKey: "monitors", icon: MonitorCheck },
   { href: "/app/status-pages", labelKey: "statusPages", icon: PanelTop },
+  { href: "/app/alerts", labelKey: "alerts", icon: Warning },
   { href: "/app/locations", labelKey: "locations", icon: MapPin },
-  { href: "/app/system", labelKey: "system", icon: CalendarClock },
-  { href: "/app/settings", labelKey: "settings", icon: Settings },
+  { href: "/app/system", labelKey: "system", icon: Gauge },
+  { href: "/app/settings", labelKey: "settings", icon: GearSix },
 ];
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
@@ -219,6 +223,8 @@ export function ConsoleShell({ children }: { children: React.ReactNode }) {
           </Sheet>
 
           <ConsoleBreadcrumbs />
+
+          <ProjectSwitcher />
 
           <div className="flex-1" />
 

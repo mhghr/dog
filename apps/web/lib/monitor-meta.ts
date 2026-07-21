@@ -1,70 +1,20 @@
+import { MONITOR_REGISTRY, MONITOR_TYPE_GROUPS, MONITOR_TYPES } from "@/features/monitors/core/registry";
 import type { MonitorStatus, MonitorType } from "@/types/monitor";
-import type { AppIcon } from "@/lib/icons";
-import {
-  Broadcast,
-  CalendarCheck,
-  Clock,
-  EnvelopeSimple,
-  Globe,
-  PlugsConnected,
-  ShieldCheck,
-  TreeStructure,
-} from "@/lib/icons";
 
-export const MONITOR_TYPES: MonitorType[] = [
-  "http",
-  "tcp",
-  "dns",
-  "ping",
-  "tls",
-  "domain_expiration",
-  "smtp",
-  "ntp",
-];
+// Compatibility facade. New feature code should import the registry directly.
+export { MONITOR_TYPE_GROUPS, MONITOR_TYPES };
 
-export const MONITOR_TYPE_ICONS: Record<MonitorType, AppIcon> = {
-  http: Globe,
-  ping: Broadcast,
-  tcp: PlugsConnected,
-  dns: TreeStructure,
-  tls: ShieldCheck,
-  domain_expiration: CalendarCheck,
-  smtp: EnvelopeSimple,
-  ntp: Clock,
-};
+export const MONITOR_TYPE_ICONS = Object.fromEntries(
+  MONITOR_TYPES.map((type) => [type, MONITOR_REGISTRY[type].icon]),
+) as Record<MonitorType, (typeof MONITOR_REGISTRY)[MonitorType]["icon"]>;
 
-export interface MonitorTypeGroup {
-  key: "web" | "network" | "domain_email";
-  types: MonitorType[];
-}
+export const DEFAULT_INTERVALS = Object.fromEntries(
+  MONITOR_TYPES.map((type) => [type, MONITOR_REGISTRY[type].defaultIntervalSeconds]),
+) as Record<MonitorType, number>;
 
-export const MONITOR_TYPE_GROUPS: MonitorTypeGroup[] = [
-  { key: "web", types: ["http", "tls"] },
-  { key: "network", types: ["ping", "tcp", "dns", "ntp"] },
-  { key: "domain_email", types: ["domain_expiration", "smtp"] },
-];
-
-export const DEFAULT_INTERVALS: Record<MonitorType, number> = {
-  http: 60,
-  tcp: 60,
-  ping: 60,
-  dns: 60,
-  tls: 3600,
-  domain_expiration: 43200,
-  smtp: 60,
-  ntp: 300,
-};
-
-export const MIN_INTERVALS: Record<MonitorType, number> = {
-  http: 10,
-  tcp: 10,
-  ping: 10,
-  dns: 30,
-  tls: 300,
-  domain_expiration: 3600,
-  smtp: 30,
-  ntp: 60,
-};
+export const MIN_INTERVALS = Object.fromEntries(
+  MONITOR_TYPES.map((type) => [type, MONITOR_REGISTRY[type].minimumIntervalSeconds]),
+) as Record<MonitorType, number>;
 
 export const STATUS_STYLES: Record<
   MonitorStatus,

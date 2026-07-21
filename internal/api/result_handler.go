@@ -51,6 +51,11 @@ func (h *Handler) ingestResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	events := h.deps.AlertEngine.Evaluate(r.Context(), result)
+	for _, evt := range events {
+		h.deps.Notifier.Dispatch(r.Context(), evt, evt.ChannelIDs)
+	}
+
 	writeJSON(w, http.StatusCreated, map[string]string{"status": "accepted"})
 }
 

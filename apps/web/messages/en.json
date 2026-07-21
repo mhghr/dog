@@ -19,7 +19,8 @@
     "no": "No",
     "copy": "Copy",
     "openMenu": "Open menu",
-    "next": "Next"
+    "next": "Next",
+    "project": "Project"
   },
   "navigation": {
     "overview": "Overview",
@@ -30,6 +31,7 @@
     "addNode": "Add node",
     "myNodes": "My nodes",
     "statusPages": "Status Pages",
+    "alerts": "Alerts",
     "locations": "Probe Locations",
     "system": "System Health",
     "settings": "Settings",
@@ -202,6 +204,25 @@
     "range30d": "30d",
     "nextRun": "Next run",
     "created": "Created",
+    "packetLoss": "Packet loss",
+    "currentRtt": "Current RTT",
+    "averageRtt": "Average RTT",
+    "jitter": "Jitter",
+    "healthScore": "Health score",
+    "rttRange": "Round-trip time",
+    "latestProbe": "Latest probe",
+    "minimumRtt": "Minimum",
+    "maximumRtt": "Maximum",
+    "pingConfiguration": "Ping configuration and delivery",
+    "resolvedIp": "Resolved IP",
+    "packetsSent": "Packets sent",
+    "packetsReceived": "Packets received",
+    "packetCount": "Packet count",
+    "packetInterval": "Packet interval",
+    "timeout": "Timeout",
+    "locationResults": "Latest result by probe location",
+    "unknownLocation": "Default probe",
+    "noLocationResults": "No location results recorded yet.",
     "noData": "No data recorded yet."
   },
   "results": {
@@ -520,5 +541,25 @@
       "section7Title": "7. Contact",
       "section7Body": "For questions about these terms, contact us through the platform's support channels."
     }
+  },
+  "organization": {
+    "title": "Organization",
+    "projects": "Projects",
+    "newProject": "New project",
+    "projectName": "Project name",
+    "projectNamePlaceholder": "e.g. Production",
+    "noProjects": "No projects yet",
+    "createProject": "Create project",
+    "projectCreated": "Project created"
+  },
+  "alerts": {
+    "title": "Alerts",
+    "subtitle": "Monitor alert events and notifications",
+    "state": "State",
+    "severity": "Severity",
+    "monitor": "Monitor",
+    "opened": "Opened",
+    "description": "Description",
+    "noAlerts": "No alerts yet"
   }
 }

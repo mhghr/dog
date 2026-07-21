@@ -127,6 +127,16 @@ func (r *UserRepository) UpsertGoogleUser(ctx context.Context, googleID, email, 
 	return user, tx.Commit(ctx)
 }
 
+func (r *UserRepository) SetOrganizationID(ctx context.Context, userID, orgID string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE users SET organization_id = $2::uuid, updated_at = NOW() WHERE id = $1::uuid`,
+		userID, orgID)
+	if err != nil {
+		return fmt.Errorf("set organization id: %w", err)
+	}
+	return nil
+}
+
 func (r *UserRepository) UpsertPhoneUser(ctx context.Context, phone string) (domain.User, error) {
 	row := r.pool.QueryRow(ctx, `
 		INSERT INTO users (phone, last_login_at)

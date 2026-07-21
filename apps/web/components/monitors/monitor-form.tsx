@@ -11,16 +11,6 @@ import {
   SwitchField,
   TextField,
 } from "@/components/monitors/form-fields";
-import {
-  DNSConfigFields,
-  DomainExpirationConfigFields,
-  HTTPConfigFields,
-  NTPConfigFields,
-  PingConfigFields,
-  SMTPConfigFields,
-  TCPConfigFields,
-  TLSConfigFields,
-} from "@/components/monitors/probe-config-fields";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -30,7 +20,7 @@ import {
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { ApiError } from "@/lib/api-client";
-import { DEFAULT_INTERVALS, MONITOR_TYPE_GROUPS, MONITOR_TYPE_ICONS } from "@/lib/monitor-meta";
+import { getMonitorDefinition, getMonitorFormField, MONITOR_TYPE_GROUPS } from "@/features/monitors/core/registry";
 import {
   buildMonitorPayload,
   buildProbeConfig,
@@ -76,6 +66,7 @@ export function MonitorForm({
   });
 
   const monitorType = form.watch("type");
+  const monitorDefinition = getMonitorDefinition(monitorType);
   const watchedValues = form.watch();
 
   const configPreview = useMemo(
@@ -88,7 +79,7 @@ export function MonitorForm({
       return;
     }
     form.setValue("type", nextType);
-    form.setValue("interval_seconds", DEFAULT_INTERVALS[nextType]);
+    form.setValue("interval_seconds", getMonitorDefinition(nextType).defaultIntervalSeconds);
     form.clearErrors();
   };
 
@@ -98,7 +89,7 @@ export function MonitorForm({
     } catch (error) {
       if (error instanceof ApiError && error.fields) {
         for (const [field, messages] of Object.entries(error.fields)) {
-          const formField = apiFieldToFormField(field);
+          const formField = getMonitorFormField(values.type, field);
           if (formField && messages.length > 0) {
             form.setError(formField, { type: "server", message: messages[0] });
           }
@@ -128,7 +119,7 @@ export function MonitorForm({
               </p>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {group.types.map((availableType) => {
-                  const Icon = MONITOR_TYPE_ICONS[availableType];
+                  const Icon = getMonitorDefinition(availableType).icon;
                   const selected = monitorType === availableType;
 
                   return (
@@ -214,16 +205,7 @@ export function MonitorForm({
           <CardTitle>{t("form.probeConfig")}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-6">
-          {monitorType === "http" && <HTTPConfigFields form={form} />}
-          {monitorType === "tcp" && <TCPConfigFields form={form} />}
-          {monitorType === "dns" && <DNSConfigFields form={form} />}
-          {monitorType === "ping" && <PingConfigFields form={form} />}
-          {monitorType === "tls" && <TLSConfigFields form={form} />}
-          {monitorType === "domain_expiration" && (
-            <DomainExpirationConfigFields form={form} />
-          )}
-          {monitorType === "smtp" && <SMTPConfigFields form={form} />}
-          {monitorType === "ntp" && <NTPConfigFields form={form} />}
+          <monitorDefinition.ConfigFields form={form} />
 
           <div className="flex flex-col gap-1.5">
             <Label>{t("form.configSummary")}</Label>
@@ -244,26 +226,4 @@ export function MonitorForm({
       </div>
     </form>
   );
-}
-
-// apiFieldToFormField maps backend validation field paths to form fields.
-function apiFieldToFormField(field: string): keyof MonitorFormValues | null {
-  const direct: Record<string, keyof MonitorFormValues> = {
-    name: "name",
-    target: "target",
-    type: "type",
-    interval_seconds: "interval_seconds",
-    timeout_millis: "timeout_millis",
-    retries: "retries",
-    "config.port": "tcp_port",
-    "config.method": "http_method",
-    "config.expected_status_codes": "http_expected_status_codes",
-    "config.record_type": "dns_record_type",
-    "config.server": "dns_server",
-    "config.mode": "smtp_mode",
-    "config.ehlo_domain": "smtp_ehlo_domain",
-    "config.version": "ntp_version",
-  };
-
-  return direct[field] ?? null;
 }

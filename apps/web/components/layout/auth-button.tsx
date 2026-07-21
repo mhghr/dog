@@ -24,7 +24,7 @@ export function AuthButton() {
   }
 
   return (
-    <Button asChild variant="ghost" size="sm">
+    <Button asChild size="sm">
       <Link href="/login">{t("login")}</Link>
     </Button>
   );

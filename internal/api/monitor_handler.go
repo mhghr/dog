@@ -241,6 +241,24 @@ type resultResponse struct {
 	FinishedAt      time.Time            `json:"finished_at"`
 }
 
+func toResultResponse(r domain.ProbeResult) resultResponse {
+	return resultResponse{
+		ID:              r.ID,
+		JobID:           r.JobID,
+		MonitorID:       r.MonitorID,
+		ProbeLocationID: r.ProbeLocationID,
+		Status:          r.Status,
+		Success:         r.Success,
+		ErrorCode:       r.ErrorCode,
+		ErrorMessage:    r.ErrorMessage,
+		DurationMillis:  r.DurationMillis,
+		Metrics:         r.Metrics,
+		Attributes:      r.Attributes,
+		StartedAt:       r.StartedAt,
+		FinishedAt:      r.FinishedAt,
+	}
+}
+
 func (h *Handler) listMonitorResults(w http.ResponseWriter, r *http.Request) {
 	monitorID, ok := h.monitorID(w, r)
 	if !ok {
@@ -265,7 +283,7 @@ func (h *Handler) listMonitorResults(w http.ResponseWriter, r *http.Request) {
 
 	items := make([]resultResponse, 0, len(results))
 	for _, result := range results {
-		items = append(items, resultResponse(result))
+		items = append(items, toResultResponse(result))
 	}
 
 	totalPages := 0

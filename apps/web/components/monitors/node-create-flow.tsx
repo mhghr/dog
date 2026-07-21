@@ -12,16 +12,6 @@ import {
   SwitchField,
   TextField,
 } from "@/components/monitors/form-fields";
-import {
-  DNSConfigFields,
-  DomainExpirationConfigFields,
-  HTTPConfigFields,
-  NTPConfigFields,
-  PingConfigFields,
-  SMTPConfigFields,
-  TCPConfigFields,
-  TLSConfigFields,
-} from "@/components/monitors/probe-config-fields";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -31,7 +21,7 @@ import {
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { ApiError } from "@/lib/api-client";
-import { MONITOR_TYPES, MONITOR_TYPE_ICONS } from "@/lib/monitor-meta";
+import { getMonitorDefinition, getMonitorFormField, MONITOR_TYPES } from "@/features/monitors/core/registry";
 import {
   buildMonitorPayload,
   buildProbeConfig,
@@ -65,7 +55,7 @@ function TypeSelection({
   return (
     <div className="grid grid-cols-1 gap-3 rounded-xl border border-border/70 bg-card/40 p-4 sm:grid-cols-2">
       {MONITOR_TYPES.map((type) => {
-        const Icon = MONITOR_TYPE_ICONS[type];
+        const Icon = getMonitorDefinition(type).icon;
         const isSelected = selected === type;
 
         return (
@@ -134,6 +124,7 @@ function CreateForm({
     () => createMonitorFormSchema((key, values) => tValidation(key, values)),
     [tValidation],
   );
+  const monitorDefinition = getMonitorDefinition(type);
 
   const form = useForm<MonitorFormValues>({
     resolver: zodResolver(schema) as unknown as Resolver<MonitorFormValues>,
@@ -165,7 +156,7 @@ function CreateForm({
     } catch (error) {
       if (error instanceof ApiError && error.fields) {
         for (const [field, messages] of Object.entries(error.fields)) {
-          const formField = apiFieldToFormField(field);
+          const formField = getMonitorFormField(values.type, field);
           if (formField && messages.length > 0) {
             form.setError(formField, { type: "server", message: messages[0] });
           }
@@ -248,16 +239,7 @@ function CreateForm({
               <CardTitle>{t("form.probeConfig")}</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-6">
-              {type === "http" && <HTTPConfigFields form={form} />}
-              {type === "tcp" && <TCPConfigFields form={form} />}
-              {type === "dns" && <DNSConfigFields form={form} />}
-              {type === "ping" && <PingConfigFields form={form} />}
-              {type === "tls" && <TLSConfigFields form={form} />}
-              {type === "domain_expiration" && (
-                <DomainExpirationConfigFields form={form} />
-              )}
-              {type === "smtp" && <SMTPConfigFields form={form} />}
-              {type === "ntp" && <NTPConfigFields form={form} />}
+              <monitorDefinition.ConfigFields form={form} />
 
               <div className="flex flex-col gap-1.5">
                 <Label>{t("form.configSummary")}</Label>
@@ -339,29 +321,4 @@ export function NodeCreateFlow({
       )}
     </div>
   );
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function apiFieldToFormField(field: string): keyof MonitorFormValues | null {
-  const direct: Record<string, keyof MonitorFormValues> = {
-    name: "name",
-    target: "target",
-    type: "type",
-    interval_seconds: "interval_seconds",
-    timeout_millis: "timeout_millis",
-    retries: "retries",
-    "config.port": "tcp_port",
-    "config.method": "http_method",
-    "config.expected_status_codes": "http_expected_status_codes",
-    "config.record_type": "dns_record_type",
-    "config.server": "dns_server",
-    "config.mode": "smtp_mode",
-    "config.ehlo_domain": "smtp_ehlo_domain",
-    "config.version": "ntp_version",
-  };
-
-  return direct[field] ?? null;
 }

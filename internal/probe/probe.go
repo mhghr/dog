@@ -31,10 +31,26 @@ func NewRegistry(executors ...Executor) *Registry {
 	}
 
 	for _, executor := range executors {
+		if executor == nil {
+			panic("probe: cannot register a nil executor")
+		}
+		if _, exists := registry.executors[executor.Type()]; exists {
+			panic("probe: duplicate executor for monitor type " + string(executor.Type()))
+		}
 		registry.executors[executor.Type()] = executor
 	}
 
 	return registry
+}
+
+// Types returns the registered monitor types. The returned slice is detached
+// from the registry and is intended for diagnostics and completeness tests.
+func (r *Registry) Types() []domain.MonitorType {
+	types := make([]domain.MonitorType, 0, len(r.executors))
+	for monitorType := range r.executors {
+		types = append(types, monitorType)
+	}
+	return types
 }
 
 func (r *Registry) Get(monitorType domain.MonitorType) (Executor, bool) {

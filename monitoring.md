@@ -9984,3 +9984,5303 @@ We couldn't load your nodes.
 - ستون ثابت CPU/RAM در Node List ساخته نشود.
 - Host Telemetry در لیست به شکل Signal تجمیعی نمایش داده شود.
 - Search، Filter، Grouping، Bulk Action و Saved View پشتیبانی شوند.
+
+---
+
+# 167. معماری نهایی Node Agent مبتنی بر OpenTelemetry
+
+این فصل مرجع اجرایی پیاده‌سازی Monitoring مبتنی بر Agent است و تمام تصمیم‌های مربوط به نصب Agent روی سرور کاربر، Enrollment، احراز هویت، ارسال Telemetry، جداسازی Tenantها، ذخیره‌سازی، Query، Remote Configuration، Upgrade و امنیت را مشخص می‌کند.
+
+تصمیم نهایی محصول:
+
+```text
+Probe Agent
+= Agent اختصاصی و سبک متعلق به زیرساخت پلتفرم برای اجرای Checkهای Agentless.
+
+Node Agent
+= Agent نصب‌شده روی سرور مشتری برای Metrics، Logs و Traces.
+
+Node Agent نهایی
+= Management Core اختصاصی محصول
+  + Custom OpenTelemetry Collector Distribution
+```
+
+نسخه عمومی و خام OpenTelemetry Collector نباید مستقیماً به کاربر ارائه شود. محصول باید Distribution اختصاصی و تست‌شده خود را منتشر کند.
+
+OpenTelemetry Collector از الگوهای Agent، Gateway و Agent-to-Gateway پشتیبانی می‌کند. معماری این محصول باید از مدل Agent-to-Gateway استفاده کند:
+
+```text
+Customer Node
+└── Node Agent
+    └── Custom OTel Collector
+            ↓
+Regional Telemetry Gateway
+            ↓
+Tenant Authentication and Enrichment
+            ↓
+Metrics → VictoriaMetrics
+Logs    → VictoriaLogs
+Traces  → VictoriaTraces
+```
+
+منابع مرجع:
+
+- OpenTelemetry Agent-to-Gateway deployment pattern
+- OpenTelemetry Collector Builder
+- VictoriaMetrics OTLP ingestion
+- VictoriaLogs OTLP ingestion
+- VictoriaTraces OTLP ingestion
+
+---
+
+# 168. اهداف و Non-goals
+
+## 168.1 اهداف
+
+- نصب ساده با یک فرمان
+- پشتیبانی Linux در MVP
+- پشتیبانی Windows در فاز بعد
+- یک Node Agent برای Metrics، Logs و Traces
+- عدم نیاز به بازنویسی CPU، RAM، Disk و Log Tailer
+- Tenant Isolation کامل
+- عدم اتصال مستقیم Agent به Databaseهای داخلی
+- احراز هویت مستقل هر Agent
+- Remote Config امن و نسخه‌بندی‌شده
+- Upgrade و Rollback کنترل‌شده
+- Local Buffer هنگام قطع ارتباط
+- Rate Limit، Quota و Plan Enforcement
+- مشاهده Health خود Agent در UI
+- امکان Revoke فوری
+- امکان توسعه Receiver و Processor اختصاصی
+- پشتیبانی هم‌زمان از File Logs و Application OTLP
+
+## 168.2 Non-goals نسخه اول
+
+- اجرای Shell Command دلخواه
+- Remote Terminal
+- مدیریت Packageهای سیستم‌عامل
+- EDR یا Runtime Security
+- Network Flow مبتنی بر eBPF
+- Continuous Profiling
+- Kubernetes Operator
+- کنترل مستقیم VictoriaMetrics توسط Agent
+- قبول Tenant ID از Configuration قابل تغییر کاربر
+
+---
+
+# 169. اجزای Node Agent
+
+```text
+monitoring-node-agent
+├── Agent Management Core
+│   ├── Installer
+│   ├── Enrollment Client
+│   ├── Identity Store
+│   ├── Certificate Manager
+│   ├── Heartbeat Client
+│   ├── Remote Config Client
+│   ├── Upgrade Manager
+│   ├── Rollback Manager
+│   ├── Diagnostics
+│   ├── Collector Supervisor
+│   └── Local State
+│
+└── monitoring-otelcol
+    ├── Receivers
+    ├── Processors
+    ├── Connectors
+    ├── Extensions
+    └── Exporters
+```
+
+## 169.1 Management Core
+
+Management Core باید اختصاصی و ترجیحاً با Go پیاده‌سازی شود.
+
+وظایف:
+
+- Enrollment
+- مدیریت Agent ID و Node ID
+- دریافت Certificate
+- Heartbeat
+- دریافت Remote Configuration
+- بررسی امضای Config
+- تولید Config نهایی Collector
+- Start/Stop/Restart Collector
+- Health Check Collector
+- اجرای Upgrade
+- Rollback
+- جمع‌آوری Diagnostic Bundle
+- ارسال Agent Events
+- مدیریت Local State
+
+Management Core نباید Payload اصلی Metrics، Logs و Traces را Parse یا ذخیره کند، مگر برای Health و Accounting محدود.
+
+## 169.2 Custom Collector Distribution
+
+با OpenTelemetry Collector Builder یک Binary اختصاصی ساخته شود:
+
+```text
+monitoring-otelcol
+```
+
+فقط Componentهای موردنیاز داخل آن قرار بگیرند تا Binary کوچک‌تر، سطح حمله محدودتر و تست‌پذیری بهتر شود.
+
+Componentهای پیشنهادی MVP:
+
+### Receivers
+
+```text
+hostmetrics
+filelog
+journald
+otlp
+docker_stats
+prometheus
+```
+
+Receiverهای اختیاری فاز بعد:
+
+```text
+kubeletstats
+host_observer
+redis
+postgresql
+mysql
+nginx
+apache
+rabbitmq
+mongodb
+```
+
+### Processors
+
+```text
+memory_limiter
+batch
+resource
+attributes
+filter
+transform
+resourcedetection
+```
+
+### Extensions
+
+```text
+health_check
+file_storage
+pprof فقط در حالت diagnostics
+zpages فقط در حالت diagnostics
+```
+
+### Exporters
+
+```text
+otlphttp
+```
+
+Agent فقط به Regional Telemetry Gateway محصول export می‌کند.
+
+---
+
+# 170. مدل نصب توسط کاربر
+
+## 170.1 مسیر UI
+
+```text
+Node Detail
+→ Infrastructure
+→ Install Agent
+```
+
+Wizard نصب:
+
+```text
+Step 1: Select operating system
+Step 2: Select architecture
+Step 3: Generate enrollment token
+Step 4: Copy installation command
+Step 5: Wait for connection
+Step 6: Review detected capabilities
+Step 7: Enable telemetry profiles
+```
+
+## 170.2 پلتفرم‌های MVP
+
+```text
+Linux AMD64
+Linux ARM64
+```
+
+فاز بعد:
+
+```text
+Windows AMD64
+macOS برای محیط Development
+Container image
+Kubernetes DaemonSet
+```
+
+## 170.3 فرمان نصب پیشنهادی
+
+```bash
+curl -fsSL https://downloads.example.com/node-agent/install.sh | \
+sudo sh -s -- \
+  --control-plane https://agent.example.com \
+  --token node_enroll_xxxxxxxxx
+```
+
+نسخه غیر-Pipe برای سازمان‌های حساس:
+
+```bash
+curl -fsSLo monitoring-agent-install.sh \
+  https://downloads.example.com/node-agent/install.sh
+
+curl -fsSLo monitoring-agent-install.sh.sha256 \
+  https://downloads.example.com/node-agent/install.sh.sha256
+
+sha256sum -c monitoring-agent-install.sh.sha256
+
+sudo sh monitoring-agent-install.sh \
+  --control-plane https://agent.example.com \
+  --token node_enroll_xxxxxxxxx
+```
+
+## 170.4 رفتار Installer
+
+Installer باید:
+
+1. سیستم‌عامل و Architecture را تشخیص دهد.
+2. نسخه سازگار Agent را از Manifest امضاشده دریافت کند.
+3. SHA-256 و Signature فایل را بررسی کند.
+4. User سیستمی محدود ایجاد کند.
+5. Directoryها را بسازد.
+6. Binaryهای Agent و Collector را نصب کند.
+7. Enrollment را انجام دهد.
+8. Credentialهای نهایی را در مسیر امن ذخیره کند.
+9. Token یک‌بارمصرف را حذف کند.
+10. Service را فعال و Start کند.
+11. Health اولیه را بررسی کند.
+12. نتیجه نصب را نمایش دهد.
+
+## 170.5 مسیرهای Linux
+
+```text
+/usr/local/bin/monitoring-node-agent
+/usr/local/lib/monitoring-agent/monitoring-otelcol
+
+/etc/monitoring-agent/agent.yaml
+/etc/monitoring-agent/collector.yaml
+/etc/monitoring-agent/conf.d/
+
+/var/lib/monitoring-agent/state.json
+/var/lib/monitoring-agent/credentials/
+/var/lib/monitoring-agent/queue/
+/var/lib/monitoring-agent/otel-storage/
+
+/var/log/monitoring-agent/
+```
+
+Permissionها:
+
+```text
+/etc/monitoring-agent                 root:monitoring-agent 0750
+credentials                           root:monitoring-agent 0640
+collector.yaml                        root:monitoring-agent 0640
+/var/lib/monitoring-agent             monitoring-agent 0750
+```
+
+## 170.6 systemd
+
+Service اصلی:
+
+```text
+monitoring-node-agent.service
+```
+
+Collector باید Child Process تحت کنترل Agent باشد یا Service مستقل زیر نظر Agent:
+
+```text
+monitoring-node-agent.service
+monitoring-otelcol.service
+```
+
+مدل پیشنهادی:
+
+```text
+monitoring-node-agent
+→ supervisor
+→ monitoring-otelcol child process
+```
+
+این مدل Rollout و Config Reload را ساده‌تر می‌کند.
+
+## 170.7 Commandهای Agent
+
+```bash
+monitoring-node-agent status
+monitoring-node-agent version
+monitoring-node-agent health
+monitoring-node-agent logs
+monitoring-node-agent config validate
+monitoring-node-agent config show
+monitoring-node-agent diagnostics
+monitoring-node-agent restart
+monitoring-node-agent update
+monitoring-node-agent uninstall
+```
+
+---
+
+# 171. Enrollment و صدور هویت
+
+## 171.1 ساخت Enrollment Token
+
+کاربر از UI برای یک Node مشخص Token می‌سازد.
+
+Token باید:
+
+- متعلق به یک Organization باشد.
+- متعلق به یک Node مشخص باشد.
+- یک‌بارمصرف باشد.
+- Expiration کوتاه داشته باشد؛ مثلاً 15 دقیقه.
+- Scope فقط `agent:enroll` داشته باشد.
+- Hash آن در Database ذخیره شود.
+- بعد از مصرف یا انقضا قابل استفاده نباشد.
+
+ساختار منطقی:
+
+```text
+token_id
+organization_id
+node_id
+expires_at
+max_uses = 1
+status
+created_by
+token_hash
+```
+
+Token خام فقط یک‌بار به کاربر نمایش داده شود.
+
+## 171.2 Enrollment Flow
+
+```text
+Installer
+→ POST /agent/v1/enroll
+→ Enrollment Token + Machine Fingerprint + Public Key
+→ Control Plane validates token
+→ Agent record created
+→ Short-lived bootstrap credential issued
+→ Agent requests certificate
+→ Certificate Authority signs agent certificate
+→ Long-term identity activated
+→ Enrollment token revoked
+```
+
+## 171.3 اطلاعات اولیه Agent
+
+Agent در Enrollment ارسال می‌کند:
+
+```text
+hostname
+machine_id_hash
+os
+os_version
+kernel_version
+architecture
+agent_version
+collector_version
+public_key
+capabilities
+installation_id
+```
+
+Machine ID نباید به‌تنهایی مبنای هویت باشد.
+
+## 171.4 Agent Identity
+
+هویت نهایی:
+
+```text
+organization_id
+node_id
+agent_id
+installation_id
+certificate_serial
+```
+
+این مقادیر باید توسط Backend از Certificate یا Token معتبر استخراج شوند؛ Agent نباید بتواند آن‌ها را با Header دلخواه تغییر دهد.
+
+## 171.5 وضعیت Agent
+
+```text
+PENDING
+CONNECTED
+DEGRADED
+DISCONNECTED
+REVOKED
+UPGRADING
+ERROR
+```
+
+برای Node Agent نصب‌شده توسط خود کاربر، Approval دستی اختیاری است. پیشنهاد:
+
+```text
+Enrollment token مخصوص Node
+→ Auto-approve
+```
+
+برای Token عمومی Organization:
+
+```text
+Generic organization token
+→ Manual approval required
+```
+
+در MVP فقط Token مخصوص Node پشتیبانی شود.
+
+---
+
+# 172. PKI، mTLS و Credential Rotation
+
+## 172.1 ارتباط‌ها
+
+```text
+Management API
+→ HTTPS + mTLS
+
+Telemetry Gateway
+→ OTLP/HTTP یا OTLP/gRPC + mTLS
+```
+
+## 172.2 Certificate
+
+برای هر Agent Certificate مستقل صادر شود.
+
+Subject/SAN منطقی:
+
+```text
+spiffe://platform.example/org/{organization_id}/node/{node_id}/agent/{agent_id}
+```
+
+حتی اگر SPIFFE کامل پیاده‌سازی نشود، ساختار هویت مشابه آن باشد.
+
+## 172.3 عمر Certificate
+
+```text
+Bootstrap credential: 10 دقیقه
+Agent certificate: 24 ساعت تا 7 روز
+Refresh: قبل از رسیدن به 30% زمان باقی‌مانده
+```
+
+Certificateهای کوتاه‌عمر ریسک سرقت Credential را کاهش می‌دهند.
+
+## 172.4 Rotation
+
+```text
+Agent generates new key pair
+→ authenticated rotate request
+→ new certificate issued
+→ overlap window
+→ old certificate revoked after confirmation
+```
+
+## 172.5 Revoke
+
+Admin یا کاربر مجاز بتواند Agent را Revoke کند:
+
+```text
+Agent Detail
+→ Revoke Agent
+```
+
+اثر فوری:
+
+- Management API دسترسی را رد کند.
+- Telemetry Gateway Certificate را رد کند.
+- Config جدید صادر نشود.
+- Agent در UI `REVOKED` شود.
+- داده‌های قبلی حذف نشوند.
+
+---
+
+# 173. دو کانال مستقل ارتباطی
+
+Node Agent باید دو کانال مستقل داشته باشد.
+
+## 173.1 Management Channel
+
+برای:
+
+```text
+Heartbeat
+Remote config
+Certificate rotation
+Upgrade manifest
+Feature flags
+Diagnostics upload
+Agent events
+```
+
+Endpointهای پیشنهادی:
+
+```text
+POST /agent/v1/enroll
+POST /agent/v1/heartbeat
+GET  /agent/v1/config
+POST /agent/v1/config/ack
+POST /agent/v1/certificates/rotate
+GET  /agent/v1/releases/latest
+POST /agent/v1/events
+POST /agent/v1/diagnostics
+```
+
+## 173.2 Telemetry Channel
+
+برای:
+
+```text
+Metrics
+Logs
+Traces
+```
+
+Endpoint عمومی:
+
+```text
+https://otlp.example.com
+```
+
+پورت‌ها:
+
+```text
+4317 gRPC
+4318 HTTP
+```
+
+در MVP می‌توان فقط OTLP/HTTP را پشتیبانی کرد تا Proxy و Firewall ساده‌تر باشد.
+
+Agent فقط Outbound Connection برقرار می‌کند. هیچ Port ورودی عمومی روی Node کاربر لازم نیست.
+
+---
+
+# 174. Telemetry Gateway
+
+Agent نباید مستقیم به VictoriaMetrics، VictoriaLogs یا VictoriaTraces متصل شود.
+
+معماری:
+
+```text
+Internet
+→ CDN/DDoS edge اختیاری
+→ L4/L7 Load Balancer
+→ OTLP Gateway
+→ Authentication
+→ Tenant Resolution
+→ Validation
+→ Enrichment
+→ Rate Limiting
+→ Routing
+→ Storage Backends
+```
+
+## 174.1 مسئولیت Gateway
+
+- mTLS Authentication
+- استخراج Agent Identity
+- Resolve کردن Tenant
+- ردکردن Agentهای Revoked
+- افزودن Resource Attributeهای معتبر
+- حذف Attributeهای ممنوع
+- Enforce کردن Quota
+- محدودکردن Payload Size
+- کنترل Cardinality
+- Batch و Retry
+- Routing به Storage
+- ثبت Usage
+- Audit و Security Event
+- جلوگیری از Tenant Spoofing
+
+## 174.2 Gateway Deployment
+
+```text
+One regional gateway pool per region
+Stateless instances
+Horizontal autoscaling
+Behind load balancer
+```
+
+نمونه:
+
+```text
+otlp-eu.example.com
+otlp-us.example.com
+otlp-me.example.com
+```
+
+Agent نزدیک‌ترین Region مجاز Organization را دریافت کند.
+
+## 174.3 Gateway Technology
+
+پیشنهاد:
+
+```text
+Custom OpenTelemetry Gateway Distribution
++ Authentication Extension اختصاصی
++ Tenant Enrichment Processor اختصاصی
++ Usage Accounting Processor اختصاصی
+```
+
+می‌توان Gateway را با Collector سفارشی ساخت و Component اختصاصی اضافه کرد.
+
+---
+
+# 175. جداسازی Tenantها
+
+Tenant Isolation باید در چند لایه اعمال شود.
+
+```text
+Identity Layer
+Ingestion Layer
+Storage Layer
+Query Layer
+Cache Layer
+Authorization Layer
+```
+
+## 175.1 اصل کلیدی
+
+Agent نباید تعیین کند داده متعلق به کدام Organization است.
+
+اشتباه:
+
+```text
+Agent sends header:
+X-Organization-ID: org_123
+```
+
+روش صحیح:
+
+```text
+mTLS certificate
+→ agent_id
+→ server-side lookup
+→ organization_id and node_id
+→ enforced enrichment
+```
+
+## 175.2 Resource Attributeهای اجباری
+
+Gateway این Attributeها را خودش اضافه یا Override کند:
+
+```text
+platform.organization.id
+platform.project.id
+platform.node.id
+platform.agent.id
+platform.environment
+host.id
+host.name
+service.name
+service.instance.id
+deployment.environment.name
+```
+
+Attributeهای زیر از سمت Agent قابل اعتماد نیستند:
+
+```text
+platform.organization.id
+platform.node.id
+platform.agent.id
+```
+
+Gateway همیشه آن‌ها را Override می‌کند.
+
+## 175.3 مدل Storage مشترک
+
+برای MVP، Storage مشترک با Tenant Label اجباری پیشنهاد می‌شود.
+
+Metrics:
+
+```text
+platform_organization_id
+platform_project_id
+platform_node_id
+platform_agent_id
+```
+
+Logs Stream Fields:
+
+```text
+organization_id
+node_id
+service_name
+environment
+source_type
+```
+
+Traces Resource Attributes:
+
+```text
+platform.organization.id
+platform.node.id
+service.name
+service.instance.id
+```
+
+## 175.4 محدودیت Query
+
+هیچ Query از Frontend مستقیماً به Storage ارسال نشود.
+
+```text
+Frontend
+→ Product Query API
+→ Authorization
+→ Tenant Filter Injection
+→ Backend Query
+```
+
+Backend باید Tenant Filter را اجباری Inject کند.
+
+مثال Metric Query منطقی:
+
+```text
+user query:
+cpu_usage_percent{node_id="node_123"}
+
+server query:
+cpu_usage_percent{
+  organization_id="org_abc",
+  node_id="node_123"
+}
+```
+
+Organization ID از Session کاربر گرفته شود، نه Request Parameter آزاد.
+
+## 175.5 Tenant IDهای داخلی VictoriaMetrics
+
+اگر VictoriaMetrics Cluster multi-tenant استفاده شود، می‌توان Organization را به Account ID یا Project ID داخلی Map کرد.
+
+پیشنهاد:
+
+```text
+organization_internal_numeric_id
+→ VictoriaMetrics accountID
+```
+
+Project داخلی Storage برای Environment یا Product Partition استفاده شود، نه لزوماً Project محصول.
+
+در نسخه Single-node VictoriaMetrics، Label-based isolation فقط از طریق Query API امن محصول اعمال شود.
+
+## 175.6 Tenantهای بزرگ
+
+برای Enterpriseهای بزرگ:
+
+```text
+Shared cluster
+Dedicated account
+Dedicated storage cluster
+Dedicated region
+```
+
+قابل پشتیبانی باشد.
+
+---
+
+# 176. Pipeline داده Metrics
+
+## 176.1 جمع‌آوری Host Metrics
+
+Receiver:
+
+```yaml
+receivers:
+  hostmetrics:
+    collection_interval: 30s
+    scrapers:
+      cpu:
+      memory:
+      load:
+      disk:
+      filesystem:
+      network:
+      paging:
+      processes:
+      process:
+```
+
+نمونه Metricهای منطقی:
+
+```text
+system.cpu.utilization
+system.memory.usage
+system.memory.utilization
+system.filesystem.usage
+system.disk.io
+system.network.io
+system.load.1
+system.processes.count
+process.cpu.utilization
+process.memory.usage
+```
+
+## 176.2 Processorهای Node
+
+```text
+memory_limiter
+resourcedetection
+resource
+filter
+batch
+```
+
+## 176.3 ارسال
+
+```text
+Node Collector
+→ OTLP/HTTP
+→ Regional Gateway
+→ VictoriaMetrics
+```
+
+VictoriaMetrics OTLP Metrics را به‌صورت Native می‌پذیرد.
+
+## 176.4 نمونه Config
+
+```yaml
+receivers:
+  hostmetrics:
+    collection_interval: 30s
+    scrapers:
+      cpu:
+      memory:
+      load:
+      disk:
+      filesystem:
+      network:
+      paging:
+      processes:
+
+processors:
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 256
+    spike_limit_mib: 64
+
+  resourcedetection:
+    detectors: [system, env]
+    timeout: 2s
+    override: false
+
+  resource:
+    attributes:
+      - key: service.name
+        value: host
+        action: upsert
+
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+
+exporters:
+  otlphttp/platform:
+    endpoint: https://otlp.example.com
+    compression: gzip
+    tls:
+      cert_file: /var/lib/monitoring-agent/credentials/client.crt
+      key_file: /var/lib/monitoring-agent/credentials/client.key
+      ca_file: /var/lib/monitoring-agent/credentials/ca.crt
+    sending_queue:
+      enabled: true
+      storage: file_storage
+      queue_size: 5000
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 30s
+      max_elapsed_time: 0s
+
+extensions:
+  file_storage:
+    directory: /var/lib/monitoring-agent/otel-storage
+
+service:
+  extensions: [file_storage]
+  pipelines:
+    metrics:
+      receivers: [hostmetrics]
+      processors: [memory_limiter, resourcedetection, resource, batch]
+      exporters: [otlphttp/platform]
+```
+
+---
+
+# 177. Pipeline داده Logs
+
+## 177.1 انواع Source
+
+```text
+File
+systemd Journal
+Syslog local
+Docker container
+Application OTLP
+```
+
+## 177.2 File Logs
+
+کاربر در UI Log Source می‌سازد:
+
+```text
+Name
+Service
+Path
+Format
+Encoding
+Multiline rule
+Include files
+Exclude files
+Start position
+Retention plan
+```
+
+نمونه:
+
+```text
+Name: Nginx access
+Service: nginx
+Path: /var/log/nginx/access*.log
+Format: nginx_combined
+```
+
+## 177.3 Collector Config
+
+```yaml
+receivers:
+  filelog/nginx:
+    include:
+      - /var/log/nginx/access*.log
+    exclude:
+      - /var/log/nginx/*.gz
+    start_at: end
+    include_file_path: true
+    storage: file_storage
+    operators:
+      - type: regex_parser
+        regex: '...'
+      - type: add
+        field: attributes.service.name
+        value: nginx
+```
+
+## 177.4 Multiline
+
+برای Stack Trace:
+
+```text
+Java
+Python
+Node.js
+PHP
+Go panic
+```
+
+UI باید Template آماده داشته باشد.
+
+## 177.5 داده‌های حساس
+
+قبل از ارسال:
+
+- Redaction اختیاری روی Agent
+- Redaction اجباری در Gateway
+- حذف Authorization header
+- حذف Cookie
+- Mask کردن API Key
+- Mask کردن Email یا IP براساس Policy
+- Drop کردن Fieldهای تعریف‌شده
+
+Processorهای Filter و Transform برای این کار استفاده شوند.
+
+## 177.6 ذخیره
+
+```text
+Node Agent
+→ Gateway
+→ VictoriaLogs
+```
+
+VictoriaLogs Endpoint داخلی:
+
+```text
+/insert/opentelemetry/v1/logs
+```
+
+Storage پشت Network خصوصی باشد و از اینترنت مستقیم در دسترس نباشد.
+
+## 177.7 Stream Fields
+
+Stream Fieldها باید محدود و Low-cardinality باشند:
+
+```text
+organization_id
+node_id
+service_name
+environment
+source_type
+```
+
+این موارد Stream Field نباشند:
+
+```text
+request_id
+trace_id
+user_id
+full_path
+error_message
+```
+
+آن‌ها Field عادی باشند.
+
+---
+
+# 178. Pipeline داده Traces
+
+## 178.1 Application Instrumentation
+
+Application کاربر می‌تواند با OpenTelemetry SDK به Node Agent ارسال کند:
+
+```text
+Application
+→ localhost:4317 or localhost:4318
+→ Node Agent Collector
+→ Platform Gateway
+→ VictoriaTraces
+```
+
+این Portها فقط روی Loopback یا شبکه داخلی محدود Listen کنند.
+
+## 178.2 OTLP Receiver
+
+```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 127.0.0.1:4317
+      http:
+        endpoint: 127.0.0.1:4318
+```
+
+## 178.3 Sampling
+
+فاز اول:
+
+```text
+Head sampling روی Agent
+```
+
+فاز بعد:
+
+```text
+Tail sampling روی Gateway
+```
+
+Policy نمونه:
+
+```text
+Keep 100% errors
+Keep 100% slow traces
+Sample 5% normal traces
+```
+
+## 178.4 ذخیره
+
+```text
+Gateway
+→ VictoriaTraces OTLP endpoint
+```
+
+## 178.5 Correlation
+
+Metric، Log و Trace باید Resource Attribute مشترک داشته باشند:
+
+```text
+organization_id
+node_id
+service.name
+service.instance.id
+deployment.environment.name
+```
+
+Logهای Application می‌توانند این Fieldها را داشته باشند:
+
+```text
+trace_id
+span_id
+```
+
+تا UI امکان `View Trace` از روی Log را فراهم کند.
+
+---
+
+# 179. Remote Configuration
+
+## 179.1 اصل امنیتی
+
+Server نباید فایل Config دلخواه و بدون محدودیت به Agent بدهد.
+
+Config باید از یک Model محدود و Validate‌شده تولید شود.
+
+```text
+Product configuration model
+→ Validator
+→ Policy engine
+→ OTel config generator
+→ Signature
+→ Agent
+```
+
+## 179.2 Config Revision
+
+```text
+config_revision
+generated_at
+expires_at
+minimum_agent_version
+minimum_collector_version
+checksum
+signature
+```
+
+## 179.3 دریافت Config
+
+```text
+Agent heartbeat
+→ current revision sent
+→ server returns desired revision
+→ Agent downloads signed config
+→ signature verified
+→ config validate
+→ dry-run
+→ collector reload/restart
+→ ACK
+```
+
+## 179.4 Rollback
+
+اگر Collector بعد از Config جدید Healthy نشد:
+
+```text
+Restore last known good config
+Restart collector
+Send rollback event
+Mark config revision failed
+```
+
+## 179.5 Config Scope
+
+```text
+Global defaults
+Organization policy
+Project policy
+Node profile
+Node overrides
+```
+
+ترتیب:
+
+```text
+Global
+< Organization
+< Project
+< Node profile
+< Explicit node override
+```
+
+Secretها داخل Config خام قرار نگیرند. Secret Reference یا Credential Store استفاده شود.
+
+---
+
+# 180. Telemetry Profileها
+
+برای ساده‌سازی UI، کاربر Profile انتخاب کند.
+
+## 180.1 Basic Host
+
+```text
+CPU
+Memory
+Load
+Disk
+Filesystem
+Network
+Uptime
+```
+
+## 180.2 Advanced Host
+
+```text
+Basic Host
+Processes
+Per-process metrics
+Disk IO
+Network errors
+Paging
+```
+
+## 180.3 Host + Logs
+
+```text
+Advanced Host
+systemd Journal
+Selected log files
+Container logs
+```
+
+## 180.4 Full Observability
+
+```text
+Host + Logs
+OTLP application receiver
+Traces
+Application metrics
+```
+
+هر Profile باید Usage تخمینی و Plan Requirement را نمایش دهد.
+
+---
+
+# 181. Local Buffer و Offline Mode
+
+## 181.1 هدف
+
+اگر اینترنت قطع شد، Agent نباید بلافاصله داده را از دست بدهد.
+
+Collector از Persistent Queue مبتنی بر `file_storage` استفاده کند.
+
+## 181.2 Quota دیسک
+
+```text
+Metrics queue: 256 MB
+Logs queue: configurable, default 1 GB
+Traces queue: 512 MB
+Total hard limit: 2 GB default
+```
+
+محدودیت بر اساس Profile و Disk قابل تنظیم باشد.
+
+## 181.3 Drop Policy
+
+هنگام پر شدن Queue:
+
+```text
+1. Drop oldest low-priority logs
+2. Drop sampled normal traces
+3. Preserve error logs
+4. Preserve critical host metrics as much as possible
+```
+
+Collector upstream ممکن است Priority Queue کامل نداشته باشد؛ برای این Policy می‌توان Pipeline جدا یا Component اختصاصی ساخت.
+
+## 181.4 UI
+
+Agent Detail:
+
+```text
+Connection: Offline
+Buffered data: 684 MB
+Oldest buffered sample: 38 minutes ago
+Disk queue: 34%
+```
+
+---
+
+# 182. Rate Limit، Quota و Usage Accounting
+
+## 182.1 Quotaها
+
+Metrics:
+
+```text
+samples per second
+active time series
+unique attributes
+payload bytes
+```
+
+Logs:
+
+```text
+ingested bytes per day
+events per second
+maximum event size
+retention
+```
+
+Traces:
+
+```text
+spans per second
+bytes per day
+sample rate
+maximum attributes per span
+```
+
+## 182.2 Enforce Location
+
+Quota در دو محل:
+
+```text
+Agent config
+Gateway hard enforcement
+```
+
+Agent-side فقط Optimization است؛ Gateway مرجع قطعی است.
+
+## 182.3 رفتار عبور از Limit
+
+```text
+Soft limit
+→ UI warning
+→ usage event
+
+Hard limit
+→ throttle
+→ selective drop
+→ error response
+→ notification
+```
+
+نباید کل Agent به‌خاطر عبور Logs از Limit، Metrics را متوقف کند.
+
+## 182.4 Usage Records
+
+```text
+organization_id
+node_id
+agent_id
+signal_type
+received_bytes
+accepted_bytes
+rejected_bytes
+samples_count
+logs_count
+spans_count
+timestamp_bucket
+```
+
+Usage برای Billing و Capacity Planning ذخیره شود.
+
+---
+
+# 183. کنترل Cardinality
+
+Cardinality یکی از ریسک‌های اصلی Metrics است.
+
+## 183.1 Limitها
+
+- حداکثر Attribute در هر Metric
+- حداکثر طول نام Attribute
+- حداکثر طول Value
+- Denylist برای Attributeهای خطرناک
+- سقف Series جدید در دقیقه
+- سقف Series فعال به تفکیک Plan
+
+## 183.2 Attributeهای خطرناک
+
+```text
+request_id
+session_id
+user_id
+email
+full_url
+query_string
+container_ephemeral_id در برخی سناریوها
+```
+
+## 183.3 Policy
+
+```text
+Drop
+Hash
+Normalize
+Move to log field
+Aggregate
+```
+
+Gateway باید Metricهایی که Tenant Isolation Label ندارند Reject کند.
+
+---
+
+# 184. ذخیره‌سازی Backend
+
+## 184.1 PostgreSQL
+
+برای Control Plane:
+
+```text
+nodes
+node_agents
+agent_enrollment_tokens
+agent_certificates
+agent_config_revisions
+agent_events
+agent_releases
+agent_usage_hourly
+log_sources
+telemetry_profiles
+agent_upgrade_jobs
+```
+
+## 184.2 VictoriaMetrics
+
+برای Metrics عددی و Historical.
+
+نمونه:
+
+```text
+system_cpu_utilization
+system_memory_utilization
+system_filesystem_usage
+system_network_io
+process_cpu_utilization
+process_memory_usage
+```
+
+## 184.3 VictoriaLogs
+
+برای:
+
+```text
+application logs
+service logs
+system logs
+container logs
+agent logs محدود
+```
+
+## 184.4 VictoriaTraces
+
+برای:
+
+```text
+distributed traces
+service spans
+database spans
+HTTP spans
+messaging spans
+```
+
+## 184.5 Object Storage
+
+برای:
+
+```text
+Diagnostic bundles
+Large exports
+Archived reports
+Optional long-term log archive
+Agent release artifacts
+Signed manifests
+```
+
+---
+
+# 185. Schemaهای PostgreSQL
+
+## 185.1 node_agents
+
+```text
+id
+organization_id
+node_id
+installation_id
+status
+hostname
+os
+os_version
+architecture
+agent_version
+collector_version
+capabilities_json
+last_seen_at
+last_config_revision
+desired_config_revision
+certificate_serial
+certificate_expires_at
+connected_region
+created_at
+updated_at
+revoked_at
+```
+
+Unique:
+
+```text
+organization_id + node_id + installation_id
+```
+
+## 185.2 agent_enrollment_tokens
+
+```text
+id
+organization_id
+node_id
+token_hash
+expires_at
+max_uses
+uses
+status
+created_by
+created_at
+used_at
+```
+
+## 185.3 agent_config_revisions
+
+```text
+id
+organization_id
+node_id
+revision
+config_model_json
+rendered_checksum
+signature
+status
+created_by
+created_at
+applied_at
+failure_reason
+```
+
+## 185.4 log_sources
+
+```text
+id
+organization_id
+node_id
+name
+service_name
+source_type
+path_pattern
+format
+multiline_profile
+enabled
+redaction_policy_id
+created_at
+updated_at
+```
+
+## 185.5 agent_events
+
+```text
+id
+organization_id
+node_id
+agent_id
+type
+severity
+message
+metadata_json
+created_at
+```
+
+Eventها:
+
+```text
+agent_connected
+agent_disconnected
+agent_enrolled
+certificate_rotated
+config_applied
+config_failed
+config_rolled_back
+upgrade_started
+upgrade_succeeded
+upgrade_failed
+queue_near_full
+quota_exceeded
+collector_crashed
+```
+
+---
+
+# 186. Query Architecture
+
+## 186.1 Metrics API
+
+```text
+GET /api/v1/nodes/{nodeId}/infrastructure/metrics
+```
+
+پارامترها:
+
+```text
+metric
+from
+to
+step
+aggregation
+device
+filesystem
+process
+```
+
+Backend:
+
+1. Session و Organization را Resolve کند.
+2. Node ownership را بررسی کند.
+3. Query Template امن تولید کند.
+4. Tenant Filter را Inject کند.
+5. Query را به VictoriaMetrics ارسال کند.
+6. Response را Normalize کند.
+7. Cache مناسب اعمال کند.
+
+## 186.2 Logs API
+
+```text
+GET /api/v1/nodes/{nodeId}/logs
+```
+
+پارامترها:
+
+```text
+from
+to
+query
+service
+severity
+source
+limit
+cursor
+```
+
+Backend همیشه Filter زیر را اضافه کند:
+
+```text
+organization_id = current_org
+node_id = route_node
+```
+
+## 186.3 Traces API
+
+```text
+GET /api/v1/nodes/{nodeId}/traces
+GET /api/v1/traces/{traceId}
+```
+
+دسترسی Trace Detail فقط بعد از تأیید Organization همان Trace مجاز باشد.
+
+## 186.4 Cache
+
+Cache Key باید Tenant-aware باشد:
+
+```text
+organization_id
+node_id
+query_hash
+time_range
+step
+```
+
+هیچ Cache مشترک بدون Organization Key استفاده نشود.
+
+---
+
+# 187. Alerting روی Agent Telemetry
+
+Alert Policyها:
+
+```text
+CPU > threshold
+Memory > threshold
+Disk free < threshold
+Filesystem predicted full
+Load high
+Process down
+Service down
+Log pattern detected
+Log error rate
+Trace error rate
+Latency percentile
+Agent disconnected
+No data
+```
+
+Rule Evaluation:
+
+```text
+VictoriaMetrics / vmalert برای Metrics
+VictoriaLogs alerting pipeline برای Logs
+Trace-derived metrics برای Traces
+```
+
+برای MVP می‌توان Rule Engine محصول را روی Queryهای دوره‌ای Backend پیاده کرد؛ اما برای Scale بالا، vmalert یا Evaluator مستقل ترجیح دارد.
+
+Alert باید به Node متصل شود:
+
+```text
+organization_id
+node_id
+signal_type
+source_id
+```
+
+---
+
+# 188. UI Agent-based Monitoring
+
+## 188.1 Node List
+
+Badge تجمیعی:
+
+```text
+[Ping ✓] [HTTP ✓] [Host !] [Logs ✓]
+```
+
+Tooltip Host:
+
+```text
+Agent: Connected
+CPU: 82% Warning
+Memory: 61% Healthy
+Disk: 44% Healthy
+Last seen: 8s ago
+```
+
+## 188.2 Node Detail Tabs
+
+```text
+Overview
+Monitors
+Infrastructure
+Logs
+Traces
+Alerts
+Configuration
+Activity
+```
+
+## 188.3 Infrastructure Overview
+
+```text
+Agent Status
+CPU
+Memory
+Load
+Disk
+Filesystem
+Network
+Processes
+Uptime
+```
+
+## 188.4 Agent Detail
+
+```text
+Status
+Agent version
+Collector version
+OS
+Architecture
+Last heartbeat
+Certificate expiry
+Current config revision
+Queue usage
+Connected gateway
+Capabilities
+Upgrade channel
+```
+
+Actions:
+
+```text
+Restart collector
+Request diagnostics
+Rotate certificate
+Apply config
+Update agent
+Revoke agent
+Uninstall instructions
+```
+
+## 188.5 Logs
+
+```text
+Search
+Time range
+Service filter
+Severity filter
+Source filter
+Live tail
+Saved query
+Create alert from query
+View related trace
+```
+
+## 188.6 Install State
+
+```text
+Not installed
+Enrollment token generated
+Waiting for connection
+Connected
+Receiving metrics
+Receiving logs
+Receiving traces
+```
+
+---
+
+# 189. Upgrade و Release Management
+
+## 189.1 Release Artifact
+
+برای هر Platform:
+
+```text
+binary
+sha256
+signature
+SBOM
+release notes
+minimum OS
+minimum kernel
+```
+
+## 189.2 Channels
+
+```text
+stable
+candidate
+beta
+internal
+```
+
+## 189.3 Rollout
+
+```text
+Internal probes
+1% customer agents
+5%
+25%
+50%
+100%
+```
+
+Rollout براساس Error Rate متوقف شود.
+
+## 189.4 Upgrade Flow
+
+```text
+Agent polls release manifest
+→ verifies policy and signature
+→ downloads to staging
+→ verifies checksum
+→ stops collector
+→ replaces binaries atomically
+→ starts new version
+→ health check
+→ success ACK
+```
+
+در صورت خطا:
+
+```text
+rollback to previous binary
+restore previous config
+send upgrade_failed
+```
+
+## 189.5 Forced Upgrade
+
+فقط برای Critical Security Issue و با Grace Period.
+
+---
+
+# 190. Diagnostics و Support
+
+Command:
+
+```bash
+sudo monitoring-node-agent diagnostics
+```
+
+Bundle شامل:
+
+```text
+Agent status
+Collector status
+Sanitized configs
+Recent logs
+Queue size
+OS info
+Network test
+Certificate metadata بدون private key
+Gateway connectivity
+Disk permissions
+Config validation
+```
+
+Bundle نباید شامل این موارد باشد:
+
+```text
+Private keys
+Enrollment token
+Raw application logs به‌صورت پیش‌فرض
+Environment secrets
+Authorization headers
+```
+
+Upload Diagnostic باید Consent صریح کاربر داشته باشد.
+
+---
+
+# 191. امنیت Node Agent
+
+## 191.1 Least Privilege
+
+Agent با User محدود اجرا شود.
+
+برای Host Metrics برخی دسترسی‌ها لازم است:
+
+```text
+/proc read
+/sys read
+Selected log files read
+systemd journal group در صورت فعال بودن
+Docker socket فقط در صورت فعال‌سازی Container Monitoring
+```
+
+Docker socket دسترسی بسیار قدرتمند است و باید Warning واضح داشته باشد.
+
+## 191.2 No Remote Execution
+
+Remote Config فقط قابلیت‌های allowlisted را کنترل کند.
+
+ممنوع:
+
+```text
+arbitrary shell
+download and execute arbitrary file
+custom command receiver برای کاربر عادی
+remote terminal
+```
+
+## 191.3 Secret Handling
+
+- Private key در File Permission محدود
+- Token خام بعد از Enrollment حذف شود.
+- Config در Log چاپ نشود.
+- Secretها Redact شوند.
+- Core dump در Production غیرفعال یا کنترل‌شده باشد.
+
+## 191.4 Supply Chain
+
+- Binary signing
+- SHA-256
+- SBOM
+- Dependency scanning
+- Reproducible build تا حد امکان
+- Pinned component versions
+- CVE monitoring
+- Release provenance
+- Rollback
+
+## 191.5 Network
+
+Outbound Allowlist:
+
+```text
+agent.example.com:443
+otlp-region.example.com:443
+downloads.example.com:443
+```
+
+هیچ Inbound Port عمومی نیاز نیست.
+
+---
+
+# 192. Privacy و Data Governance
+
+## 192.1 Data Classification
+
+```text
+Metrics: معمولاً کم‌حساسیت
+Logs: ممکن است PII یا Secret داشته باشند
+Traces: ممکن است Header، URL و Database statement داشته باشند
+Diagnostics: ممکن است اطلاعات سیستم داشته باشد
+```
+
+## 192.2 Controls
+
+- Redaction Policy
+- Attribute Allowlist/Denylist
+- Log Path Allowlist
+- Retention per signal
+- Region selection
+- Export/Delete
+- Audit Log
+- Customer-managed masking rules
+- Optional data residency
+
+## 192.3 حذف داده
+
+Delete Node:
+
+```text
+Soft delete metadata
+Revoke agent
+Stop ingestion
+Schedule metrics/logs/traces deletion
+Audit deletion request
+```
+
+حذف Time-series ممکن است Async باشد و باید وضعیت Job نمایش داده شود.
+
+---
+
+# 193. Retention و Plan
+
+نمونه پیشنهادی:
+
+| Plan | Metrics | Logs | Traces |
+|---|---:|---:|---:|
+| Free | 7 روز | ندارد یا 1 روز | ندارد |
+| Basic | 30 روز | 7 روز | 3 روز |
+| Pro | 90 روز | 30 روز | 14 روز |
+| Enterprise | 365 روز | 90+ روز | 30+ روز |
+
+Retention واقعی باید قابل تنظیم توسط Platform Admin باشد.
+
+برای Metrics طولانی‌مدت:
+
+```text
+Raw resolution
+Downsampled hourly
+Downsampled daily
+```
+
+---
+
+# 194. High Availability و Scale
+
+## 194.1 Gateway
+
+- Stateless
+- Horizontal autoscaling
+- Multi-AZ
+- Backpressure
+- Queue
+- Circuit breaker
+- Per-tenant rate limit
+- Regional routing
+
+## 194.2 Storage
+
+```text
+VictoriaMetrics Cluster
+VictoriaLogs Cluster
+VictoriaTraces Cluster
+```
+
+برای MVP می‌توان Single-node استفاده کرد، ولی API و Tenant Model باید از ابتدا Cluster-ready باشد.
+
+## 194.3 Failure Scenarios
+
+```text
+Gateway unavailable
+→ Agent persistent queue
+
+Metrics storage unavailable
+→ Gateway queue/retry
+
+Logs storage overloaded
+→ logs throttled independently
+
+Management API unavailable
+→ current config continues
+
+Certificate rotation temporarily unavailable
+→ old cert valid through grace period
+```
+
+---
+
+# 195. Observability خود Agent Platform
+
+Metricهای Agent:
+
+```text
+agent_up
+agent_heartbeat_age_seconds
+agent_config_revision
+agent_queue_bytes
+agent_dropped_items_total
+agent_export_failures_total
+agent_collector_restarts_total
+agent_cpu_usage
+agent_memory_usage
+```
+
+Metricهای Gateway:
+
+```text
+gateway_received_items_total
+gateway_rejected_items_total
+gateway_tenant_rate_limited_total
+gateway_auth_failures_total
+gateway_export_failures_total
+gateway_queue_size
+gateway_latency_seconds
+```
+
+Dashboard داخلی Admin:
+
+```text
+Connected agents
+Disconnected agents
+Version distribution
+Config failure rate
+Upgrade success rate
+Ingest by tenant
+Top cardinality tenants
+Queue pressure
+Certificate expiry risk
+```
+
+---
+
+# 196. مراحل پیاده‌سازی
+
+## Phase 1 — Host Metrics MVP
+
+- Linux AMD64/ARM64
+- Management Core
+- Enrollment
+- mTLS
+- Custom Collector
+- Hostmetrics
+- OTLP Gateway
+- VictoriaMetrics
+- CPU/RAM/Disk/Network UI
+- Agent disconnected alert
+- Stable update channel
+
+## Phase 2 — Service Logs
+
+- Filelog
+- Journald
+- Docker logs
+- VictoriaLogs
+- Log search
+- Redaction
+- Usage quota
+- Log alerts
+
+## Phase 3 — Application OTLP و Traces
+
+- Local OTLP receiver
+- VictoriaTraces
+- Trace search/detail
+- Log-to-trace correlation
+- Sampling
+- Service map
+
+## Phase 4 — Advanced Infrastructure
+
+- Process discovery
+- Service discovery
+- Container inventory
+- Database receivers
+- Nginx/Redis/PostgreSQL integrations
+- Advanced remote profiles
+
+## Phase 5 — Enterprise Fleet
+
+- Windows
+- Kubernetes
+- Bulk rollout
+- Dedicated gateways
+- Data residency
+- Dedicated tenant clusters
+- SSO/RBAC برای Agent operations
+
+---
+
+# 197. APIهای Control Plane
+
+```text
+POST   /api/v1/nodes/{nodeId}/agent-enrollment-token
+GET    /api/v1/nodes/{nodeId}/agents
+GET    /api/v1/agents/{agentId}
+POST   /api/v1/agents/{agentId}/revoke
+POST   /api/v1/agents/{agentId}/rotate-certificate
+POST   /api/v1/agents/{agentId}/request-diagnostics
+POST   /api/v1/agents/{agentId}/upgrade
+GET    /api/v1/agents/{agentId}/events
+GET    /api/v1/agents/{agentId}/usage
+GET    /api/v1/nodes/{nodeId}/telemetry-profile
+PUT    /api/v1/nodes/{nodeId}/telemetry-profile
+POST   /api/v1/nodes/{nodeId}/log-sources
+PUT    /api/v1/log-sources/{logSourceId}
+DELETE /api/v1/log-sources/{logSourceId}
+```
+
+Agent-facing:
+
+```text
+POST /agent/v1/enroll
+POST /agent/v1/heartbeat
+GET  /agent/v1/config
+POST /agent/v1/config/ack
+POST /agent/v1/events
+POST /agent/v1/certificates/rotate
+GET  /agent/v1/releases/latest
+POST /agent/v1/diagnostics
+```
+
+---
+
+# 198. تصمیم‌های قطعی
+
+```text
+1. Node Agent از صفر Collector نمی‌نویسد.
+2. OpenTelemetry Collector موتور Data Plane است.
+3. Distribution اختصاصی محصول ساخته می‌شود.
+4. Management Core اختصاصی با Go ساخته می‌شود.
+5. معماری Agent-to-Gateway استفاده می‌شود.
+6. Agent مستقیم به VictoriaMetrics/VictoriaLogs/VictoriaTraces وصل نمی‌شود.
+7. تمام ارتباط‌ها Outbound و روی TLS هستند.
+8. هویت Tenant از mTLS استخراج می‌شود.
+9. organization_id و node_id در Gateway Override می‌شوند.
+10. Frontend مستقیم Storage Query نمی‌کند.
+11. Metrics، Logs و Traces Storage جدا دارند.
+12. Configها Signed، Versioned و Rollbackable هستند.
+13. Persistent Queue روی Node فعال است.
+14. Shell Execution و Remote Terminal ممنوع هستند.
+15. Upgradeها Signed، staged و قابل Rollback هستند.
+16. Host Metrics فاز اول، Logs فاز دوم و Traces فاز سوم هستند.
+```
+
+---
+
+# 199. معیارهای پذیرش Node Agent
+
+## نصب و Enrollment
+
+- کاربر بتواند از Node Detail فرمان نصب اختصاصی بگیرد.
+- Token مخصوص همان Node و یک‌بارمصرف باشد.
+- Token حداکثر 15 دقیقه اعتبار داشته باشد.
+- Agent بعد از Enrollment Certificate مستقل دریافت کند.
+- Token خام بعد از Enrollment حذف شود.
+- Agent بدون Port ورودی عمومی کار کند.
+
+## امنیت
+
+- تمام ارتباط‌ها TLS داشته باشند.
+- Management و Telemetry از mTLS استفاده کنند.
+- Agent Revoked نتواند Data یا Heartbeat ارسال کند.
+- Tenant ID فقط در Server Resolve شود.
+- Gateway Attributeهای Tenant را Override کند.
+- Remote Shell وجود نداشته باشد.
+- Binary و Update Manifest امضا شوند.
+
+## Metrics
+
+- CPU، RAM، Disk، Filesystem، Network و Load جمع‌آوری شوند.
+- Data از Gateway عبور کند.
+- Metrics با Tenant و Node تفکیک شوند.
+- Historical Chart در Node Detail نمایش داده شود.
+- No Data و Agent Disconnected قابل تشخیص باشند.
+
+## Logs
+
+- File Log و Journald قابل تعریف باشند.
+- Rotation و Position Tracking پشتیبانی شوند.
+- Multiline Template وجود داشته باشد.
+- Redaction قابل تنظیم باشد.
+- Logs در VictoriaLogs ذخیره شوند.
+- Query همیشه Tenant و Node Filter داشته باشد.
+
+## Traces
+
+- Application بتواند OTLP را به localhost Agent ارسال کند.
+- Traceها از Gateway عبور کنند.
+- Traceها در VictoriaTraces ذخیره شوند.
+- trace_id در Logs قابل Correlation باشد.
+- Sampling Policy قابل تنظیم باشد.
+
+## Operations
+
+- Config Version و ACK ثبت شود.
+- Config نامعتبر Rollback شود.
+- Agent Upgrade و Rollback داشته باشد.
+- Persistent Queue فعال باشد.
+- Queue Usage در UI دیده شود.
+- Diagnostics بدون Secret تولید شود.
+- Agent Version Distribution در Admin دیده شود.
+
+## Multi-tenancy
+
+- هیچ Agent نتواند Organization ID دیگری تزریق کند.
+- هیچ Query بدون Tenant Filter اجرا نشود.
+- Cache Key شامل Organization باشد.
+- Usage به تفکیک Organization، Node و Signal ثبت شود.
+- Quota مستقل Metrics، Logs و Traces اعمال شود.
+
+---
+
+# 200. مدل یکپارچه Health Status برای تمام Signalها
+
+این فصل مدل وضعیت یکپارچه‌ای را تعریف می‌کند که روی Monitorهای Agentless، داده‌های Node Agent، Log Ruleها، Trace Ruleها و وضعیت کلی Node اعمال می‌شود.
+
+هدف اصلی این مدل آن است که انواع داده‌های ناهمگون مانند میلی‌ثانیه، درصد، بایت، تعداد روز، Status Code و Error Rate در سطح فهرست Nodeها به یک زبان مشترک تبدیل شوند.
+
+جریان پایه:
+
+```text
+Raw Observation
+→ Health Rule Evaluation
+→ Normalized Signal Status
+→ Monitor/Signal Status
+→ Node Overall Status
+→ Alert Workflow
+```
+
+## 200.1 وضعیت‌های استاندارد
+
+```text
+OK
+WARNING
+ERROR
+UNKNOWN
+PAUSED
+MAINTENANCE
+```
+
+نمایش فارسی:
+
+```text
+OK           → سالم
+WARNING      → هشدار
+ERROR        → خطا
+UNKNOWN      → نامشخص
+PAUSED       → متوقف
+MAINTENANCE  → نگهداری
+```
+
+معنا:
+
+| وضعیت | معنی |
+|---|---|
+| `OK` | داده موجود است و تمام Ruleهای فعال در محدوده سالم قرار دارند |
+| `WARNING` | سرویس یا منبع هنوز قابل استفاده است اما کیفیت افت کرده یا به محدوده خطر رسیده |
+| `ERROR` | سرویس در دسترس نیست، شرط بحرانی رخ داده یا Rule بحرانی نقض شده |
+| `UNKNOWN` | داده کافی نیست، Agent/Probe پاسخ نداده یا نتیجه قابل ارزیابی نیست |
+| `PAUSED` | Signal یا Monitor عمداً توسط کاربر متوقف شده |
+| `MAINTENANCE` | ارزیابی در بازه نگهداری قرار دارد و نباید Alert عادی تولید کند |
+
+## 200.2 رنگ، Icon و Accessibility
+
+```text
+OK           → سبز + آیکن check-circle
+WARNING      → زرد/نارنجی + آیکن warning
+ERROR        → قرمز + آیکن x-circle
+UNKNOWN      → خاکستری + آیکن question-circle
+PAUSED       → خاکستری تیره + آیکن pause-circle
+MAINTENANCE  → آبی/بنفش + آیکن wrench/clock
+```
+
+رنگ به‌تنهایی نباید حامل معنا باشد. تمام Badgeها باید Text یا Accessible Label داشته باشند.
+
+نمونه Accessible Label:
+
+```text
+Ping، وضعیت هشدار، میانگین تأخیر 184 میلی‌ثانیه
+```
+
+## 200.3 تفکیک Health State و Operational State
+
+این دو مفهوم از نظر مدل داده جدا باشند:
+
+```text
+Health State:
+OK | WARNING | ERROR | UNKNOWN
+
+Operational State:
+ACTIVE | PAUSED | MAINTENANCE
+```
+
+وضعیت نمایشی نهایی:
+
+```text
+اگر operational_state = PAUSED
+→ نمایش PAUSED
+
+اگر operational_state = MAINTENANCE
+→ نمایش MAINTENANCE
+
+در غیر این صورت
+→ نمایش health_state
+```
+
+این تفکیک باعث می‌شود آخرین Health واقعی حتی هنگام Maintenance از بین نرود.
+
+---
+
+# 201. مدل Observation، Rule و Evaluation
+
+## 201.1 Observation
+
+هر نتیجه خام باید حداقل این اطلاعات را داشته باشد:
+
+```text
+signal_id
+metric_key
+observed_value
+unit
+timestamp
+source
+location_id
+quality
+```
+
+مثال Ping:
+
+```json
+{
+  "metric_key": "ping.rtt.avg_ms",
+  "observed_value": 184,
+  "unit": "ms",
+  "timestamp": "2026-07-21T12:30:00Z",
+  "location_id": "probe-frankfurt"
+}
+```
+
+## 201.2 Health Rule
+
+ساختار عمومی Rule:
+
+```text
+metric_key
+operator
+warning_condition
+error_condition
+recovery_condition
+evaluation_window
+required_duration
+minimum_samples
+consecutive_failures
+consecutive_successes
+missing_data_policy
+enabled
+```
+
+Operatorهای پایه:
+
+```text
+greater_than
+greater_than_or_equal
+less_than
+less_than_or_equal
+equal
+not_equal
+in
+not_in
+contains
+not_contains
+matches_regex
+does_not_match_regex
+rate_above
+count_above
+abs_above
+change_detected
+```
+
+## 201.3 Rule با دو Threshold
+
+نمونه:
+
+```text
+Metric: ping.rtt.avg_ms
+Warning: > 150
+Error: > 300
+Recovery: < 120
+Window: 5m
+Required duration: 3m
+Minimum samples: 3
+```
+
+## 201.4 Ruleهای Boolean
+
+برخی Monitorها Threshold عددی ندارند:
+
+```text
+HTTP expected status code matched?
+TLS hostname valid?
+DNS expected record present?
+Process running?
+Log pattern detected?
+```
+
+مثال:
+
+```text
+tls.hostname_valid = false
+→ ERROR
+```
+
+## 201.5 Ruleهای Rate و Count
+
+برای Logs و Traces:
+
+```text
+error logs > 20 در 5 دقیقه
+HTTP 5xx rate > 5%
+trace error rate > 3%
+slow traces > 100 در 10 دقیقه
+```
+
+---
+
+# 202. Duration، Window، Consecutive Evaluation و Hysteresis
+
+## 202.1 Evaluation Window
+
+```text
+آخرین N دقیقه یا آخرین N نمونه
+```
+
+Aggregationهای مجاز:
+
+```text
+last
+avg
+min
+max
+sum
+count
+p50
+p75
+p90
+p95
+p99
+rate
+increase
+```
+
+## 202.2 Required Duration
+
+مثال:
+
+```text
+CPU > 80% برای 5 دقیقه
+```
+
+Spike کوتاه نباید وضعیت را تغییر دهد.
+
+## 202.3 Consecutive Failures
+
+برای Monitorهای Check-based:
+
+```text
+Error after 3 consecutive failed checks
+Warning after 1 failed check
+Recover after 2 consecutive successful checks
+```
+
+## 202.4 Hysteresis
+
+برای جلوگیری از Flapping:
+
+```text
+Enter WARNING when CPU > 75%
+Exit WARNING when CPU < 65%
+
+Enter ERROR when CPU > 90%
+Exit ERROR when CPU < 80%
+```
+
+## 202.5 Cooldown
+
+بعد از تغییر وضعیت، Rule می‌تواند Cooldown داشته باشد:
+
+```text
+Minimum state duration: 2 minutes
+```
+
+در این بازه تغییر غیرضروری مجدد محدود می‌شود.
+
+---
+
+# 203. Missing Data Policy
+
+برای هر Rule:
+
+```text
+IGNORE
+UNKNOWN
+WARNING
+ERROR
+KEEP_LAST_STATE
+```
+
+پیشنهادهای پیش‌فرض:
+
+| Signal | Missing Data |
+|---|---|
+| Ping/HTTP/TCP | ERROR بعد از تعداد Failure مشخص |
+| Host Metrics با Agent قطع‌شده | UNKNOWN |
+| Metric اختیاری Process | IGNORE |
+| TLS/Domain scheduled check | KEEP_LAST_STATE تا زمان Grace Period |
+| Logs | UNKNOWN فقط اگر Source باید فعال باشد |
+| Traces | IGNORE مگر No-traffic Rule جدا تعریف شده باشد |
+
+Grace Period:
+
+```text
+expected_interval × grace_multiplier
+```
+
+مثال:
+
+```text
+Collection interval = 30s
+Grace multiplier = 4
+No data after 120s → UNKNOWN
+```
+
+---
+
+# 204. محاسبه وضعیت Rule، Signal و Node
+
+## 204.1 اولویت Health
+
+```text
+ERROR > WARNING > UNKNOWN > OK
+```
+
+## 204.2 وضعیت Signal
+
+هر Signal ممکن است چند Rule داشته باشد:
+
+```text
+Ping
+├── Connectivity
+├── RTT
+├── Packet loss
+└── Jitter
+```
+
+محاسبه:
+
+```text
+اگر Rule بحرانی ERROR باشد
+→ Signal ERROR
+
+اگر Rule WARNING باشد و ERROR وجود نداشته باشد
+→ Signal WARNING
+
+اگر داده کافی نباشد و وضعیت شدیدتری وجود نداشته باشد
+→ Signal UNKNOWN
+
+اگر همه Ruleهای فعال OK باشند
+→ Signal OK
+```
+
+## 204.3 Criticality
+
+هر Signal:
+
+```text
+CRITICAL
+IMPORTANT
+INFORMATIONAL
+```
+
+## 204.4 Node Overall Status
+
+پیشنهاد:
+
+```text
+Critical ERROR
+→ Node ERROR
+
+Important ERROR
+→ Node WARNING، مگر کاربر آن را Critical کرده باشد
+
+Any WARNING
+→ Node WARNING
+
+All active evaluated signals OK
+→ Node OK
+
+No usable active signal
+→ Node UNKNOWN
+```
+
+## 204.5 اختیاری: Health Score
+
+علاوه بر Status می‌توان Health Score داخلی داشت:
+
+```text
+OK = 100
+WARNING = 60
+ERROR = 0
+UNKNOWN = null
+```
+
+امتیاز Node فقط برای Sorting و Analytics استفاده شود و جای Status را نگیرد.
+
+---
+
+# 205. Profileهای Threshold
+
+برای کاهش پیچیدگی UI:
+
+```text
+Recommended
+Sensitive
+Relaxed
+Custom
+```
+
+مثال Ping:
+
+| Profile | RTT Warning | RTT Error | Loss Warning | Loss Error |
+|---|---:|---:|---:|---:|
+| Sensitive | 80ms | 150ms | 0.5% | 2% |
+| Recommended | 150ms | 300ms | 1% | 5% |
+| Relaxed | 300ms | 600ms | 3% | 10% |
+
+هر Template باید Copy شود و پس از Custom شدن مستقل بماند.
+
+---
+
+# 206. Ruleهای پیش‌فرض برای Monitorهای Agentless
+
+## 206.1 Ping
+
+```text
+Connectivity:
+No response after 3 consecutive checks → ERROR
+
+RTT:
+Warning > 150ms for 3m
+Error > 300ms for 2m
+Recovery < 120ms for 2m
+
+Packet Loss:
+Warning > 1%
+Error > 5%
+
+Jitter:
+Warning > 30ms
+Error > 80ms
+```
+
+## 206.2 HTTP
+
+```text
+Availability:
+Timeout / connection failure → ERROR
+
+Status:
+Expected code matched → OK
+Optional warning code such as 429 → WARNING
+Unexpected 4xx/5xx → ERROR
+
+Total Duration:
+Warning > 1000ms
+Error > 3000ms
+
+TTFB:
+Warning > 700ms
+Error > 2000ms
+
+Content Assertion:
+Mismatch → ERROR
+```
+
+## 206.3 DNS
+
+```text
+Timeout / SERVFAIL / REFUSED → ERROR
+NXDOMAIN → ERROR مگر NXDOMAIN مورد انتظار باشد
+Response time > 250ms → WARNING
+Response time > 1000ms → ERROR
+Expected record mismatch → ERROR
+TTL below configured minimum → WARNING
+```
+
+## 206.4 TCP
+
+```text
+Connection refused / timeout → ERROR
+Connect time > 500ms → WARNING
+Connect time > 2000ms → ERROR
+Unexpected banner mismatch → ERROR
+```
+
+## 206.5 TLS
+
+```text
+Expired → ERROR
+Hostname mismatch → ERROR
+Untrusted chain → ERROR
+Weak protocol/cipher policy violation → WARNING یا ERROR
+
+Remaining days:
+Warning < 30
+Error < 7
+```
+
+## 206.6 Domain
+
+```text
+Expired → ERROR
+Remaining days < 30 → WARNING
+Remaining days < 7 → ERROR
+WHOIS lookup failure → UNKNOWN
+Registrar status lock removed → WARNING
+Nameserver changed → WARNING
+```
+
+## 206.7 SMTP
+
+```text
+Connection failure → ERROR
+Banner mismatch → ERROR
+Handshake > 1500ms → WARNING
+Handshake > 5000ms → ERROR
+STARTTLS expected but unavailable → ERROR
+Relay policy mismatch → ERROR
+```
+
+## 206.8 NTP
+
+```text
+No response → ERROR
+Offset absolute > 100ms → WARNING
+Offset absolute > 500ms → ERROR
+Delay > 500ms → WARNING
+Stratum outside expected range → WARNING
+```
+
+---
+
+# 207. Ruleهای پیش‌فرض Agent-based
+
+## 207.1 CPU
+
+```text
+Warning > 75% average for 5m
+Error > 90% average for 5m
+Recovery < 65% for 3m
+```
+
+## 207.2 Memory
+
+بر مبنای Available Memory:
+
+```text
+Warning utilization > 80% for 5m
+Error utilization > 92% for 5m
+Swap activity high → WARNING
+OOM event → ERROR
+```
+
+## 207.3 Filesystem
+
+```text
+Warning free < 15%
+Error free < 5%
+
+Warning inode free < 15%
+Error inode free < 5%
+
+Read-only filesystem → ERROR
+```
+
+## 207.4 Disk IO
+
+```text
+High utilization > 85% → WARNING
+High utilization > 95% → ERROR
+IO latency p95 above threshold → WARNING/ERROR
+Device errors increase → ERROR
+```
+
+## 207.5 Network
+
+```text
+Interface down when expected up → ERROR
+Packet errors rate above threshold → WARNING
+Packet drops above threshold → WARNING/ERROR
+Bandwidth utilization > 80% → WARNING
+Bandwidth utilization > 95% → ERROR
+```
+
+## 207.6 Processes و Services
+
+```text
+Expected process not running → ERROR
+Restart count above threshold → WARNING
+Process CPU/Memory threshold → WARNING/ERROR
+systemd unit failed → ERROR
+```
+
+## 207.7 Logs
+
+```text
+Critical pattern matched once → ERROR
+Error count > threshold → WARNING/ERROR
+Error rate spike → WARNING
+No logs from required source → UNKNOWN/WARNING
+```
+
+## 207.8 Traces
+
+```text
+Error rate > 2% → WARNING
+Error rate > 5% → ERROR
+p95 duration > SLO → WARNING
+p99 duration > severe SLO → ERROR
+No traces when traffic expected → UNKNOWN
+```
+
+---
+
+# 208. UI فهرست Nodeها با وضعیت نرمال‌شده
+
+## 208.1 ستون‌ها
+
+```text
+Node
+Target
+Signals
+Overall Status
+Active Alerts
+Last Seen
+```
+
+Metricهای ناهمگون نباید ستون ثابت فهرست باشند.
+
+نمونه:
+
+| Node | Target | Signals | Overall | Alerts | Last Seen |
+|---|---|---|---|---:|---|
+| Production API | api.example.com | Ping OK · HTTP ERROR · TLS WARNING | ERROR | 2 | 8s |
+| DB-01 | 10.0.0.20 | Ping OK · Host WARNING · Logs OK | WARNING | 1 | 12s |
+
+## 208.2 Signal Badge
+
+ساختار:
+
+```text
+[Icon] Signal name
+```
+
+Tooltip/Popover:
+
+```text
+HTTP
+Status: Error
+Reason: 5xx rate above 5%
+Observed: 8.2%
+Warning: 2%
+Error: 5%
+Window: 5 minutes
+Changed: 7 minutes ago
+```
+
+## 208.3 Overflow
+
+اگر Signalها زیاد باشند:
+
+```text
+[Ping OK] [HTTP ERROR] [Host WARNING] [+4]
+```
+
+`+4` Popover شامل تمام Signalهای باقی‌مانده با Sort بدترین وضعیت اول باشد.
+
+## 208.4 Filter و Sort
+
+Filterها:
+
+```text
+Overall Status
+Signal Type
+Has Active Alert
+Agent Connected
+Criticality
+Environment
+Tag
+```
+
+Sort:
+
+```text
+Worst status
+Most alerts
+Recently changed
+Last seen
+Name
+```
+
+---
+
+# 209. UI صفحه Signal/Monitor Detail
+
+Header:
+
+```text
+Signal Name
+Current Status Badge
+Observed Value
+Status Reason
+Last Evaluated
+Criticality
+Pause/Maintenance Actions
+```
+
+Summary Cards:
+
+```text
+Current
+Average
+p95
+Availability
+Status changes
+Active alert
+```
+
+بخش‌ها:
+
+```text
+Overview
+Charts
+Health Rules
+Check Results / Raw Data
+Alerts
+Activity
+Configuration
+```
+
+## 209.1 Health Rules Editor
+
+برای هر Rule:
+
+```text
+Metric
+Aggregation
+Window
+Warning condition
+Error condition
+Recovery condition
+Required duration
+Minimum samples
+Missing data policy
+Notification behavior
+```
+
+Preview زنده:
+
+```text
+Current value: 184ms
+Current evaluation: WARNING
+Would enter ERROR above: 300ms
+```
+
+## 209.2 Test Rule
+
+Button:
+
+```text
+Test against last 24 hours
+```
+
+خروجی:
+
+```text
+Warning would trigger 4 times
+Error would trigger 1 time
+Estimated alert duration: 18 minutes
+```
+
+---
+
+# 210. اصول عمومی طراحی نمودارها
+
+## 210.1 Time Range
+
+```text
+1h
+6h
+24h
+7d
+30d
+90d
+Custom
+```
+
+## 210.2 Resolution و Downsampling
+
+```text
+1h  → 15s/30s
+6h  → 1m
+24h → 5m
+7d  → 30m
+30d → 2h
+90d → 6h یا 1d
+```
+
+## 210.3 خطوط Threshold
+
+تمام نمودارهای Rule-based باید:
+
+```text
+Warning threshold line
+Error threshold line
+Recovery threshold line در صورت نیاز
+```
+
+را نمایش دهند.
+
+## 210.4 Status Background Bands
+
+پس‌زمینه زمان:
+
+```text
+OK intervals
+WARNING intervals
+ERROR intervals
+UNKNOWN intervals
+MAINTENANCE intervals
+```
+
+به‌صورت نوار باریک Status Timeline زیر نمودار نمایش داده شود، نه رنگ‌آمیزی شدید کل Chart.
+
+## 210.5 Event Markers
+
+Markerها:
+
+```text
+Alert opened
+Alert resolved
+Maintenance started
+Maintenance ended
+Config changed
+Threshold changed
+Agent disconnected
+Deployment marker اختیاری
+```
+
+## 210.6 Tooltip
+
+Tooltip مشترک:
+
+```text
+Timestamp
+Raw values
+Aggregated value
+Status
+Thresholds
+Probe/Region
+Related event
+```
+
+## 210.7 Compare
+
+قابلیت‌ها:
+
+```text
+Compare locations
+Compare previous period
+Compare multiple Nodes
+Compare before/after deployment
+```
+
+## 210.8 Missing Data
+
+Gap واقعی باید شکسته نمایش داده شود؛ خط Chart نباید بین دو نقطه دور به‌صورت جعلی پیوسته شود.
+
+## 210.9 Export
+
+```text
+Export CSV
+Export PNG
+Copy chart link
+Open full screen
+```
+
+---
+
+# 211. نمودارهای سطح Node
+
+## 211.1 Overall Health Timeline
+
+نوع:
+
+```text
+State timeline / segmented status bar
+```
+
+نمایش وضعیت کلی Node در طول زمان.
+
+## 211.2 Signal Status Swimlane
+
+هر Signal یک ردیف:
+
+```text
+Ping    ███████░░████
+HTTP    ████▒▒▒▒░████
+TLS     █████████████
+Host    █████▒▒██████
+```
+
+کاربرد: تشخیص اینکه اختلال Node از کدام Signal آمده است.
+
+## 211.3 Availability by Signal
+
+Bar Chart:
+
+```text
+Ping 99.99%
+HTTP 99.90%
+TLS 100%
+Host 99.95%
+```
+
+## 211.4 Alert and Maintenance Timeline
+
+Timeline مشترک Alertها، Maintenance و تغییر وضعیت‌ها.
+
+## 211.5 Node Overview Sparkline Grid
+
+برای هر Signal:
+
+```text
+Current value
+Current status
+Small sparkline
+Last change
+```
+
+در Node Overview نمودار تخصصی کامل نمایش داده نشود؛ فقط Sparkline و خلاصه.
+
+---
+
+# 212. نمودارهای Ping Monitor
+
+## 212.1 Latency Trend
+
+Line Chart:
+
+```text
+Average RTT
+Minimum RTT
+Maximum RTT
+p95 RTT اختیاری
+```
+
+Thresholdهای Warning/Error.
+
+## 212.2 Packet Loss
+
+Line یا Area Chart:
+
+```text
+Packet loss percentage
+```
+
+## 212.3 Jitter
+
+Line Chart:
+
+```text
+Jitter ms
+```
+
+## 212.4 Latency by Probe Location
+
+Multi-line:
+
+```text
+Frankfurt
+Dubai
+Singapore
+```
+
+برای Locationهای زیاد، انتخاب‌گر و Top N استفاده شود.
+
+## 212.5 Check Status Timeline
+
+State Timeline:
+
+```text
+Success
+Timeout
+DNS failure
+Network unreachable
+```
+
+## 212.6 Latency Distribution
+
+Histogram در بازه انتخاب‌شده:
+
+```text
+0–50ms
+50–100ms
+100–250ms
+250–500ms
+500ms+
+```
+
+---
+
+# 213. نمودارهای HTTP Monitor
+
+## 213.1 Total Response Time
+
+Line Chart:
+
+```text
+Total duration
+p50
+p95
+p99
+```
+
+## 213.2 Timing Breakdown
+
+Stacked Area یا Stacked Bar:
+
+```text
+DNS
+TCP connect
+TLS handshake
+TTFB
+Download
+```
+
+برای نمودار زمانی، Stacked Area؛ برای یک Check انتخاب‌شده، Waterfall.
+
+## 213.3 HTTP Status Code Distribution
+
+Stacked Bar یا Bar:
+
+```text
+2xx
+3xx
+4xx
+5xx
+Timeout
+```
+
+## 213.4 Availability Timeline
+
+State Timeline:
+
+```text
+Success
+Warning code
+Failure
+Timeout
+Content mismatch
+```
+
+## 213.5 Response Size
+
+Line Chart:
+
+```text
+Response bytes
+```
+
+برای تشخیص تغییر غیرعادی Payload.
+
+## 213.6 Per-location Response Time
+
+Multi-line یا Box Plot در فاز پیشرفته.
+
+## 213.7 Request Waterfall
+
+برای یک Check خاص:
+
+```text
+DNS → Connect → TLS → TTFB → Download
+```
+
+---
+
+# 214. نمودارهای DNS Monitor
+
+## 214.1 DNS Response Time
+
+Line Chart:
+
+```text
+Resolution duration
+```
+
+## 214.2 Answer Count
+
+Line/Step Chart:
+
+```text
+Number of returned records
+```
+
+## 214.3 TTL Trend
+
+Line Chart:
+
+```text
+Minimum TTL
+Maximum TTL
+```
+
+## 214.4 Record Change Timeline
+
+Event Timeline:
+
+```text
+A record changed
+AAAA changed
+MX changed
+NS changed
+TXT changed
+```
+
+## 214.5 Response Code Distribution
+
+Bar:
+
+```text
+NOERROR
+NXDOMAIN
+SERVFAIL
+REFUSED
+TIMEOUT
+```
+
+## 214.6 Resolver Comparison
+
+Multi-line یا Bar برای مقایسه Resolverها/Probeها.
+
+---
+
+# 215. نمودارهای TCP Monitor
+
+## 215.1 Connect Time
+
+Line Chart.
+
+## 215.2 Success/Failure Timeline
+
+State Timeline.
+
+## 215.3 Failure Reason Distribution
+
+Bar:
+
+```text
+Timeout
+Connection refused
+Network unreachable
+TLS required
+Banner mismatch
+```
+
+## 215.4 Connect Time by Probe
+
+Multi-line.
+
+## 215.5 Banner Change Events
+
+Event Timeline برای Protocolهایی که Banner بررسی می‌شود.
+
+---
+
+# 216. نمودارهای TLS Monitor
+
+## 216.1 Certificate Days Remaining
+
+Line/Step Chart:
+
+```text
+Days until expiry
+```
+
+Warning و Error Line.
+
+## 216.2 Certificate Validity Timeline
+
+State Timeline:
+
+```text
+Valid
+Expiring
+Expired
+Hostname mismatch
+Untrusted
+```
+
+## 216.3 Certificate Change Events
+
+Event Timeline:
+
+```text
+Certificate renewed
+Issuer changed
+Serial changed
+SAN changed
+Chain changed
+```
+
+## 216.4 TLS Handshake Time
+
+Line Chart.
+
+## 216.5 Protocol/Cipher Observations
+
+Step/Event Chart:
+
+```text
+TLS 1.2
+TLS 1.3
+Cipher suite changed
+```
+
+---
+
+# 217. نمودارهای Domain Monitor
+
+## 217.1 Days Remaining
+
+Line/Step Chart.
+
+## 217.2 Domain State Timeline
+
+```text
+Active
+Expiring
+Expired
+Lookup unknown
+```
+
+## 217.3 WHOIS Change Events
+
+```text
+Registrar changed
+Nameserver changed
+Status changed
+Registrant privacy changed
+```
+
+## 217.4 Renewal History
+
+Event Timeline.
+
+---
+
+# 218. نمودارهای SMTP Monitor
+
+## 218.1 SMTP Handshake Duration
+
+Line Chart.
+
+## 218.2 Handshake Breakdown
+
+Stacked Area/Bar:
+
+```text
+TCP connect
+Banner
+EHLO
+STARTTLS
+TLS handshake
+QUIT
+```
+
+## 218.3 SMTP Status Timeline
+
+State Timeline.
+
+## 218.4 Failure Distribution
+
+Bar:
+
+```text
+Connect timeout
+Banner mismatch
+EHLO failure
+STARTTLS unavailable
+TLS error
+Authentication policy error
+```
+
+## 218.5 Probe Comparison
+
+Multi-line.
+
+---
+
+# 219. نمودارهای NTP Monitor
+
+## 219.1 Clock Offset
+
+Line Chart با محور مثبت/منفی:
+
+```text
+Offset ms
+```
+
+خط صفر و Thresholdهای ±Warning/±Error.
+
+## 219.2 Round-trip Delay
+
+Line Chart.
+
+## 219.3 Jitter
+
+Line Chart.
+
+## 219.4 Stratum
+
+Step Chart.
+
+## 219.5 Status Timeline
+
+```text
+Synchronized
+Warning offset
+Critical offset
+No response
+```
+
+---
+
+# 220. نمودارهای Host Infrastructure
+
+## 220.1 CPU
+
+نمودارها:
+
+```text
+Total CPU utilization
+Per-core utilization
+User/System/IOWait/Idle breakdown
+Load average 1m/5m/15m
+Steal time در VM
+```
+
+UI:
+
+- نمودار اصلی Total CPU
+- Toggle برای Breakdown
+- Per-core Heatmap برای Coreهای زیاد
+- Threshold Lines
+- Top Processes by CPU در جدول کنار نمودار
+
+## 220.2 Memory
+
+```text
+Used
+Available
+Cached
+Buffers
+Swap used
+Swap in/out
+```
+
+بهتر است Stacked Area برای Composition و Line برای Utilization استفاده شود.
+
+## 220.3 Filesystem
+
+برای هر Mount:
+
+```text
+Used %
+Free bytes
+Inode used %
+Growth rate
+Predicted full date
+```
+
+نمایش:
+
+- Bar افقی برای وضعیت فعلی Mountها
+- Line Chart برای Mount انتخاب‌شده
+- Forecast Line اختیاری
+
+## 220.4 Disk IO
+
+```text
+Read bytes/sec
+Write bytes/sec
+Read IOPS
+Write IOPS
+IO latency
+Utilization
+Queue depth
+```
+
+Read و Write در یک نمودار قابل مقایسه باشند، اما Unitهای متفاوت در نمودار جدا نمایش داده شوند.
+
+## 220.5 Network
+
+برای Interface انتخاب‌شده:
+
+```text
+Inbound throughput
+Outbound throughput
+Packets/sec
+Errors/sec
+Drops/sec
+Utilization percentage
+```
+
+## 220.6 Processes
+
+```text
+Process count
+Running/sleeping/zombie
+Top CPU processes
+Top memory processes
+Restart events
+```
+
+Top Processها بیشتر Table + Sparkline باشند تا Pie Chart.
+
+## 220.7 Uptime و Reboot
+
+```text
+Uptime counter
+Reboot event timeline
+```
+
+---
+
+# 221. نمودارهای Logs
+
+Logs ذاتاً Event هستند؛ نمودارهای پیشنهادی:
+
+## 221.1 Log Volume
+
+Bar/Line بر حسب زمان:
+
+```text
+events per minute
+bytes per minute
+```
+
+## 221.2 Severity Breakdown
+
+Stacked Bar:
+
+```text
+Debug
+Info
+Warning
+Error
+Critical
+```
+
+## 221.3 Error Rate
+
+Line Chart:
+
+```text
+Error events / total events
+```
+
+## 221.4 Top Services
+
+Horizontal Bar:
+
+```text
+nginx
+api
+worker
+postgres
+redis
+```
+
+## 221.5 Top Error Patterns
+
+Horizontal Bar با Grouping بر اساس Parsed Template/Fingerprint.
+
+## 221.6 Live Tail
+
+Live Tail جدول است، نه نمودار.
+
+## 221.7 Log Anomaly
+
+Line Chart:
+
+```text
+Actual volume
+Expected baseline
+Anomaly band
+```
+
+فاز پیشرفته.
+
+---
+
+# 222. نمودارهای Traces و APM
+
+## 222.1 Request Rate
+
+Line Chart:
+
+```text
+Requests per second
+```
+
+## 222.2 Error Rate
+
+Line Chart با درصد.
+
+## 222.3 Duration Percentiles
+
+Multi-line:
+
+```text
+p50
+p95
+p99
+```
+
+## 222.4 Span/Trace Volume
+
+Line Chart.
+
+## 222.5 Top Endpoints
+
+Horizontal Bar:
+
+```text
+Request count
+Error rate
+p95 latency
+```
+
+Metric انتخابی با Toggle.
+
+## 222.6 Service Map
+
+Graph Visualization است، نه Chart سنتی:
+
+```text
+Service nodes
+Request edges
+Latency
+Error rate
+Traffic
+```
+
+## 222.7 Trace Waterfall
+
+برای یک Trace:
+
+```text
+Span hierarchy
+Start time
+Duration
+Critical path
+Error spans
+```
+
+## 222.8 Dependency Latency
+
+Bar برای Database، HTTP dependency و Queue.
+
+---
+
+# 223. Chart Layout در Monitor Detail
+
+ترتیب توصیه‌شده:
+
+```text
+Header and status
+Summary cards
+Primary chart
+Secondary quality chart
+Status timeline
+Breakdown/distribution chart
+Raw results table
+Events and alerts
+```
+
+مثال Ping:
+
+```text
+Current RTT / Loss / Availability
+Latency chart
+Packet loss chart
+Jitter chart
+Status timeline
+Latency distribution
+Recent checks
+```
+
+مثال HTTP:
+
+```text
+Current status / response time / code
+Total response time
+Timing breakdown
+Status code distribution
+Availability timeline
+Response size
+Recent requests
+```
+
+---
+
+# 224. تنظیمات Chart UI
+
+Toolbar مشترک:
+
+```text
+Time range
+Auto refresh
+Aggregation
+Probe/location
+Compare
+Show thresholds
+Show events
+Fullscreen
+Export
+```
+
+Auto Refresh:
+
+```text
+Off
+15s
+30s
+1m
+5m
+```
+
+برای بازه‌های بزرگ، Auto Refresh محدود شود.
+
+Legend:
+
+- قابل Hide/Show
+- وضعیت Disabled حفظ شود
+- تعداد Series زیاد با Search/Filter کنترل شود
+
+Brush/Zoom:
+
+```text
+Drag to zoom
+Reset zoom
+Open selected range
+```
+
+Crosshair بین نمودارهای هم‌زمان Sync شود.
+
+---
+
+# 225. Chart API Contract
+
+Endpoint عمومی:
+
+```text
+GET /api/v1/signals/{signalId}/series
+```
+
+پارامترها:
+
+```text
+metric_keys
+from
+to
+step
+aggregation
+location_ids
+group_by
+compare_period
+include_thresholds
+include_events
+```
+
+Response:
+
+```json
+{
+  "range": {
+    "from": "2026-07-20T00:00:00Z",
+    "to": "2026-07-21T00:00:00Z",
+    "step_seconds": 300
+  },
+  "series": [
+    {
+      "key": "ping.rtt.avg_ms",
+      "label": "Average RTT",
+      "unit": "ms",
+      "points": [
+        [1784505600, 42.1],
+        [1784505900, 48.4]
+      ]
+    }
+  ],
+  "thresholds": [
+    {
+      "level": "warning",
+      "value": 150
+    },
+    {
+      "level": "error",
+      "value": 300
+    }
+  ],
+  "events": [
+    {
+      "timestamp": 1784505900,
+      "type": "alert_opened",
+      "label": "High latency"
+    }
+  ]
+}
+```
+
+Status Timeline:
+
+```text
+GET /api/v1/signals/{signalId}/health-history
+```
+
+Response:
+
+```json
+{
+  "intervals": [
+    {
+      "from": 1784505600,
+      "to": 1784509200,
+      "status": "OK",
+      "reason_code": "within_threshold"
+    }
+  ]
+}
+```
+
+---
+
+# 226. مدل داده Health و Chart Metadata
+
+## 226.1 health_rules
+
+```text
+id
+organization_id
+node_id
+signal_id
+metric_key
+operator
+aggregation
+warning_value
+error_value
+recovery_value
+evaluation_window_seconds
+required_duration_seconds
+minimum_samples
+consecutive_failures
+consecutive_successes
+missing_data_policy
+criticality
+enabled
+created_at
+updated_at
+```
+
+## 226.2 signal_health_states
+
+```text
+signal_id
+health_status
+operational_status
+previous_health_status
+reason_code
+reason_text
+observed_value
+observed_unit
+warning_threshold
+error_threshold
+evaluated_at
+changed_at
+```
+
+## 226.3 signal_health_history
+
+```text
+id
+organization_id
+node_id
+signal_id
+status
+reason_code
+from_at
+to_at
+observed_value
+rule_id
+```
+
+## 226.4 chart_definitions
+
+بهتر است Chartها Metadata-driven باشند:
+
+```text
+signal_type
+chart_key
+title
+chart_type
+metric_keys
+default_aggregation
+unit
+display_order
+supports_location_compare
+supports_thresholds
+supports_distribution
+```
+
+این مدل اضافه‌کردن Monitor جدید را ساده می‌کند.
+
+---
+
+# 227. Alerting و Health Status
+
+Health و Alert جدا هستند.
+
+```text
+Health Status
+= نتیجه فعلی ارزیابی
+
+Alert Instance
+= Workflow عملیاتی حاصل از تغییر وضعیت
+```
+
+تنظیم:
+
+```text
+Notify on WARNING
+Notify on ERROR
+Notify on UNKNOWN
+Recovery notification
+Minimum open duration
+Repeat interval
+```
+
+مثال:
+
+```text
+Signal WARNING
+ولی Notify on WARNING = false
+→ Badge هشدار نمایش داده می‌شود
+→ Alert ایجاد نمی‌شود
+```
+
+---
+
+# 228. UI موبایل
+
+در موبایل:
+
+- Nodeها Card View
+- Overall Status بالای Card
+- حداکثر سه Signal Badge + `+N`
+- نمودار اصلی تمام‌عرض
+- Chart toolbar داخل Bottom Sheet
+- Tooltip با Tap
+- جدول Raw Results به Card List تبدیل شود
+- Legend قابل Collapse
+- انتخاب Location در Bottom Sheet
+
+---
+
+# 229. Empty، Loading و Error States
+
+## 229.1 No Data
+
+```text
+No data received yet
+Agent connected but collection has not started
+Check configuration
+```
+
+## 229.2 Agent Disconnected
+
+```text
+Agent disconnected 7 minutes ago
+Showing historical data
+```
+
+## 229.3 Partial Data
+
+```text
+2 of 5 probe locations have no data
+```
+
+## 229.4 Query Error
+
+```text
+Chart could not be loaded
+Retry
+View raw error برای Admin
+```
+
+## 229.5 Loading
+
+Skeleton متناسب با Chart، نه Spinner تمام‌صفحه.
+
+---
+
+# 230. Performance و محدودیت‌های Chart
+
+- حداکثر نقاط هر Series در Frontend: تقریباً 2,000
+- Backend باید Downsample کند.
+- Queryهای Chart باید Timeout داشته باشند.
+- Seriesهای زیاد با Top N و Filter کنترل شوند.
+- Queryهای مشابه Cache شوند.
+- Cache Key شامل Organization باشد.
+- داده Live و Historical می‌توانند Endpoint جدا داشته باشند.
+- Frontend نباید Raw میلیون‌ها Sample را دریافت کند.
+
+---
+
+# 231. معیارهای پذیرش Health Status
+
+- تمام Signalها یکی از وضعیت‌های استاندارد داشته باشند.
+- Health و Operational State جدا ذخیره شوند.
+- Ruleهای Warning و Error برای هر Signal قابل تنظیم باشند.
+- Duration، Window و Minimum Samples پشتیبانی شوند.
+- Hysteresis و Recovery Condition وجود داشته باشد.
+- Missing Data Policy قابل تنظیم باشد.
+- وضعیت Signal از بدترین Rule محاسبه شود.
+- وضعیت Node از Criticality و وضعیت Signalها محاسبه شود.
+- دلیل وضعیت و مقدار مشاهده‌شده در UI دیده شود.
+- Threshold تغییر‌یافته در Activity Log ثبت شود.
+- Alerting مستقل از Health Status قابل تنظیم باشد.
+- فهرست Nodeها Metricهای ناهمگون را ستون ثابت نکند.
+
+---
+
+# 232. معیارهای پذیرش Chartها
+
+- هر Monitor نمودارهای تخصصی تعریف‌شده داشته باشد.
+- Thresholdهای Warning/Error روی Chart نمایش داده شوند.
+- Status Timeline در صفحه Detail وجود داشته باشد.
+- Alert و Maintenance Marker نمایش داده شوند.
+- Missing Data به‌صورت Gap واقعی دیده شود.
+- Time Rangeهای استاندارد و Custom پشتیبانی شوند.
+- Compare Location و Previous Period قابل استفاده باشد.
+- Export CSV و PNG وجود داشته باشد.
+- Chart API Tenant-aware باشد.
+- Frontend مستقیم Storage را Query نکند.
+- Downsampling براساس Time Range انجام شود.
+- Mobile layout کامل باشد.
+- Tooltip شامل مقدار، وضعیت و Threshold باشد.
+- Raw Results و نمودارها با Time Range مشترک Sync باشند.
+- تغییر Zoom در چند Chart مرتبط Sync شود.
+- نمودارهای Node Overview فقط Summary/Sparkline باشند.
+- نمودارهای تخصصی کامل در Signal Detail نمایش داده شوند.
+
+---
+
+# 233. تصمیم‌های قطعی UI و Product
+
+```text
+1. زبان مشترک فهرست Nodeها Status است، نه Raw Metric.
+2. Raw Metric در Tooltip، Detail و Chart نمایش داده می‌شود.
+3. هر Signal Ruleهای Warning، Error و Recovery دارد.
+4. Node Overall Status از Criticality و Signal Status محاسبه می‌شود.
+5. Health Status با Alert Workflow یکی نیست.
+6. نمودارها در Monitor/Signal Detail تخصصی هستند.
+7. Node Overview فقط Timeline، Swimlane، Availability و Sparkline دارد.
+8. Thresholdها و Status Changeها روی نمودار نمایش داده می‌شوند.
+9. Logs و Traces نیز Health Rule و نمودارهای اختصاصی دارند.
+10. تمام Queryها از Product API و با Tenant Isolation عبور می‌کنند.
+```
+
+---
+
+# 234. معماری قطعی Probe Agent در مقیاس بالا
+
+این بخش مرجع اجرایی ارتباط Probe Serverها با Core است و تصمیم‌های بخش‌های 113 تا 125 را برای محیط Production تکمیل می‌کند.
+
+## 234.1 مرزبندی Control Plane و Data Plane
+
+```text
+Control Plane
+├── Agent Enrollment و تأیید ادمین
+├── مدیریت Identity و Credential
+├── تعریف Probe Location
+├── مدیریت Node و Monitor
+└── Scheduling Policy
+
+Data Plane
+├── Agent Gateway
+├── Job Dispatch و Lease
+├── اجرای Probe
+├── Result Ingestion
+├── Metrics Pipeline
+└── Alert Evaluation
+```
+
+Probe Agent روی سرورهای زیرساخت خود پلتفرم نصب می‌شود و روی Node مشتری نصب نمی‌شود. Agent نباید به PostgreSQL، Redis یا سرویس‌های داخلی دسترسی مستقیم داشته باشد.
+
+## 234.2 توپولوژی نهایی
+
+```text
+Web Console
+     │ HTTPS
+     ▼
+Control API ─────────────── PostgreSQL
+     │
+     │ Enrollment / Approval / Configuration
+     ▼
+Agent Gateway × N
+     │ gRPC bidirectional stream over TLS/mTLS
+     ├──────── Probe Agent THR-01
+     ├──────── Probe Agent THR-02
+     ├──────── Probe Agent FRA-01
+     └──────── Probe Agent AMS-01
+
+Scheduler × N ──► Partitioned Job Queue ──► Agent Gateway
+Agent Gateway ──► Result Ingestion × N ──► Time-series DB / PostgreSQL
+```
+
+تمام API، Gateway، Scheduler و Ingestion instanceها باید Stateless و قابل Scale افقی باشند.
+
+## 234.3 Enrollment و فعال‌شدن Agent
+
+```text
+Admin creates one-time enrollment token
+→ Agent نصب و اجرا می‌شود
+→ Agent مشخصات ماشین و CSR را ارسال می‌کند
+→ Agent با وضعیت pending ثبت می‌شود
+→ Admin درخواست را بررسی می‌کند
+→ Admin لوکیشن و محدودیت ظرفیت را تعیین می‌کند
+→ Admin approve یا reject می‌کند
+→ در حالت approve گواهی/credential اختصاصی صادر می‌شود
+→ Agent اتصال mTLS برقرار می‌کند
+→ Agent active می‌شود و Job دریافت می‌کند
+```
+
+مشخصات Registration:
+
+```text
+hostname
+machine_fingerprint
+public_ip مشاهده‌شده توسط Core
+private_ips
+operating_system
+architecture
+agent_version
+cpu_count
+memory_bytes
+capabilities
+requested_location
+public_key / CSR
+```
+
+وضعیت‌های Agent:
+
+```text
+pending → approved → active ↔ offline
+pending → rejected
+approved/active → disabled
+approved/active/disabled → revoked
+```
+
+Enrollment Token فقط برای ثبت اولیه است و نباید Credential دائمی Agent باشد. Token باید single-use، کوتاه‌عمر و به‌صورت hash ذخیره شود.
+
+## 234.4 مدل Probe Location و Agent
+
+Probe Location یک موجودیت منطقی و Agent یک ماشین اجرایی است. یک لوکیشن می‌تواند چند Agent داشته باشد:
+
+```text
+Frankfurt
+├── probe-fra-01
+├── probe-fra-02
+└── probe-fra-03
+```
+
+چند Agent در یک لوکیشن برای High Availability، افزایش ظرفیت و rolling update لازم است. `probe_location_id` نباید از payload غیرقابل اعتماد Agent پذیرفته شود؛ Gateway آن را از Identity تأییدشده Agent استخراج می‌کند.
+
+## 234.5 ارتباط Agent با Core
+
+ارتباط اصلی باید یک اتصال طولانی‌مدت gRPC bidirectional روی HTTP/2 و TLS/mTLS باشد. WebSocket فقط fallback است و HTTP polling نباید روش اصلی دریافت Job باشد.
+
+روی یک Stream پیام‌های زیر تبادل می‌شوند:
+
+```text
+AgentHello
+AgentHeartbeat
+AgentCapacity
+ProbeJob
+JobAccepted
+JobProgress (optional)
+ProbeResultBatch
+ResultStored
+CancelJob
+ConfigurationChanged
+DrainAgent
+```
+
+Agent پس از اتصال باید version، capabilities و ظرفیت خود را اعلام کند. Gateway فقط متناسب با `available_slots` Job تحویل می‌دهد.
+
+## 234.6 مدل Job و Partitioning
+
+```text
+job_id
+monitor_id
+monitor_type
+organization_id
+project_id
+probe_location_id
+scheduled_at
+deadline
+timeout_millis
+retries
+attempt
+lease_id
+lease_expires_at
+config_version
+config
+```
+
+Queue باید حداقل براساس Probe Location partition شود:
+
+```text
+probe-jobs:thr
+probe-jobs:fra
+probe-jobs:ams
+```
+
+در مقیاس بالاتر:
+
+```text
+partition = hash(probe_location_id + monitor_id) % partition_count
+```
+
+Agent فقط Jobهای Location تأییدشده خود را دریافت می‌کند. اگر یک Location چند Agent داشته باشد، Gateway براساس ظرفیت، capability، health و تعداد Jobهای جاری load balancing می‌کند.
+
+## 234.7 Scheduler مقیاس‌پذیر
+
+Scheduler نباید تمام Monitorها را در هر Tick اسکن کند. Query فقط روی Monitorهای due و با index انجام می‌شود:
+
+```sql
+CREATE INDEX monitors_due_idx
+ON monitors(next_run_at)
+WHERE enabled = true;
+```
+
+چند Scheduler با الگوی زیر هم‌زمان کار می‌کنند:
+
+```sql
+SELECT id
+FROM monitors
+WHERE enabled = true
+  AND next_run_at <= NOW()
+ORDER BY next_run_at
+FOR UPDATE SKIP LOCKED
+LIMIT 1000;
+```
+
+هر Batch:
+
+1. Monitorهای due را claim می‌کند.
+2. برای Locationهای انتخاب‌شده Job می‌سازد.
+3. Jobها را به‌صورت pipeline/batch وارد Queue می‌کند.
+4. `next_run_at` را bulk update می‌کند.
+5. Transaction را commit می‌کند.
+
+Batch اولیه بین 500 تا 2,000 Monitor باشد و مقدار نهایی با Load Test تعیین شود.
+
+## 234.8 Backpressure و Capacity
+
+هر Agent باید ظرفیت لحظه‌ای اعلام کند:
+
+```json
+{
+  "max_concurrency": 200,
+  "running_jobs": 145,
+  "available_slots": 55,
+  "spool_bytes": 1048576
+}
+```
+
+Gateway نباید بیش از slot آزاد Job تحویل دهد. محدودیت‌های جدا برای هر Probe Type لازم است، زیرا هزینه HTTP، ICMP، TLS و DNS یکسان نیست.
+
+هنگام فشار بالا:
+
+1. تحویل Job جدید متوقف یا کند می‌شود.
+2. Queue Lag افزایش می‌یابد و Alert تولید می‌شود.
+3. Autoscaling Agent/Gateway فعال می‌شود.
+4. Job منقضی‌شده اجرا نمی‌شود.
+5. داده قدیمی نباید وضعیت جدید Monitor را overwrite کند.
+
+## 234.9 Delivery، Lease و Idempotency
+
+تضمین سیستم `at-least-once delivery` است. Exactly-once برای اجرای Probe تضمین نمی‌شود؛ اما ذخیره Result باید idempotent باشد.
+
+```text
+Core → ProbeJob + lease_id
+Agent → JobAccepted
+Agent → ProbeResultBatch
+Core → ResultStored
+```
+
+Constraint پیشنهادی:
+
+```sql
+UNIQUE(job_id, probe_location_id, attempt)
+```
+
+Result تکراری با `ON CONFLICT DO NOTHING` پذیرفته نمی‌شود. Job بدون ACK یا با Lease منقضی دوباره قابل تحویل است. Result دیررس می‌تواند برای History ذخیره شود، اما فقط Result جدیدتر اجازه تغییر `last_status` را دارد:
+
+```sql
+UPDATE monitors
+SET last_status = $1,
+    last_checked_at = $2
+WHERE id = $3
+  AND (last_checked_at IS NULL OR last_checked_at < $2);
+```
+
+## 234.10 Local Spool در Agent
+
+Result تا دریافت `ResultStored` نباید حذف شود. Agent باید Resultها را روی دیسک در SQLite یا یک Embedded Store نگهداری کند:
+
+```text
+/var/lib/probe-agent/spool/
+```
+
+الزامات:
+
+- Retry با exponential backoff و jitter
+- محدودیت تعداد و حجم
+- حذف فقط پس از ACK قطعی Core
+- بازیابی پس از restart
+- Dead-letter محلی برای payload خراب
+- متریک spool size و oldest result age
+
+## 234.11 Result Ingestion
+
+Agent نتیجه‌ها را به‌صورت Batch ارسال می‌کند. Flush با اولین شرط انجام می‌شود:
+
+```text
+100 تا 500 Result
+یا 256KB تا 1MB payload
+یا 200 تا 500 میلی‌ثانیه
+```
+
+Pipeline:
+
+```text
+Agent Gateway
+→ Authentication و Agent Identity
+→ Schema Validation
+→ Idempotency
+→ Raw Result Storage
+→ Metrics Pipeline
+→ Alert Evaluation
+→ Live Event
+→ ResultStored ACK
+```
+
+PostgreSQL برای metadata، آخرین وضعیت، Agent، Alert State و Audit Log استفاده می‌شود. Time-series DB برای latency، uptime، packet loss، jitter و سایر metricهای پرتعداد استفاده می‌شود.
+
+## 234.12 تحمل خرابی
+
+اگر Agent heartbeat ندهد:
+
+1. Agent به `offline` می‌رود.
+2. Jobهای ACKنشده فوراً قابل تحویل مجدد می‌شوند.
+3. Jobهای پذیرفته‌شده پس از پایان Lease reclaim می‌شوند.
+4. Agent سالم دیگری در همان Location جایگزین می‌شود.
+5. نبود Agent فعال، Location را `degraded` می‌کند.
+
+Deploy و Update با وضعیت `draining` انجام می‌شود. Agent در حال drain Job جدید نمی‌گیرد، Jobهای جاری را تمام می‌کند و سپس restart می‌شود.
+
+## 234.13 امنیت
+
+- TLS اجباری و ترجیحاً mTLS
+- Credential و Certificate مستقل برای هر Agent
+- Certificate rotation بدون downtime
+- Revocation مستقل هر Agent
+- عدم استفاده از Shared Worker Token به‌عنوان Credential دائمی
+- عدم دسترسی Agent به Redis/PostgreSQL
+- SSRF Guard و DNS rebinding protection روی خود Agent
+- Deadline و محدودیت اندازه برای Job و Result
+- Audit Log برای enrollment، approve، reject، disable و revoke
+- Rate limit و quota مستقل برای هر Agent و Location
+- Agent فقط capabilityهای تأییدشده را اجرا کند
+
+## 234.14 Observability و SLO
+
+متریک‌های ضروری:
+
+```text
+agents_active{location}
+agents_offline{location}
+agent_available_slots{agent_id}
+agent_running_jobs{agent_id}
+agent_spool_bytes{agent_id}
+job_queue_lag_seconds{location}
+jobs_dispatched_total{location,type}
+jobs_expired_total{location,type}
+results_ingested_total{location,type}
+result_ingestion_latency_seconds
+duplicate_results_total
+lease_reclaims_total
+```
+
+SLO اولیه پیشنهادی:
+
+- 99.9% دسترس‌پذیری Agent Gateway
+- P95 زمان Dispatch کمتر از یک ثانیه در شرایط عادی
+- P99 زمان Ingestion کمتر از دو ثانیه
+- صفر Result گم‌شده پس از دریافت Agent
+- تشخیص Offline شدن Agent حداکثر در 30 ثانیه
+
+## 234.15 ترتیب پیاده‌سازی
+
+```text
+Phase 1: probe_agents + enrollment + admin approval
+Phase 2: credential اختصاصی و mTLS identity
+Phase 3: Agent Gateway و long-lived stream
+Phase 4: حذف دسترسی مستقیم Worker به Redis
+Phase 5: Job ACK، Lease و Idempotency
+Phase 6: Local Spool و Batch Result
+Phase 7: Queue Partitioning و Multi-Scheduler
+Phase 8: Metrics تفکیک‌شده براساس Location
+Phase 9: Autoscaling، Load Test و Failure Injection
+```
+
+## 234.16 معیار پذیرش
+
+- Agent تأییدنشده هیچ Job دریافت نکند.
+- هر Agent Identity و Credential مستقل داشته باشد.
+- Admin بتواند Agent را approve، reject، disable و revoke کند.
+- یک Location بتواند چند Agent فعال داشته باشد.
+- قطع Gateway یا شبکه باعث از دست رفتن Result نشود.
+- Job تکراری باعث Result تکراری در Storage نشود.
+- Result قدیمی وضعیت جدید Monitor را عقب نبرد.
+- Scheduler و Gateway بدون تغییر معماری Scale افقی شوند.
+- Agent هیچ دسترسی مستقیمی به Redis و PostgreSQL نداشته باشد.
+- ظرفیت، Queue Lag، Lease، Spool و Ingestion به‌طور کامل observable باشند.
+
+---
+
+# 235. پیاده‌سازی و به‌روزرسانی Probe Agent
+
+این بخش برنامه اجرایی تبدیل باینری فعلی `monitoring-worker` به Probe Agent نهایی Production است.
+
+## 235.1 وضعیت Release فعلی
+
+Release بررسی‌شده:
+
+```text
+Tag: v0.1.0
+Artifact: monitoring-worker-linux-amd64
+Artifact: monitoring-worker-linux-arm64
+SHA256 AMD64: 34f8b3c67673c51c3c014f2ceffdd1706ac95b33e50ca76a2416480fe9e88abf
+```
+
+باینری فعلی این قابلیت‌ها را دارد:
+
+- اجرای Probeهای HTTP، TCP، DNS، Ping، TLS، Domain، SMTP و NTP
+- مصرف Job از Redis Streams
+- Consumer Group، concurrency، retry و reclaim
+- Dead-letter کردن Jobهای خراب
+- ارسال Result به `/internal/v1/results`
+- Heartbeat مستقیم در Redis
+- Health endpoint و Prometheus Metrics
+- SSRF Guard
+
+محدودیت‌های قطعی Release فعلی:
+
+- اتصال مستقیم Agent به Redis
+- استفاده تمام Workerها از `WORKER_TOKEN` مشترک
+- نبود Enrollment و تأیید ادمین
+- نبود Identity و Credential مستقل
+- نبود mTLS
+- نبود Agent Gateway
+- نبود Local Spool
+- نبود Result Batch و Result ACK پایدار
+- نبود Job Lease اختصاصی Gateway
+- نبود Update، Drain و Configuration Push
+- نبود Installer و commandهای واقعی Agent
+
+نتیجه: `v0.1.0` فقط Worker داخلی است و نباید به‌عنوان Probe Agent نهایی Production در لوکیشن‌ها deploy شود.
+
+## 235.2 اصل مهاجرت
+
+Probe Executorهای فعلی حفظ می‌شوند و لایه Runtime و Transport جایگزین می‌شود:
+
+```text
+internal/probe/*          حفظ شود
+internal/security/*       حفظ و تکمیل شود
+internal/worker/*         به Runtime جدید مهاجرت کند
+Redis Result Client       حذف شود
+Redis Queue Consumer      از Agent حذف شود
+Agent Gateway Client      اضافه شود
+Enrollment Client         اضافه شود
+Local Spool               اضافه شود
+Update Manager            اضافه شود
+```
+
+ساختار هدف:
+
+```text
+cmd/
+├── probe-agent/
+├── agent-gateway/
+└── ingestion/
+
+internal/agent/
+├── config/
+├── enrollment/
+├── identity/
+├── gateway/
+├── runtime/
+├── executor/
+├── spool/
+├── updater/
+├── service/
+└── diagnostics/
+
+internal/agents/
+├── domain/
+├── repository/
+├── approval/
+├── credentials/
+├── gateway/
+├── leasing/
+└── protocol/
+
+proto/agent/v1/
+└── agent.proto
+```
+
+## 235.3 تغییرات دیتابیس
+
+Migration جدید باید جداول زیر را ایجاد کند:
+
+```sql
+CREATE TYPE probe_agent_status AS ENUM (
+  'pending',
+  'approved',
+  'active',
+  'offline',
+  'disabled',
+  'rejected',
+  'revoked',
+  'draining',
+  'updating'
+);
+
+CREATE TABLE probe_agents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  location_id UUID REFERENCES probe_locations(id),
+  name VARCHAR(100) NOT NULL,
+  hostname VARCHAR(255) NOT NULL,
+  machine_fingerprint VARCHAR(255) NOT NULL UNIQUE,
+  public_key TEXT NOT NULL,
+  certificate_serial VARCHAR(255),
+  version VARCHAR(50) NOT NULL,
+  operating_system VARCHAR(50) NOT NULL,
+  architecture VARCHAR(50) NOT NULL,
+  public_ip INET,
+  private_ips INET[] NOT NULL DEFAULT '{}',
+  capabilities JSONB NOT NULL DEFAULT '[]',
+  max_concurrency INTEGER NOT NULL DEFAULT 50,
+  status probe_agent_status NOT NULL DEFAULT 'pending',
+  approved_by UUID REFERENCES users(id),
+  approved_at TIMESTAMPTZ,
+  last_seen_at TIMESTAMPTZ,
+  revoked_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX probe_agents_location_status_idx
+ON probe_agents(location_id, status);
+
+CREATE INDEX probe_agents_last_seen_idx
+ON probe_agents(last_seen_at);
+```
+
+Enrollment Token:
+
+```sql
+CREATE TABLE probe_agent_enrollment_tokens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  token_hash BYTEA NOT NULL UNIQUE,
+  requested_location_id UUID REFERENCES probe_locations(id),
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at TIMESTAMPTZ,
+  created_by UUID NOT NULL REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+Audit Log:
+
+```sql
+CREATE TABLE probe_agent_audit_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_id UUID REFERENCES probe_agents(id) ON DELETE CASCADE,
+  actor_user_id UUID REFERENCES users(id),
+  action VARCHAR(50) NOT NULL,
+  previous_state JSONB,
+  next_state JSONB,
+  remote_ip INET,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+## 235.4 APIهای Control Plane
+
+API عمومی Agent قبل از mTLS:
+
+```text
+POST /agent/v1/enroll
+GET  /agent/v1/enroll/{request_id}/status
+POST /agent/v1/enroll/{request_id}/certificate
+GET  /agent/v1/releases/latest
+```
+
+API پنل Admin:
+
+```text
+POST /api/v1/admin/probe-agent-enrollment-tokens
+GET  /api/v1/admin/probe-agents
+GET  /api/v1/admin/probe-agents/{agent_id}
+POST /api/v1/admin/probe-agents/{agent_id}/approve
+POST /api/v1/admin/probe-agents/{agent_id}/reject
+POST /api/v1/admin/probe-agents/{agent_id}/disable
+POST /api/v1/admin/probe-agents/{agent_id}/enable
+POST /api/v1/admin/probe-agents/{agent_id}/revoke
+POST /api/v1/admin/probe-agents/{agent_id}/drain
+POST /api/v1/admin/probe-agents/{agent_id}/rotate-certificate
+PUT  /api/v1/admin/probe-agents/{agent_id}/location
+```
+
+Admin API باید role اختصاصی Platform Admin را بررسی کند. کاربر Organization نباید به مدیریت Probe Agent دسترسی داشته باشد.
+
+## 235.5 پروتکل gRPC
+
+فایل `proto/agent/v1/agent.proto`:
+
+```protobuf
+syntax = "proto3";
+
+package agent.v1;
+
+service AgentGateway {
+  rpc Connect(stream AgentMessage) returns (stream CoreMessage);
+}
+
+message AgentHello {
+  string agent_id = 1;
+  string version = 2;
+  string hostname = 3;
+  repeated string capabilities = 4;
+  int32 max_concurrency = 5;
+}
+
+message AgentHeartbeat {
+  int64 sent_at_unix_ms = 1;
+  int32 running_jobs = 2;
+  int32 available_slots = 3;
+  int64 spool_bytes = 4;
+}
+
+message ProbeJob {
+  string job_id = 1;
+  string lease_id = 2;
+  string monitor_id = 3;
+  string monitor_type = 4;
+  string probe_location_id = 5;
+  int64 scheduled_at_unix_ms = 6;
+  int64 deadline_unix_ms = 7;
+  int32 timeout_millis = 8;
+  int32 retries = 9;
+  int32 attempt = 10;
+  bytes config_json = 11;
+}
+
+message JobAccepted {
+  string job_id = 1;
+  string lease_id = 2;
+}
+
+message ProbeResultBatch {
+  repeated ProbeResult results = 1;
+}
+
+message ResultStored {
+  repeated string result_ids = 1;
+}
+```
+
+تمام Messageها باید versionable باشند. Core باید حداقل و حداکثر نسخه پروتکل سازگار را به Agent اعلام کند.
+
+## 235.6 Runtime جدید Agent
+
+Runtime Agent مسئول این چرخه است:
+
+```text
+Load Config
+→ Load Identity/Certificate
+→ Enrollment در صورت نبود Identity
+→ Connect to Gateway
+→ Send Hello
+→ Start Heartbeat
+→ Receive jobs based on capacity
+→ Persist accepted job metadata
+→ Execute probe
+→ Persist result to spool
+→ Send result batch
+→ Wait for ResultStored
+→ Delete acknowledged results
+```
+
+Runtime باید poolهای جدا برای Probe Typeهای پرهزینه داشته باشد:
+
+```text
+http_concurrency
+ping_concurrency
+tcp_concurrency
+tls_concurrency
+dns_concurrency
+smtp_concurrency
+ntp_concurrency
+```
+
+## 235.7 Local Spool
+
+SQLite انتخاب پیش‌فرض است:
+
+```sql
+CREATE TABLE spool_results (
+  result_id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  lease_id TEXT NOT NULL,
+  payload BLOB NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+```
+
+قواعد:
+
+- Result قبل از ارسال روی دیسک نوشته شود.
+- حذف فقط پس از `ResultStored` انجام شود.
+- Batch براساس count، bytes یا flush interval ساخته شود.
+- Backoff دارای jitter باشد.
+- Spool limit قابل تنظیم باشد.
+- پر شدن Spool Agent را degraded کند و دریافت Job جدید را متوقف سازد.
+
+## 235.8 Agent Gateway
+
+Gateway وظایف زیر را دارد:
+
+- اعتبارسنجی mTLS و استخراج Agent Identity
+- رد Agentهای pending، disabled، rejected و revoked
+- ثبت session و heartbeat
+- گزارش capacity
+- انتخاب Agent برای Job براساس Location و capability
+- ایجاد و تمدید Lease
+- دریافت ACK
+- دریافت Result Batch
+- تحویل Result به Ingestion
+- ارسال `ResultStored`
+- Drain و قطع کنترل‌شده Agent
+
+Gateway نباید Probe logic داشته باشد و Agent نباید Queue topology را بداند.
+
+## 235.9 تغییر Scheduler و Queue
+
+Scheduler Job را برای Location تولید می‌کند، نه برای Agent مشخص. Gateway Agent مناسب را انتخاب می‌کند.
+
+Queue پیشنهادی:
+
+```text
+probe-jobs:{location}:{partition}
+```
+
+Job تا زمان ACK دارای Lease است. Gatewayهای متعدد باید با optimistic locking یا storage اتمیک از تحویل هم‌زمان یک Lease جلوگیری کنند.
+
+## 235.10 Result Ingestion و Idempotency
+
+Result باید این فیلدها را داشته باشد:
+
+```text
+result_id
+job_id
+lease_id
+agent_id
+probe_location_id
+monitor_id
+attempt
+started_at
+finished_at
+status
+metrics
+attributes
+```
+
+Constraint:
+
+```sql
+UNIQUE(job_id, probe_location_id, attempt)
+```
+
+Core باید `agent_id` و `probe_location_id` را از session تأییدشده Gateway اعمال کند و مقدار ارسالی Agent را trusted نداند.
+
+## 235.11 Commandهای باینری جدید
+
+```text
+probe-agent install
+probe-agent uninstall
+probe-agent enroll
+probe-agent run
+probe-agent start
+probe-agent stop
+probe-agent restart
+probe-agent status
+probe-agent logs
+probe-agent diagnose
+probe-agent update
+probe-agent version
+```
+
+`probe-agent diagnose` باید موارد زیر را بررسی کند:
+
+- دسترسی HTTPS/gRPC به Core
+- اعتبار Certificate
+- DNS و Time Sync
+- ICMP capability
+- دسترسی نوشتن به spool
+- فضای دیسک
+- نسخه Agent و Protocol Compatibility
+
+## 235.12 Configuration
+
+فایل `/etc/probe-agent/config.yaml`:
+
+```yaml
+control_plane: https://control.example.com
+agent_gateway: grpcs://agents.example.com:443
+state_dir: /var/lib/probe-agent
+log_level: info
+
+runtime:
+  max_concurrency: 200
+  shutdown_grace_period: 30s
+
+spool:
+  max_bytes: 1073741824
+  max_results: 100000
+  flush_interval: 250ms
+  batch_size: 250
+
+updates:
+  channel: stable
+  auto_update: false
+```
+
+Credential و private key نباید داخل YAML plaintext قرار گیرند؛ در state directory با permission محدود یا OS keystore ذخیره شوند.
+
+## 235.13 Installer و Service
+
+Installer باید:
+
+- checksum و امضای artifact را بررسی کند.
+- System User بدون shell ایجاد کند.
+- directoryها و permissionها را تنظیم کند.
+- systemd unit نصب کند.
+- فقط capability لازم برای ICMP را بدهد.
+- enrollment را اجرا کند.
+- سرویس را با restart policy و resource limit اجرا کند.
+
+نمونه systemd hardening:
+
+```ini
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/probe-agent /var/log/probe-agent
+CapabilityBoundingSet=CAP_NET_RAW
+AmbientCapabilities=CAP_NET_RAW
+Restart=always
+RestartSec=5
+```
+
+## 235.14 Update امن Agent
+
+Update flow:
+
+```text
+Agent checks signed release manifest
+→ verifies compatible protocol version
+→ downloads artifact
+→ verifies SHA256 and signature
+→ enters draining state
+→ finishes in-flight jobs
+→ atomically replaces binary
+→ restarts service
+→ reports new version
+→ rolls back if readiness fails
+```
+
+Release manifest:
+
+```json
+{
+  "version": "0.2.0",
+  "channel": "stable",
+  "minimum_protocol": 1,
+  "maximum_protocol": 1,
+  "artifacts": {
+    "linux-amd64": {
+      "url": ".../probe-agent-linux-amd64",
+      "sha256": "...",
+      "signature": "..."
+    }
+  }
+}
+```
+
+Rollout باید مرحله‌ای باشد:
+
+```text
+canary agent
+→ یک Agent از هر Location
+→ 10 درصد
+→ 50 درصد
+→ 100 درصد
+```
+
+در هر مرحله error rate، queue lag، result latency و offline agents کنترل شوند.
+
+## 235.15 GitHub Release جدید
+
+Workflow فعلی `release-worker.yml` باید با workflow جدید جایگزین شود:
+
+```text
+.github/workflows/release-probe-agent.yml
+```
+
+Artifactها:
+
+```text
+probe-agent-linux-amd64
+probe-agent-linux-arm64
+probe-agent-darwin-amd64
+probe-agent-darwin-arm64
+probe-agent-windows-amd64.exe
+checksums.txt
+checksums.txt.sig
+release-manifest.json
+release-manifest.json.sig
+```
+
+فاز اول Production می‌تواند فقط Linux AMD64 و ARM64 را منتشر کند، ولی نام artifact باید از `monitoring-worker` به `probe-agent` تغییر کند.
+
+## 235.16 مهاجرت از v0.1.0
+
+باینری `monitoring-worker v0.1.0` با Agent جدید wire-compatible نیست و باید side-by-side مهاجرت شود:
+
+```text
+1. Deploy database migrations
+2. Deploy Enrollment API و Admin UI
+3. Deploy Agent Gateway
+4. Deploy Result Ingestion جدید
+5. Publish probe-agent v0.2.0
+6. Enroll یک Canary Agent
+7. تأیید Canary در Admin Panel
+8. Shadow Dispatch بدون اثر روی Alert
+9. مقایسه Resultهای Worker قدیم و Agent جدید
+10. فعال‌کردن Agent جدید برای یک Location
+11. Drain کردن Worker قدیمی همان Location
+12. تکرار برای تمام Locationها
+13. بستن دسترسی مستقیم Redis از Probe Network
+14. ابطال WORKER_TOKEN مشترک
+15. حذف مسیر legacy /internal/v1/results پس از دوره سازگاری
+```
+
+Rollback تا پایان مرحله 12 باید با فعال‌کردن Worker قدیمی ممکن باشد.
+
+## 235.17 تست‌های الزامی
+
+Unit:
+
+- Enrollment token validation
+- State transitionها
+- Certificate issuance و revocation
+- Lease expiry
+- Result idempotency
+- Spool persistence
+- Batch construction
+- Update signature verification
+
+Integration:
+
+- Enrollment تا Approval
+- اتصال mTLS
+- Dispatch و ACK
+- قطع اتصال حین Probe
+- قطع اتصال حین Result upload
+- restart Agent با spool پر
+- دو Gateway هم‌زمان
+- Agent revoked روی Stream فعال
+- rolling update و rollback
+
+Load:
+
+- حداقل 100,000 Monitor زمان‌بندی‌شده
+- حداقل 1,000 Job در ثانیه در تست پایه
+- چند Agent در هر Location
+- Queue backlog و recovery
+- Batch ingestion تحت فشار
+- Gateway reconnect storm
+
+Failure Injection:
+
+- Redis unavailable
+- PostgreSQL unavailable
+- Time-series DB slow
+- Gateway restart
+- Agent network partition
+- Certificate expiry
+- Disk full در Agent
+- clock skew
+
+## 235.18 Definition of Done
+
+- Probe Agent بدون Redis credential اجرا شود.
+- Agent تأییدنشده Job نگیرد.
+- Identity هر Agent مستقل و قابل revoke باشد.
+- Result قبل از ACK از دیسک Agent حذف نشود.
+- چند Agent در یک Location load balancing و failover داشته باشند.
+- Scheduler، Gateway و Ingestion Scale افقی شوند.
+- Queue Lag و Backpressure قابل مشاهده باشند.
+- Update امضاشده، drain و rollback داشته باشد.
+- Worker قدیمی از تمام Locationها حذف شود.
+- Shared `WORKER_TOKEN` و دسترسی مستقیم Redis حذف شوند.
+- artifact جدید با نام `probe-agent-*` در GitHub Release منتشر شود.

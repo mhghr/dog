@@ -46,3 +46,13 @@ type StatusPageRepository interface {
 	GetByID(ctx context.Context, id string) (domain.StatusPage, error)
 	PublicBySlug(ctx context.Context, slug string) (domain.PublicStatusPage, error)
 }
+
+type OrganizationRepository interface {
+	Create(ctx context.Context, org *domain.Organization) error
+	GetBySlug(ctx context.Context, slug string) (domain.Organization, error)
+}
+
+type ProjectRepository interface {
+	Create(ctx context.Context, project *domain.Project) error
+	ListByOrganization(ctx context.Context, orgID string) ([]domain.Project, error)
+}

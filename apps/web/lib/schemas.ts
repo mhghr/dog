@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-import { DEFAULT_INTERVALS, MIN_INTERVALS } from "@/lib/monitor-meta";
-import type { CreateMonitorInput, Monitor, MonitorType } from "@/types/monitor";
+import { getMonitorDefinition } from "@/features/monitors/core/registry";
+import { MONITOR_TYPE_VALUES, type CreateMonitorInput, type Monitor, type MonitorType } from "@/types/monitor";
 
 type Translator = (key: string, values?: Record<string, string | number>) => string;
 
@@ -28,7 +28,7 @@ export function createMonitorFormSchema(t: Translator) {
         .trim()
         .min(2, t("nameMin"))
         .max(200, t("nameMax")),
-      type: z.enum(["http", "tcp", "dns", "ping", "tls", "domain_expiration", "smtp", "ntp"]),
+      type: z.enum(MONITOR_TYPE_VALUES),
       target: z.string().trim().min(1, t("targetRequired")),
       interval_seconds: z.coerce.number().int().min(10).max(604800),
       timeout_millis: z.coerce.number().int().min(100, t("timeoutRange")).max(60000, t("timeoutRange")),
@@ -115,7 +115,7 @@ export function createMonitorFormSchema(t: Translator) {
         });
       }
 
-      const minInterval = MIN_INTERVALS[value.type];
+      const minInterval = getMonitorDefinition(value.type).minimumIntervalSeconds;
       if (value.interval_seconds < minInterval) {
         context.addIssue({
           code: "custom",
@@ -129,46 +129,17 @@ export function createMonitorFormSchema(t: Translator) {
 export type MonitorFormValues = z.infer<ReturnType<typeof createMonitorFormSchema>>;
 
 export function defaultFormValues(type: MonitorType = "http"): MonitorFormValues {
+  const definition = getMonitorDefinition(type);
   return {
     name: "",
     type,
     target: "",
-    interval_seconds: DEFAULT_INTERVALS[type],
+    interval_seconds: definition.defaultIntervalSeconds,
     timeout_millis: 5000,
     retries: 1,
     enabled: true,
 
-    http_method: "GET",
-    http_follow_redirects: true,
-    http_verify_tls: true,
-    http_expected_status_codes: "200",
-
-    dns_record_type: "A",
-    dns_server: "1.1.1.1:53",
-
-    ping_packet_count: 4,
-
-    tls_port: 443,
-    tls_verify_chain: true,
-    tls_verify_hostname: true,
-    tls_min_version: "1.2",
-    tls_warning_days: 30,
-    tls_critical_days: 7,
-
-    domain_warning_days: 45,
-    domain_critical_days: 15,
-    domain_check_nameservers: false,
-
-    smtp_port: 587,
-    smtp_mode: "starttls",
-    smtp_ehlo_domain: "monitor.example.com",
-    smtp_require_starttls: true,
-    smtp_verify_tls: true,
-
-    ntp_port: 123,
-    ntp_version: 4,
-    ntp_max_offset_millis: 1000,
-    ntp_max_round_trip_millis: 2000,
+    ...definition.defaultValues,
   } as MonitorFormValues;
 }
 

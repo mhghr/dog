@@ -19,7 +19,8 @@
     "no": "خیر",
     "copy": "کپی",
     "openMenu": "باز کردن منو",
-    "next": "بعدی"
+    "next": "بعدی",
+    "project": "پروژه"
   },
   "navigation": {
     "overview": "نمای کلی",
@@ -30,6 +31,7 @@
     "addNode": "افزودن نود جدید",
     "myNodes": "نودهای من",
     "statusPages": "صفحات وضعیت",
+    "alerts": "هشدارها",
     "locations": "لوکیشن‌های Probe",
     "system": "سلامت سیستم",
     "settings": "تنظیمات",
@@ -202,6 +204,25 @@
     "range30d": "۳۰ روز",
     "nextRun": "اجرای بعدی",
     "created": "ایجاد شده",
+    "packetLoss": "اتلاف بسته",
+    "currentRtt": "RTT فعلی",
+    "averageRtt": "میانگین RTT",
+    "jitter": "نوسان تأخیر",
+    "healthScore": "امتیاز سلامت",
+    "rttRange": "زمان رفت‌وبرگشت",
+    "latestProbe": "آخرین بررسی",
+    "minimumRtt": "کمینه",
+    "maximumRtt": "بیشینه",
+    "pingConfiguration": "پیکربندی و تحویل بسته‌های پینگ",
+    "resolvedIp": "IP نهایی",
+    "packetsSent": "بسته‌های ارسال‌شده",
+    "packetsReceived": "بسته‌های دریافت‌شده",
+    "packetCount": "تعداد بسته",
+    "packetInterval": "فاصله ارسال بسته‌ها",
+    "timeout": "مهلت پاسخ",
+    "locationResults": "آخرین نتیجه به تفکیک لوکیشن Probe",
+    "unknownLocation": "Probe پیش‌فرض",
+    "noLocationResults": "هنوز نتیجه‌ای برای لوکیشن‌ها ثبت نشده است.",
     "noData": "هنوز داده‌ای ثبت نشده است."
   },
   "results": {
@@ -520,5 +541,25 @@
       "section7Title": "۷. تماس",
       "section7Body": "برای سوالات درباره این قوانین، از طریق کانال‌های پشتیبانی پلتفرم با ما تماس بگیرید."
     }
+  },
+  "organization": {
+    "title": "سازمان",
+    "projects": "پروژه‌ها",
+    "newProject": "پروژه جدید",
+    "projectName": "نام پروژه",
+    "projectNamePlaceholder": "مثلاً Production",
+    "noProjects": "هنوز پروژه‌ای نیست",
+    "createProject": "ایجاد پروژه",
+    "projectCreated": "پروژه ایجاد شد"
+  },
+  "alerts": {
+    "title": "هشدارها",
+    "subtitle": "مانیتورینگ رویدادهای هشدار و اعلان‌ها",
+    "state": "وضعیت",
+    "severity": "شدت",
+    "monitor": "مانیتور",
+    "opened": "باز شده",
+    "description": "توضیحات",
+    "noAlerts": "هنوز هشداری ثبت نشده است"
   }
 }

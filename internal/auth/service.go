@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"monitoring-platform/internal/domain"
@@ -58,6 +59,7 @@ type Service struct {
 	users  repository.UserRepository
 	tokens repository.RefreshTokenRepository
 	otps   repository.OTPRepository
+	orgs   repository.OrganizationRepository
 	issuer *TokenIssuer
 	google *GoogleVerifier
 	sms    SMSSender
@@ -70,6 +72,7 @@ func NewService(
 	users repository.UserRepository,
 	tokens repository.RefreshTokenRepository,
 	otps repository.OTPRepository,
+	orgs repository.OrganizationRepository,
 	issuer *TokenIssuer,
 	google *GoogleVerifier,
 	sms SMSSender,
@@ -85,6 +88,7 @@ func NewService(
 		users:  users,
 		tokens: tokens,
 		otps:   otps,
+		orgs:   orgs,
 		issuer: issuer,
 		google: google,
 		sms:    sms,
@@ -158,6 +162,10 @@ func (s *Service) loginWithGoogleClaims(ctx context.Context, claims GoogleClaims
 
 	user, err := s.users.UpsertGoogleUser(ctx, claims.Sub, email, claims.Name, claims.Picture)
 	if err != nil {
+		return domain.User{}, TokenPair{}, err
+	}
+
+	if err := s.ensureOrganization(ctx, &user); err != nil {
 		return domain.User{}, TokenPair{}, err
 	}
 
@@ -250,6 +258,10 @@ func (s *Service) VerifyOTP(ctx context.Context, rawPhone, code string) (domain.
 
 	user, err := s.users.UpsertPhoneUser(ctx, phone)
 	if err != nil {
+		return domain.User{}, TokenPair{}, err
+	}
+
+	if err := s.ensureOrganization(ctx, &user); err != nil {
 		return domain.User{}, TokenPair{}, err
 	}
 
@@ -348,6 +360,42 @@ func (s *Service) issueTokens(ctx context.Context, user domain.User) (TokenPair,
 		RefreshToken:     refreshToken,
 		RefreshExpiresIn: int(s.cfg.RefreshTTL.Seconds()),
 	}, nil
+}
+
+func (s *Service) ensureOrganization(ctx context.Context, user *domain.User) error {
+	if user.OrganizationID != "" {
+		return nil
+	}
+
+	name := strings.TrimSpace(user.Name)
+	if name == "" {
+		if user.Email != "" {
+			parts := strings.SplitN(user.Email, "@", 2)
+			name = parts[0]
+		} else if user.Phone != "" {
+			name = "user-" + user.Phone
+		} else {
+			name = "User"
+		}
+	}
+
+	orgName := name + "'s Workspace"
+	org, errs := domain.ValidateOrganizationInput(domain.OrganizationInput{Name: orgName})
+	if len(errs) > 0 {
+		org = domain.Organization{Name: "My Workspace", Slug: "my-workspace"}
+	}
+	if err := s.orgs.Create(ctx, &org); err != nil {
+		return fmt.Errorf("auto-create organization: %w", err)
+	}
+
+	if err := s.users.SetOrganizationID(ctx, user.ID, org.ID); err != nil {
+		return fmt.Errorf("set user organization: %w", err)
+	}
+
+	user.OrganizationID = org.ID
+
+	s.logger.Info("auto-created organization", "user_id", user.ID, "org_id", org.ID, "org_name", org.Name)
+	return nil
 }
 
 func (s *Service) hashOTP(phone, code string) string {

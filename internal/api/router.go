@@ -11,11 +11,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
+	"monitoring-platform/internal/alerting"
 	"monitoring-platform/internal/auth"
 	"monitoring-platform/internal/config"
 	"monitoring-platform/internal/events"
 	"monitoring-platform/internal/ingestion"
 	"monitoring-platform/internal/metrics"
+	"monitoring-platform/internal/postgres"
 	"monitoring-platform/internal/queue"
 	"monitoring-platform/internal/repository"
 )
@@ -27,6 +29,12 @@ type Deps struct {
 	Results     repository.ResultRepository
 	Locations   repository.LocationRepository
 	StatusPages repository.StatusPageRepository
+	Orgs        repository.OrganizationRepository
+	Projects    repository.ProjectRepository
+	AlertRepo   *postgres.AlertRepository
+	ChannelRepo *postgres.ChannelRepository
+	AlertEngine *alerting.Engine
+	Notifier    *alerting.Notifier
 	Ingestion   *ingestion.Service
 	Auth        *auth.Service
 	Issuer      *auth.TokenIssuer
@@ -66,6 +74,8 @@ func NewRouter(deps Deps) http.Handler {
 		writeError(w, r, http.StatusUnauthorized, "unauthorized", "Authentication required", nil)
 	})
 
+	orgScoped := auth.OrgScoped(deps.Issuer)
+
 	router.Get("/health/live", handler.healthLive)
 	router.Get("/health/ready", handler.healthReady)
 	router.Method(http.MethodGet, "/metrics", deps.Prom)
@@ -92,6 +102,16 @@ func NewRouter(deps Deps) http.Handler {
 
 		r.Group(func(r chi.Router) {
 			r.Use(requireAuth)
+
+			r.Route("/organizations", func(r chi.Router) {
+				r.Post("/", handler.createOrganization)
+
+				r.Group(func(r chi.Router) {
+					r.Use(orgScoped)
+					r.Get("/projects", handler.listProjects)
+					r.Post("/projects", handler.createProject)
+				})
+			})
 
 			r.Get("/dashboard/summary", handler.dashboardSummary)
 			r.Get("/probe-locations", handler.listLocations)
@@ -122,6 +142,21 @@ func NewRouter(deps Deps) http.Handler {
 					r.Put("/", handler.updateStatusPage)
 					r.Delete("/", handler.deleteStatusPage)
 				})
+			})
+
+			r.Route("/alerting", func(r chi.Router) {
+				r.Route("/policies", func(r chi.Router) {
+					r.Get("/", handler.listAlertPolicies)
+					r.Post("/", handler.createAlertPolicy)
+				})
+
+				r.Route("/channels", func(r chi.Router) {
+					r.Get("/", handler.listNotificationChannels)
+					r.Post("/", handler.createNotificationChannel)
+				})
+
+				r.Get("/alerts", handler.listAlerts)
+				r.Get("/alerts/{alertID}", handler.getAlert)
 			})
 		})
 	})

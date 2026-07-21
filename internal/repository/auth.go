@@ -14,6 +14,8 @@ type UserRepository interface {
 	UpsertGoogleUser(ctx context.Context, googleID, email, name, avatarURL string) (domain.User, error)
 	// UpsertPhoneUser finds or creates a user by normalized phone number.
 	UpsertPhoneUser(ctx context.Context, phone string) (domain.User, error)
+	// SetOrganizationID updates the user's organization membership.
+	SetOrganizationID(ctx context.Context, userID, orgID string) error
 }
 
 type RefreshTokenRepository interface {
