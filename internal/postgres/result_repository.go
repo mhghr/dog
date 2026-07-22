@@ -53,7 +53,7 @@ func (r *ResultRepository) InsertAndUpdateMonitor(ctx context.Context, result *d
 			$1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::monitor_status, $6,
 			NULLIF($7, ''), NULLIF($8, ''), $9, $10::jsonb, $11::jsonb, $12, $13, $14
 		)
-		ON CONFLICT (job_id, probe_location_id, COALESCE(attributes->>'attempt', '1')) DO NOTHING`,
+		ON CONFLICT (job_id, COALESCE(probe_location_id, '00000000-0000-0000-0000-000000000000'::uuid), attempt) DO NOTHING`,
 		result.ID,
 		result.JobID,
 		result.MonitorID,

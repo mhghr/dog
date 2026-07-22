@@ -3,6 +3,7 @@ package agents
 import (
 	"context"
 	"crypto/sha256"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -61,26 +62,89 @@ func (r *Repository) ConsumeEnrollmentToken(ctx context.Context, rawToken string
 	return &token, nil
 }
 
+func (r *Repository) CreateAgentWithToken(ctx context.Context, rawToken string, params CreateAgentParams) (*ProbeAgent, error) {
+	hash := sha256.Sum256([]byte(rawToken))
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var requestedLocationID uuid.UUID
+	err = tx.QueryRow(ctx, `
+		UPDATE probe_agent_enrollment_tokens
+		SET used_at = NOW()
+		WHERE token_hash = $1
+		  AND used_at IS NULL
+		  AND expires_at > NOW()
+		RETURNING requested_location_id
+	`, hash[:]).Scan(&requestedLocationID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, ErrInvalidToken
+		}
+		return nil, err
+	}
+
+	var agent ProbeAgent
+	err = tx.QueryRow(ctx, `
+		INSERT INTO probe_agents (
+			location_id, name, hostname, machine_fingerprint, public_key,
+			version, operating_system, architecture, private_ips,
+			capabilities, max_concurrency, status, agent_secret
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending', $12)
+		RETURNING id, location_id, name, hostname, machine_fingerprint,
+			public_key, COALESCE(certificate_serial, ''), agent_secret,
+			version, operating_system,
+			architecture, COALESCE(public_ip::text, ''), private_ips, capabilities,
+			max_concurrency, status, approved_by, approved_at,
+			last_seen_at, revoked_at, created_at, updated_at
+	`,
+		requestedLocationID, params.Name, params.Hostname, params.MachineFingerprint, params.PublicKey,
+		params.Version, params.OperatingSystem, params.Architecture, params.PrivateIPs,
+		params.Capabilities, params.MaxConcurrency, params.AgentSecret,
+	).Scan(
+		&agent.ID, &agent.LocationID, &agent.Name, &agent.Hostname, &agent.MachineFingerprint,
+		&agent.PublicKey, &agent.CertificateSerial, &agent.AgentSecret,
+		&agent.Version, &agent.OperatingSystem,
+		&agent.Architecture, &agent.PublicIP, &agent.PrivateIPs, &agent.Capabilities,
+		&agent.MaxConcurrency, &agent.Status, &agent.ApprovedBy, &agent.ApprovedAt,
+		&agent.LastSeenAt, &agent.RevokedAt, &agent.CreatedAt, &agent.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit tx: %w", err)
+	}
+
+	return &agent, nil
+}
+
 func (r *Repository) CreateAgent(ctx context.Context, params CreateAgentParams) (*ProbeAgent, error) {
 	var agent ProbeAgent
 	err := r.pool.QueryRow(ctx, `
 		INSERT INTO probe_agents (
 			location_id, name, hostname, machine_fingerprint, public_key,
 			version, operating_system, architecture, private_ips,
-			capabilities, max_concurrency, status
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending')
+			capabilities, max_concurrency, status, agent_secret
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending', $12)
 		RETURNING id, location_id, name, hostname, machine_fingerprint,
-			public_key, certificate_serial, version, operating_system,
-			architecture, public_ip, private_ips, capabilities,
+			public_key, COALESCE(certificate_serial, ''), agent_secret,
+			version, operating_system,
+			architecture, COALESCE(public_ip::text, ''), private_ips, capabilities,
 			max_concurrency, status, approved_by, approved_at,
 			last_seen_at, revoked_at, created_at, updated_at
 	`,
 		params.LocationID, params.Name, params.Hostname, params.MachineFingerprint, params.PublicKey,
 		params.Version, params.OperatingSystem, params.Architecture, params.PrivateIPs,
-		params.Capabilities, params.MaxConcurrency,
+		params.Capabilities, params.MaxConcurrency, params.AgentSecret,
 	).Scan(
 		&agent.ID, &agent.LocationID, &agent.Name, &agent.Hostname, &agent.MachineFingerprint,
-		&agent.PublicKey, &agent.CertificateSerial, &agent.Version, &agent.OperatingSystem,
+		&agent.PublicKey, &agent.CertificateSerial, &agent.AgentSecret,
+		&agent.Version, &agent.OperatingSystem,
 		&agent.Architecture, &agent.PublicIP, &agent.PrivateIPs, &agent.Capabilities,
 		&agent.MaxConcurrency, &agent.Status, &agent.ApprovedBy, &agent.ApprovedAt,
 		&agent.LastSeenAt, &agent.RevokedAt, &agent.CreatedAt, &agent.UpdatedAt,
@@ -95,14 +159,43 @@ func (r *Repository) GetAgent(ctx context.Context, id uuid.UUID) (*ProbeAgent, e
 	var agent ProbeAgent
 	err := r.pool.QueryRow(ctx, `
 		SELECT id, location_id, name, hostname, machine_fingerprint,
-			public_key, COALESCE(certificate_serial, ''), version, operating_system,
+			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_secret, ''),
+			version, operating_system,
 			architecture, COALESCE(public_ip::text, ''), private_ips, capabilities,
 			max_concurrency, status, approved_by, approved_at,
 			last_seen_at, revoked_at, created_at, updated_at
 		FROM probe_agents WHERE id = $1
 	`, id).Scan(
 		&agent.ID, &agent.LocationID, &agent.Name, &agent.Hostname, &agent.MachineFingerprint,
-		&agent.PublicKey, &agent.CertificateSerial, &agent.Version, &agent.OperatingSystem,
+		&agent.PublicKey, &agent.CertificateSerial, &agent.AgentSecret,
+		&agent.Version, &agent.OperatingSystem,
+		&agent.Architecture, &agent.PublicIP, &agent.PrivateIPs, &agent.Capabilities,
+		&agent.MaxConcurrency, &agent.Status, &agent.ApprovedBy, &agent.ApprovedAt,
+		&agent.LastSeenAt, &agent.RevokedAt, &agent.CreatedAt, &agent.UpdatedAt,
+	)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, ErrAgentNotFound
+		}
+		return nil, err
+	}
+	return &agent, nil
+}
+
+func (r *Repository) GetAgentByIDAndSecret(ctx context.Context, id uuid.UUID, secret string) (*ProbeAgent, error) {
+	var agent ProbeAgent
+	err := r.pool.QueryRow(ctx, `
+		SELECT id, location_id, name, hostname, machine_fingerprint,
+			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_secret, ''),
+			version, operating_system,
+			architecture, COALESCE(public_ip::text, ''), private_ips, capabilities,
+			max_concurrency, status, approved_by, approved_at,
+			last_seen_at, revoked_at, created_at, updated_at
+		FROM probe_agents WHERE id = $1 AND agent_secret = $2
+	`, id, secret).Scan(
+		&agent.ID, &agent.LocationID, &agent.Name, &agent.Hostname, &agent.MachineFingerprint,
+		&agent.PublicKey, &agent.CertificateSerial, &agent.AgentSecret,
+		&agent.Version, &agent.OperatingSystem,
 		&agent.Architecture, &agent.PublicIP, &agent.PrivateIPs, &agent.Capabilities,
 		&agent.MaxConcurrency, &agent.Status, &agent.ApprovedBy, &agent.ApprovedAt,
 		&agent.LastSeenAt, &agent.RevokedAt, &agent.CreatedAt, &agent.UpdatedAt,
@@ -119,7 +212,8 @@ func (r *Repository) GetAgent(ctx context.Context, id uuid.UUID) (*ProbeAgent, e
 func (r *Repository) ListAgents(ctx context.Context, params ListAgentsParams) ([]ProbeAgent, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT id, location_id, name, hostname, machine_fingerprint,
-			public_key, COALESCE(certificate_serial, ''), version, operating_system,
+			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_secret, ''),
+			version, operating_system,
 			architecture, COALESCE(public_ip::text, ''), private_ips, capabilities,
 			max_concurrency, status, approved_by, approved_at,
 			last_seen_at, revoked_at, created_at, updated_at
@@ -138,7 +232,8 @@ func (r *Repository) ListAgents(ctx context.Context, params ListAgentsParams) ([
 		var a ProbeAgent
 		if err := rows.Scan(
 			&a.ID, &a.LocationID, &a.Name, &a.Hostname, &a.MachineFingerprint,
-			&a.PublicKey, &a.CertificateSerial, &a.Version, &a.OperatingSystem,
+			&a.PublicKey, &a.CertificateSerial, &a.AgentSecret,
+			&a.Version, &a.OperatingSystem,
 			&a.Architecture, &a.PublicIP, &a.PrivateIPs, &a.Capabilities,
 			&a.MaxConcurrency, &a.Status, &a.ApprovedBy, &a.ApprovedAt,
 			&a.LastSeenAt, &a.RevokedAt, &a.CreatedAt, &a.UpdatedAt,
@@ -234,6 +329,7 @@ type CreateAgentParams struct {
 	PrivateIPs         []string
 	Capabilities       []string
 	MaxConcurrency     int32
+	AgentSecret        string
 }
 
 type ListAgentsParams struct {
@@ -262,7 +358,8 @@ func (r *Repository) UpdateCapacity(ctx context.Context, agentID uuid.UUID, runn
 func (r *Repository) GetActiveAgentsForLocation(ctx context.Context, locationID uuid.UUID) ([]ProbeAgent, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT id, location_id, name, hostname, machine_fingerprint,
-			public_key, COALESCE(certificate_serial, ''), version, operating_system,
+			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_secret, ''),
+			version, operating_system,
 			architecture, COALESCE(public_ip::text, ''), private_ips, capabilities,
 			max_concurrency, COALESCE(running_jobs, 0), COALESCE(spool_bytes, 0),
 			status, approved_by, approved_at,
@@ -282,7 +379,8 @@ func (r *Repository) GetActiveAgentsForLocation(ctx context.Context, locationID 
 		var a ProbeAgent
 		if err := rows.Scan(
 			&a.ID, &a.LocationID, &a.Name, &a.Hostname, &a.MachineFingerprint,
-			&a.PublicKey, &a.CertificateSerial, &a.Version, &a.OperatingSystem,
+			&a.PublicKey, &a.CertificateSerial, &a.AgentSecret,
+			&a.Version, &a.OperatingSystem,
 			&a.Architecture, &a.PublicIP, &a.PrivateIPs, &a.Capabilities,
 			&a.MaxConcurrency, &a.RunningJobs, &a.SpoolBytes,
 			&a.Status, &a.ApprovedBy, &a.ApprovedAt,

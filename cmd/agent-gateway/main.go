@@ -2,73 +2,59 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
-	"monitoring-platform/internal/config"
+	"monitoring-platform/internal/agents/gateway"
 	"monitoring-platform/internal/httpserver"
 	"monitoring-platform/internal/logging"
 )
 
 func main() {
-	cfg := config.Load()
+	httpserver.RunHealthcheckCommand(os.Getenv("GATEWAY_HEALTH_ADDRESS"))
 
-	httpserver.RunHealthcheckCommand(cfg.HTTPAddress)
+	logger := logging.New(
+		getEnv("LOG_LEVEL", "info"),
+		getEnv("LOG_FORMAT", "json"),
+		"agent-gateway",
+	)
 
-	logger := logging.New(cfg.LogLevel, cfg.LogFormat, "agent-gateway")
+	gwCfg := gateway.GatewayConfig{
+		ListenAddress: getEnv("GATEWAY_ADDRESS", ":8443"),
+		HealthAddress: getEnv("GATEWAY_HEALTH_ADDRESS", ":8081"),
+		TLSCertFile:   getEnv("GATEWAY_TLS_CERT", "/etc/agent-gateway/server.crt"),
+		TLSKeyFile:    getEnv("GATEWAY_TLS_KEY", "/etc/agent-gateway/server.key"),
+		CACertFile:    getEnv("GATEWAY_CA_CERT", "/etc/agent-gateway/ca.crt"),
+		DatabaseURL:   os.Getenv("DATABASE_URL"),
+	}
 
-	if err := cfg.Require("DATABASE_URL", "REDIS_ADDRESS"); err != nil {
-		logger.Error("invalid configuration", "error", err)
+	if gwCfg.DatabaseURL == "" {
+		logger.Error("DATABASE_URL is required")
 		os.Exit(1)
 	}
+
+	gw, err := gateway.New(gwCfg, logger)
+	if err != nil {
+		logger.Error("failed to create gateway", "error", err)
+		os.Exit(1)
+	}
+	defer gw.Close()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	gatewayMux := http.NewServeMux()
+	if err := gw.ListenAndServe(ctx); err != nil {
+		logger.Error("gateway failed", "error", err)
+		os.Exit(1)
+	}
 
-	gatewayMux.HandleFunc("/health/live", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-	})
-
-	gatewayMux.HandleFunc("/health/ready", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{
-			"status": "ok",
-			"role":   "agent-gateway",
-		})
-	})
-
-	gatewayMux.HandleFunc("/api/v1/agents/hello", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{
-			"status":        "authenticated",
-			"gateway_id":    "agent-gateway-01",
-			"server_time":   time.Now().UTC().Format(time.RFC3339),
-			"protocol_min":  "1",
-			"protocol_max":  "1",
-		})
-	})
-
-	healthServer := httpserver.New(cfg.HealthAddress, gatewayMux)
-
-	go func() {
-		if err := httpserver.Run(ctx, healthServer, logger); err != nil {
-			logger.Error("gateway server failed", "error", err)
-		}
-	}()
-
-	logger.Info("agent-gateway started", "health_address", cfg.HealthAddress)
-
-	<-ctx.Done()
 	logger.Info("agent-gateway stopped")
+}
+
+func getEnv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }

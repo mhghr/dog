@@ -81,6 +81,44 @@ func main() {
 
 	agentRepo := agents.NewRepository(pool)
 
+	var ca *agents.CertAuthority
+	caCertPEM := os.Getenv("AGENT_CA_CERT")
+	caKeyPEM := os.Getenv("AGENT_CA_KEY")
+	if caCertPath := os.Getenv("AGENT_CA_CERT_FILE"); caCertPath != "" {
+		data, rdErr := os.ReadFile(caCertPath)
+		if rdErr != nil {
+			logger.Error("failed to read AGENT_CA_CERT_FILE", "path", caCertPath, "error", rdErr)
+			os.Exit(1)
+		}
+		caCertPEM = string(data)
+	}
+	if caKeyPath := os.Getenv("AGENT_CA_KEY_FILE"); caKeyPath != "" {
+		data, rdErr := os.ReadFile(caKeyPath)
+		if rdErr != nil {
+			logger.Error("failed to read AGENT_CA_KEY_FILE", "path", caKeyPath, "error", rdErr)
+			os.Exit(1)
+		}
+		caKeyPEM = string(data)
+	}
+	if caCertPEM != "" && caKeyPEM != "" {
+		ca, err = agents.NewCertAuthority([]byte(caCertPEM), []byte(caKeyPEM))
+		if err != nil {
+			logger.Error("failed to load agent CA", "error", err)
+			os.Exit(1)
+		}
+		logger.Info("agent CA loaded", "fingerprint", ca.Fingerprint())
+	} else {
+		var caCert, caKey []byte
+		ca, caCert, caKey, err = agents.NewSelfSignedCA()
+		if err != nil {
+			logger.Error("failed to create self-signed CA", "error", err)
+			os.Exit(1)
+		}
+		logger.Warn("no CA configured, generated self-signed CA", "fingerprint", ca.Fingerprint())
+		_ = caCert
+		_ = caKey
+	}
+
 	if cfg.AuthJWTSecret == "dev-insecure-jwt-secret-change-me" && !cfg.IsDevelopment() {
 		logger.Error("AUTH_JWT_SECRET must be set outside development")
 		os.Exit(1)
@@ -145,6 +183,7 @@ func main() {
 		Victoria:      victoria,
 		Prom:          metrics.Handler(registry),
 		AgentRepo:     agentRepo,
+		CA:            ca,
 	})
 
 	server := httpserver.New(cfg.HTTPAddress, router)

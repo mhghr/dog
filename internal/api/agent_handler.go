@@ -1,7 +1,10 @@
 package api
 
 import (
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
+	"net"
 	"net/http"
 	"time"
 
@@ -171,7 +174,89 @@ func (h *Handler) getAgent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) approveAgent(w http.ResponseWriter, r *http.Request) {
-	h.updateAgentStatus(w, r, agents.AgentApproved, "approve")
+	agentID := chi.URLParam(r, "agentID")
+	id, err := uuid.Parse(agentID)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_id", "Invalid agent ID", nil)
+		return
+	}
+
+	agent, err := h.deps.AgentRepo.GetAgent(r.Context(), id)
+	if err != nil {
+		writeDomainError(w, r, err)
+		return
+	}
+
+	if !agents.CanTransition(agent.Status, agents.AgentApproved) {
+		writeError(w, r, http.StatusConflict, "invalid_transition",
+			"Cannot transition from "+string(agent.Status)+" to "+string(agents.AgentApproved), nil)
+		return
+	}
+
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, r, http.StatusUnauthorized, "unauthorized", "Authentication required", nil)
+		return
+	}
+
+	actorID := uuid.MustParse(userID)
+	now := time.Now()
+
+	opts := agents.StatusUpdateOpts{
+		ApprovedBy: &actorID,
+		ApprovedAt: &now,
+	}
+
+	if err := h.deps.AgentRepo.UpdateAgentStatus(r.Context(), id, agents.AgentApproved, opts); err != nil {
+		h.deps.Logger.Error("update agent status failed", "error", err)
+		writeError(w, r, http.StatusInternalServerError, "internal_error", "Failed to update agent status", nil)
+		return
+	}
+
+	var certPEM, serial string
+	if h.deps.CA != nil && agent.PublicKey != "" {
+		block, _ := pem.Decode([]byte(agent.PublicKey))
+		if block != nil {
+			pub, pubErr := x509.ParsePKIXPublicKey(block.Bytes)
+			if pubErr == nil {
+				certPEM, serial, pubErr = h.deps.CA.IssueAgentCertificate(id.String(), agent.Hostname, pub)
+				if pubErr == nil {
+					if setErr := h.deps.AgentRepo.SetAgentCertificate(r.Context(), id, serial); setErr != nil {
+						h.deps.Logger.Warn("set agent certificate failed", "error", setErr)
+					}
+				} else {
+					h.deps.Logger.Warn("issue certificate failed", "error", pubErr)
+				}
+			}
+		}
+	}
+
+	prevState, _ := json.Marshal(map[string]string{"status": string(agent.Status)})
+	nextState, _ := json.Marshal(map[string]string{"status": string(agents.AgentApproved)})
+	remoteIP, _, _ := net.SplitHostPort(r.RemoteAddr)
+
+	auditErr := h.deps.AgentRepo.AuditLog(r.Context(), agents.AuditEntry{
+		AgentID:       id,
+		ActorUserID:   &actorID,
+		Action:        "approve",
+		PreviousState: prevState,
+		NextState:     nextState,
+		RemoteIP:      remoteIP,
+	})
+	if auditErr != nil {
+		h.deps.Logger.Warn("audit log failed", "error", auditErr)
+	}
+
+	resp := map[string]any{
+		"id":     id.String(),
+		"status": string(agents.AgentApproved),
+	}
+	if certPEM != "" {
+		resp["certificate"] = certPEM
+		resp["serial_number"] = serial
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (h *Handler) rejectAgent(w http.ResponseWriter, r *http.Request) {
@@ -215,17 +300,17 @@ func (h *Handler) updateAgentStatus(w http.ResponseWriter, r *http.Request, stat
 	}
 
 	userID, ok := auth.UserIDFromContext(r.Context())
-	if !ok {
-		writeError(w, r, http.StatusUnauthorized, "unauthorized", "Authentication required", nil)
-		return
+	var actorID uuid.UUID
+	var actorIDPtr *uuid.UUID
+	if ok {
+		actorID = uuid.MustParse(userID)
+		actorIDPtr = &actorID
 	}
-
-	actorID := uuid.MustParse(userID)
 
 	opts := agents.StatusUpdateOpts{}
 	if status == agents.AgentApproved {
 		now := time.Now()
-		opts.ApprovedBy = &actorID
+		opts.ApprovedBy = actorIDPtr
 		opts.ApprovedAt = &now
 	}
 
@@ -237,16 +322,19 @@ func (h *Handler) updateAgentStatus(w http.ResponseWriter, r *http.Request, stat
 
 	prevState, _ := json.Marshal(map[string]string{"status": string(agent.Status)})
 	nextState, _ := json.Marshal(map[string]string{"status": string(status)})
-	remoteIP := r.RemoteAddr
+	remoteIP, _, _ := net.SplitHostPort(r.RemoteAddr)
 
-	_ = h.deps.AgentRepo.AuditLog(r.Context(), agents.AuditEntry{
+	auditErr := h.deps.AgentRepo.AuditLog(r.Context(), agents.AuditEntry{
 		AgentID:       id,
-		ActorUserID:   &actorID,
+		ActorUserID:   actorIDPtr,
 		Action:        action,
 		PreviousState: prevState,
 		NextState:     nextState,
 		RemoteIP:      remoteIP,
 	})
+	if auditErr != nil {
+		h.deps.Logger.Warn("audit log failed", "error", auditErr)
+	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id":     id.String(),
@@ -262,7 +350,13 @@ func (h *Handler) agentStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	agent, err := h.deps.AgentRepo.GetAgent(r.Context(), id)
+	secret := r.URL.Query().Get("secret")
+	if secret == "" {
+		writeError(w, r, http.StatusUnauthorized, "missing_secret", "Secret query parameter is required", nil)
+		return
+	}
+
+	agent, err := h.deps.AgentRepo.GetAgentByIDAndSecret(r.Context(), id, secret)
 	if err != nil {
 		writeDomainError(w, r, err)
 		return
@@ -299,19 +393,9 @@ func (h *Handler) agentEnroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := h.deps.AgentRepo.ConsumeEnrollmentToken(r.Context(), req.EnrollmentToken)
-	if err != nil {
-		if err == agents.ErrInvalidToken {
-			writeError(w, r, http.StatusUnauthorized, "invalid_token", "Enrollment token is invalid, expired, or already used", nil)
-			return
-		}
-		h.deps.Logger.Error("consume enrollment token failed", "error", err)
-		writeError(w, r, http.StatusInternalServerError, "internal_error", "Enrollment failed", nil)
-		return
-	}
+	agentSecret := uuid.NewString()
 
-	agent, err := h.deps.AgentRepo.CreateAgent(r.Context(), agents.CreateAgentParams{
-		LocationID:         token.RequestedLocationID,
+	agent, err := h.deps.AgentRepo.CreateAgentWithToken(r.Context(), req.EnrollmentToken, agents.CreateAgentParams{
 		Name:               req.Hostname,
 		Hostname:           req.Hostname,
 		MachineFingerprint: req.MachineFingerprint,
@@ -322,16 +406,22 @@ func (h *Handler) agentEnroll(w http.ResponseWriter, r *http.Request) {
 		PrivateIPs:         req.PrivateIPs,
 		Capabilities:       req.Capabilities,
 		MaxConcurrency:     req.MaxConcurrency,
+		AgentSecret:        agentSecret,
 	})
 	if err != nil {
-		h.deps.Logger.Error("create agent failed", "error", err)
+		if err == agents.ErrInvalidToken {
+			writeError(w, r, http.StatusUnauthorized, "invalid_token", "Enrollment token is invalid, expired, or already used", nil)
+			return
+		}
+		h.deps.Logger.Error("create agent with token failed", "error", err)
 		writeError(w, r, http.StatusInternalServerError, "internal_error", "Failed to register agent", nil)
 		return
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"request_id": agent.ID.String(),
-		"status":     string(agent.Status),
-		"message":    "Agent registered successfully. Waiting for admin approval.",
+		"request_id":   agent.ID.String(),
+		"status":       string(agent.Status),
+		"message":      "Agent registered successfully. Waiting for admin approval.",
+		"agent_secret": agent.AgentSecret,
 	})
 }

@@ -28,6 +28,7 @@ type ProbeAgent struct {
 	MachineFingerprint string
 	PublicKey          string
 	CertificateSerial  string
+	AgentSecret        string
 	Version            string
 	OperatingSystem    string
 	Architecture       string

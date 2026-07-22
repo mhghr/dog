@@ -33,6 +33,7 @@ CREATE TABLE probe_agents (
     approved_by UUID REFERENCES users(id),
     approved_at TIMESTAMPTZ,
     last_seen_at TIMESTAMPTZ,
+    agent_secret VARCHAR(255),
     revoked_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -71,11 +72,11 @@ CREATE TABLE probe_agent_audit_log (
 CREATE INDEX probe_agent_audit_agent_idx
     ON probe_agent_audit_log(agent_id, created_at DESC);
 
--- Fix idempotency: unique constraint on job_id + probe_location_id + attempt.
--- Drop the old unique index that only covered job_id.
+-- Fix idempotency: unique constraint on job_id + COALESCE(probe_location_id, ...) + attempt.
+-- Use the actual attempt column, not COALESCE(attributes->>'attempt', '1').
 DROP INDEX IF EXISTS probe_results_job_id_idx;
 CREATE UNIQUE INDEX probe_results_job_location_attempt_idx
-    ON probe_results(job_id, probe_location_id, COALESCE(attributes->>'attempt', '1'));
+    ON probe_results(job_id, COALESCE(probe_location_id, '00000000-0000-0000-0000-000000000000'::uuid), attempt);
 
 -- Add attempt column to probe_results for multi-attempt tracking.
 ALTER TABLE probe_results

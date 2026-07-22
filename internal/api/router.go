@@ -46,6 +46,7 @@ type Deps struct {
 	Victoria    *metrics.VictoriaClient
 	Prom        http.Handler
 	AgentRepo   *agents.Repository
+	CA          *agents.CertAuthority
 }
 
 func NewRouter(deps Deps) http.Handler {

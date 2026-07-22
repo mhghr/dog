@@ -67,19 +67,16 @@ jobs:
         run: |
           sha256sum probe-agent-* > checksums.txt
 
-      - name: Sign checksums.txt
+      - name: Sign checksums.txt (GPG)
+        id: checksum-sign
         run: |
           if [ -n "${{ secrets.GPG_PRIVATE_KEY }}" ] && [ -n "${{ secrets.GPG_PASSPHRASE }}" ]; then
             echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
             echo "${{ secrets.GPG_PASSPHRASE }}" | gpg --batch --yes --passphrase-fd 0 --pinentry-mode loopback \
               --detach-sign --armor --output checksums.txt.sig checksums.txt
-            echo "gpg-signed=true" >> signing-info.env
+            echo "signed=true" >> $GITHUB_OUTPUT
           else
-            openssl dgst -sha256 -sign /dev/null -out checksums.txt.sig checksums.txt 2>/dev/null || true
-            if [ ! -s checksums.txt.sig ]; then
-              sha256sum checksums.txt > checksums.txt.sig
-            fi
-            echo "gpg-signed=false" >> signing-info.env
+            echo "signed=false" >> $GITHUB_OUTPUT
           fi
 
       - uses: actions/upload-artifact@v4
@@ -87,7 +84,6 @@ jobs:
           name: checksums
           path: |
             checksums.txt
-            checksums.txt.sig
 
   release:
     needs: [build, checksums]
@@ -104,39 +100,63 @@ jobs:
 
       - name: Create release manifest
         run: |
-          cat > release-manifest.json << 'MANIFEST'
+          LINUX_AMD64_SHA=$(sha256sum probe-agent-linux-amd64 | cut -d' ' -f1)
+          LINUX_ARM64_SHA=$(sha256sum probe-agent-linux-arm64 | cut -d' ' -f1)
+          WINDOWS_AMD64_SHA=$(sha256sum probe-agent-windows-amd64.exe | cut -d' ' -f1)
+          PUBLISHED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          cat > release-manifest.json << MANIFEST
           {
             "version": "${{ github.ref_name }}",
             "channel": "stable",
             "minimum_protocol": 1,
             "maximum_protocol": 1,
-            "published_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "published_at": "${PUBLISHED_AT}",
             "artifacts": {
               "linux-amd64": {
                 "url": "${{ github.server_url }}/${{ github.repository }}/releases/download/${{ github.ref_name }}/probe-agent-linux-amd64",
-                "sha256": "$(sha256sum probe-agent-linux-amd64 | cut -d' ' -f1)"
+                "sha256": "${LINUX_AMD64_SHA}"
               },
               "linux-arm64": {
                 "url": "${{ github.server_url }}/${{ github.repository }}/releases/download/${{ github.ref_name }}/probe-agent-linux-arm64",
-                "sha256": "$(sha256sum probe-agent-linux-arm64 | cut -d' ' -f1)"
+                "sha256": "${LINUX_ARM64_SHA}"
               },
               "windows-amd64": {
                 "url": "${{ github.server_url }}/${{ github.repository }}/releases/download/${{ github.ref_name }}/probe-agent-windows-amd64.exe",
-                "sha256": "$(sha256sum probe-agent-windows-amd64.exe | cut -d' ' -f1)"
+                "sha256": "${WINDOWS_AMD64_SHA}"
               }
             }
           }
           MANIFEST
 
-      - name: Sign release manifest
+      - name: Sign release manifest (GPG)
+        id: manifest-sign
         run: |
           if [ -n "${{ secrets.GPG_PRIVATE_KEY }}" ] && [ -n "${{ secrets.GPG_PASSPHRASE }}" ]; then
             echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
             echo "${{ secrets.GPG_PASSPHRASE }}" | gpg --batch --yes --passphrase-fd 0 --pinentry-mode loopback \
               --detach-sign --armor --output release-manifest.json.sig release-manifest.json
+            echo "signed=true" >> $GITHUB_OUTPUT
           else
-            sha256sum release-manifest.json > release-manifest.json.sig
+            echo "signed=false" >> $GITHUB_OUTPUT
           fi
+
+      - name: Prepare release assets
+        id: assets
+        run: |
+          FILES="probe-agent-*
+          checksums.txt
+          release-manifest.json"
+          if [ -f checksums.txt.sig ]; then
+            FILES="${FILES}
+          checksums.txt.sig"
+          fi
+          if [ -f release-manifest.json.sig ]; then
+            FILES="${FILES}
+          release-manifest.json.sig"
+          fi
+          echo 'files<<EOF' >> $GITHUB_OUTPUT
+          echo "$FILES" >> $GITHUB_OUTPUT
+          echo 'EOF' >> $GITHUB_OUTPUT
 
       - name: Create release
         uses: softprops/action-gh-release@v2
@@ -159,12 +179,7 @@ jobs:
             - Probe agent database migration
 
             See [monitoring.md](./monitoring.md) sections 234-235 for full architecture.
-          files: |
-            probe-agent-*
-            checksums.txt
-            checksums.txt.sig
-            release-manifest.json
-            release-manifest.json.sig
+          files: ${{ steps.assets.outputs.files }}
           draft: false
           prerelease: false
           generate_release_notes: true

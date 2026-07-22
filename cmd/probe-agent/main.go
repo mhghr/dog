@@ -2,145 +2,164 @@ package main
 
 import (
 	"context"
-	"net/http"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
-	"github.com/redis/go-redis/v9"
-
-	"monitoring-platform/internal/agent/spool"
-	"monitoring-platform/internal/config"
-	"monitoring-platform/internal/heartbeat"
-	"monitoring-platform/internal/httpserver"
+	"monitoring-platform/internal/agent"
+	"monitoring-platform/internal/agent/enrollment"
+	"monitoring-platform/internal/agent/identity"
 	"monitoring-platform/internal/logging"
-	"monitoring-platform/internal/metrics"
-	"monitoring-platform/internal/probe"
-	"monitoring-platform/internal/queue"
-	"monitoring-platform/internal/security"
-	"monitoring-platform/internal/worker"
 )
 
+var version = "dev"
+
 func main() {
-	cfg := config.Load()
-
-	logger := logging.New(cfg.LogLevel, cfg.LogFormat, "probe-agent")
-
-	if err := cfg.Require("REDIS_ADDRESS", "API_BASE_URL", "WORKER_TOKEN"); err != nil {
-		logger.Error("invalid configuration", "error", err)
+	if len(os.Args) < 2 {
+		fmt.Fprintf(os.Stderr, "usage: probe-agent [run|enroll|version|diagnose]\n")
 		os.Exit(1)
 	}
+
+	switch os.Args[1] {
+	case "run":
+		run()
+	case "enroll":
+		enrollCmd()
+	case "version":
+		fmt.Println("probe-agent version", version)
+	case "diagnose":
+		diagnoseCmd()
+	default:
+		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "usage: probe-agent [run|enroll|version|diagnose]\n")
+		os.Exit(1)
+	}
+}
+
+func loadConfig() agent.AgentConfig {
+	configPath := os.Getenv("AGENT_CONFIG_PATH")
+	if configPath == "" {
+		for _, p := range []string{"/etc/probe-agent/config.yaml", "./config.yaml"} {
+			if _, err := os.Stat(p); err == nil {
+				configPath = p
+				break
+			}
+		}
+	}
+
+	cfg, err := agent.LoadAgentConfig(configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
+		os.Exit(1)
+	}
+
+	return cfg
+}
+
+func run() {
+	cfg := loadConfig()
+	logger := logging.New(cfg.LogLevel, cfg.LogFormat, "probe-agent")
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	redisClient := redis.NewClient(&redis.Options{
-		Addr:     cfg.RedisAddress,
-		Password: cfg.RedisPassword,
-		DB:       cfg.RedisDB,
-	})
-	defer redisClient.Close()
+	if !identity.HasIdentity(cfg.StateDir) {
+		logger.Info("no identity found, enrolling")
 
-	probeQueue := queue.NewRedisQueue(redisClient, queue.StreamConfig{
-		Stream:     cfg.QueueStream,
-		Group:      cfg.QueueGroup,
-		DeadLetter: cfg.QueueDeadLetter,
-		MaxLen:     cfg.QueueMaxLen,
-	}, logger)
-
-	if err := probeQueue.EnsureGroup(ctx); err != nil {
-		logger.Error("ensure consumer group failed", "error", err)
-		os.Exit(1)
-	}
-
-	guard := security.NewGuard(cfg.SSRFAllowPrivate)
-	if cfg.SSRFAllowPrivate {
-		logger.Warn("SSRF protection allows private targets; do not use this in production")
-	}
-
-	probeRegistry := probe.DefaultRegistry(probe.Deps{
-		Guard:          guard,
-		Logger:         logger,
-		PingPrivileged: cfg.PingPrivileged,
-	})
-
-	resultClient := worker.NewResultClient(cfg.APIBaseURL, cfg.WorkerToken)
-
-	spoolDir := os.Getenv("AGENT_SPOOL_DIR")
-	if spoolDir == "" {
-		spoolDir = "./spool"
-	}
-
-	resultSpool, err := spool.New(spoolDir)
-	if err != nil {
-		logger.Error("failed to create result spool", "error", err)
-		os.Exit(1)
-	}
-	defer resultSpool.Close()
-
-	batcher := spool.NewBatcher(resultSpool, resultClient, spool.DefaultBatcherConfig(), logger)
-	go batcher.Run(ctx)
-
-	promRegistry := metrics.NewRegistry()
-	workerMetrics := metrics.NewWorkerMetrics(promRegistry)
-
-	service := worker.New(
-		probeQueue,
-		probeRegistry,
-		resultSpool,
-		cfg.WorkerName,
-		cfg.WorkerConcurrency,
-		logger,
-		workerMetrics,
-	)
-
-	go heartbeat.Run(ctx, redisClient, "probe-agent", cfg.WorkerName, 3*time.Second, 10*time.Second)
-
-	healthAddr := cfg.HealthAddress
-	if v := os.Getenv("AGENT_HEALTH_ADDRESS"); v != "" {
-		healthAddr = v
-	}
-
-	healthServer := httpserver.New(healthAddr, agentHealthMux(redisClient, metrics.Handler(promRegistry)))
-	go func() {
-		if err := httpserver.Run(ctx, healthServer, logger); err != nil {
-			logger.Error("health server failed", "error", err)
+		result, err := enrollment.Enroll(ctx, cfg, version, logger)
+		if err != nil {
+			logger.Error("enrollment failed", "error", err)
+			os.Exit(1)
 		}
-	}()
 
-	if err := service.Run(ctx); err != nil && ctx.Err() == nil {
-		logger.Error("probe-agent failed", "error", err)
+		logger.Info("enrollment successful", "agent_id", result.AgentID)
+
+		if err := identity.SaveIdentity(cfg.StateDir, result.AgentID, result.Certificate, result.PrivateKey); err != nil {
+			logger.Error("failed to save identity", "error", err)
+			os.Exit(1)
+		}
+
+		logger.Info("identity saved, restart to connect to gateway")
+		<-ctx.Done()
+		return
+	}
+
+	agentID, certPEM, keyPEM, err := identity.LoadIdentity(cfg.StateDir)
+	if err != nil {
+		logger.Error("failed to load identity", "error", err)
 		os.Exit(1)
 	}
 
+	logger.Info("identity loaded", "agent_id", agentID)
+	_ = certPEM
+	_ = keyPEM
+
+	<-ctx.Done()
 	logger.Info("probe-agent stopped")
 }
 
-func agentHealthMux(redisClient *redis.Client, promHandler http.Handler) http.Handler {
-	mux := http.NewServeMux()
+func enrollCmd() {
+	cfg := loadConfig()
+	logger := logging.New(cfg.LogLevel, cfg.LogFormat, "probe-agent")
 
-	mux.HandleFunc("/health/live", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
-	})
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	mux.HandleFunc("/health/ready", func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
-		defer cancel()
+	if identity.HasIdentity(cfg.StateDir) {
+		logger.Error("identity already exists, remove it first to re-enroll")
+		os.Exit(1)
+	}
 
-		w.Header().Set("Content-Type", "application/json")
+	result, err := enrollment.Enroll(ctx, cfg, version, logger)
+	if err != nil {
+		logger.Error("enrollment failed", "error", err)
+		os.Exit(1)
+	}
 
-		if err := redisClient.Ping(ctx).Err(); err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte(`{"status":"unavailable","dependencies":{"redis":"error"}}`))
-			return
+	logger.Info("enrollment completed", "agent_id", result.AgentID)
+
+	if err := identity.SaveIdentity(cfg.StateDir, result.AgentID, result.Certificate, result.PrivateKey); err != nil {
+		logger.Error("failed to save identity", "error", err)
+		os.Exit(1)
+	}
+
+	logger.Info("identity saved successfully")
+}
+
+func diagnoseCmd() {
+	cfg := loadConfig()
+	logger := logging.New(cfg.LogLevel, cfg.LogFormat, "probe-agent")
+
+	fmt.Println("=== probe-agent diagnostics ===")
+	fmt.Println()
+
+	fmt.Println("[config]")
+	fmt.Printf("  Config file found: %t\n", cfg.EnrollmentToken != "" || cfg.ControlPlane != "")
+	fmt.Printf("  Control plane: %s\n", cfg.ControlPlane)
+	fmt.Printf("  Gateway: %s\n", cfg.Gateway)
+	fmt.Printf("  State dir: %s\n", cfg.StateDir)
+	fmt.Println()
+
+	fmt.Println("[identity]")
+	if identity.HasIdentity(cfg.StateDir) {
+		agentID, _, _, err := identity.LoadIdentity(cfg.StateDir)
+		if err != nil {
+			fmt.Printf("  ERROR loading identity: %v\n", err)
+		} else {
+			fmt.Printf("  Identity found: agent_id=%s\n", agentID)
 		}
+	} else {
+		fmt.Println("  No identity found (will enroll on first run)")
+	}
 
-		_, _ = w.Write([]byte(`{"status":"ok","dependencies":{"redis":"ok"}}`))
-	})
+	fmt.Println("[disk]")
+	if info, err := os.Stat(cfg.StateDir); err == nil {
+		fmt.Printf("  State directory: %s (exists=%t)\n", cfg.StateDir, info.IsDir())
+	} else {
+		fmt.Printf("  State directory: %s (does not exist yet)\n", cfg.StateDir)
+	}
 
-	mux.Handle("/metrics", promHandler)
-
-	return mux
+	fmt.Println()
+	_ = logger
 }
