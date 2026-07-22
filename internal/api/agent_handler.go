@@ -254,6 +254,35 @@ func (h *Handler) updateAgentStatus(w http.ResponseWriter, r *http.Request, stat
 	})
 }
 
+func (h *Handler) agentStatus(w http.ResponseWriter, r *http.Request) {
+	agentID := chi.URLParam(r, "agentID")
+	id, err := uuid.Parse(agentID)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_id", "Invalid agent ID", nil)
+		return
+	}
+
+	agent, err := h.deps.AgentRepo.GetAgent(r.Context(), id)
+	if err != nil {
+		writeDomainError(w, r, err)
+		return
+	}
+
+	resp := map[string]any{
+		"id":          agent.ID.String(),
+		"status":      string(agent.Status),
+		"location_id": agent.LocationID.String(),
+	}
+	if agent.CertificateSerial != "" {
+		resp["certificate_serial"] = agent.CertificateSerial
+	}
+	if agent.ApprovedAt != nil {
+		resp["approved_at"] = agent.ApprovedAt.Format(time.RFC3339)
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
 func (h *Handler) agentEnroll(w http.ResponseWriter, r *http.Request) {
 	var req agents.EnrollRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

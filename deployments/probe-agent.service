@@ -1,0 +1,24 @@
+[Unit]
+Description=Probe Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=probe-agent
+Group=probe-agent
+ExecStart=/usr/local/bin/probe-agent run
+Restart=always
+RestartSec=5
+LimitNOFILE=65536
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/probe-agent /var/log/probe-agent
+CapabilityBoundingSet=CAP_NET_RAW
+AmbientCapabilities=CAP_NET_RAW
+EnvironmentFile=/etc/probe-agent/config.env
+
+[Install]
+WantedBy=multi-user.target

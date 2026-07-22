@@ -27,9 +27,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useAgents, useAgentMutation } from "@/hooks/use-agents";
 import { useLocations } from "@/hooks/use-locations";
 import { useCreateLocation } from "@/hooks/use-location-mutations";
 import { ApiError } from "@/lib/api-client";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 function AddLocationDialog({
@@ -109,6 +111,100 @@ function AddLocationDialog({
   );
 }
 
+function PendingAgentsSection() {
+  const t = useTranslations("agents");
+  const tCommon = useTranslations("common");
+  const agentsQuery = useAgents("pending");
+  const mutations = useAgentMutation();
+
+  if (agentsQuery.isPending || agentsQuery.isError) {
+    return null;
+  }
+
+  if (agentsQuery.data.items.length === 0) {
+    return null;
+  }
+
+  const statusColors = "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400";
+
+  return (
+    <div className="mt-8">
+      <h2 className="mb-4 text-lg font-semibold tracking-tight">
+        {t("pendingAgents")}
+      </h2>
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t("name") ?? "Name"}</TableHead>
+              <TableHead>{t("hostname")}</TableHead>
+              <TableHead>{t("version")}</TableHead>
+              <TableHead>{t("status")}</TableHead>
+              <TableHead>{tCommon("actions")}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {agentsQuery.data.items.map((agent) => (
+              <TableRow key={agent.id}>
+                <TableCell className="max-w-[180px] truncate font-medium">
+                  {agent.name}
+                </TableCell>
+                <TableCell dir="ltr" className="font-mono text-xs">
+                  {agent.hostname}
+                </TableCell>
+                <TableCell dir="ltr" className="font-mono text-xs">
+                  {agent.version || "—"}
+                </TableCell>
+                <TableCell>
+                  <Badge className={cn("pointer-events-none", statusColors)} variant="outline">
+                    {agent.status}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      disabled={mutations.approve.isPending || mutations.reject.isPending}
+                      onClick={() =>
+                        mutations.approve.mutateAsync(agent.id).then(
+                          () => toast.success(t("approved")),
+                          (err) => {
+                            if (err instanceof ApiError) toast.error(err.message);
+                          },
+                        )
+                      }
+                    >
+                      {t("approve")}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="h-7 text-xs"
+                      disabled={mutations.approve.isPending || mutations.reject.isPending}
+                      onClick={() =>
+                        mutations.reject.mutateAsync(agent.id).then(
+                          () => toast.success(t("rejected")),
+                          (err) => {
+                            if (err instanceof ApiError) toast.error(err.message);
+                          },
+                        )
+                      }
+                    >
+                      {t("reject")}
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
 export default function LocationsPage() {
   const t = useTranslations("locations");
   const tCommon = useTranslations("common");
@@ -174,6 +270,8 @@ export default function LocationsPage() {
           </Table>
         </div>
       )}
+
+      <PendingAgentsSection />
     </div>
   );
 }

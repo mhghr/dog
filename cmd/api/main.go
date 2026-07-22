@@ -120,6 +120,7 @@ func main() {
 	)
 
 	go watchQueueDepth(ctx, probeQueue, ingestionMetrics)
+	go watchOfflineAgents(ctx, agentRepo, logger)
 
 	router := api.NewRouter(api.Deps{
 		Config:        cfg,

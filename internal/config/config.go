@@ -33,10 +33,11 @@ type Config struct {
 	ProbeLocationID   string
 	ProbeLocationCode string
 
-	QueueStream     string
-	QueueGroup      string
-	QueueDeadLetter string
-	QueueMaxLen     int64
+	QueueLocationPrefix string
+	QueueStream         string
+	QueueGroup          string
+	QueueDeadLetter    string
+	QueueMaxLen         int64
 
 	CORSAllowedOrigins []string
 
@@ -86,7 +87,9 @@ func Load() *Config {
 		ProbeLocationID:   getString("PROBE_LOCATION_ID", ""),
 		ProbeLocationCode: getString("PROBE_LOCATION_CODE", "local-dev"),
 
-		QueueStream:     getString("QUEUE_STREAM", "probe_jobs"),
+		QueueLocationPrefix: getString("QUEUE_LOCATION_PREFIX", "probe-jobs"),
+
+		QueueStream:    getString("QUEUE_STREAM", "probe_jobs"),
 		QueueGroup:      getString("QUEUE_GROUP", "probe_workers"),
 		QueueDeadLetter: getString("QUEUE_DEAD_LETTER", "probe_results_dead_letter"),
 		QueueMaxLen:     int64(getInt("QUEUE_MAX_LEN", 100000)),

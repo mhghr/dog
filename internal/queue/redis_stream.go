@@ -15,10 +15,11 @@ import (
 )
 
 type StreamConfig struct {
-	Stream     string
-	Group      string
-	DeadLetter string
-	MaxLen     int64
+	Stream         string
+	Group          string
+	DeadLetter     string
+	MaxLen         int64
+	LocationPrefix string
 }
 
 type RedisQueue struct {
@@ -61,6 +62,26 @@ func (q *RedisQueue) Publish(ctx context.Context, job domain.ProbeJob) error {
 		Approx: true,
 		Values: map[string]any{
 			"payload": string(payload),
+		},
+	}).Err()
+}
+
+func (q *RedisQueue) PublishToLocation(ctx context.Context, locationCode string, job []byte) error {
+	stream := q.cfg.Stream
+	if locationCode != "" {
+		prefix := q.cfg.LocationPrefix
+		if prefix == "" {
+			prefix = "probe-jobs"
+		}
+		stream = fmt.Sprintf("%s:%s", prefix, locationCode)
+	}
+
+	return q.client.XAdd(ctx, &redis.XAddArgs{
+		Stream: stream,
+		MaxLen: q.cfg.MaxLen,
+		Approx: true,
+		Values: map[string]any{
+			"payload": string(job),
 		},
 	}).Err()
 }

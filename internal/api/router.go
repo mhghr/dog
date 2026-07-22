@@ -78,6 +78,10 @@ func NewRouter(deps Deps) http.Handler {
 
 	orgScoped := auth.OrgScoped(deps.Issuer)
 
+	requireAdmin := auth.RequireAdmin(func(w http.ResponseWriter, r *http.Request) {
+		writeError(w, r, http.StatusForbidden, "forbidden", "Admin access required", nil)
+	})
+
 	router.Get("/health/live", handler.healthLive)
 	router.Get("/health/ready", handler.healthReady)
 	router.Method(http.MethodGet, "/metrics", deps.Prom)
@@ -90,6 +94,9 @@ func NewRouter(deps Deps) http.Handler {
 
 		// Agent enrollment (public, token-authenticated)
 		r.Post("/agent/v1/enroll", handler.agentEnroll)
+
+		// Agent status polling (public, agent ID lookup only)
+		r.Get("/agent/v1/status/{agentID}", handler.agentStatus)
 
 		// Public auth
 		r.Route("/auth", func(r chi.Router) {
@@ -164,18 +171,22 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/alerts", handler.listAlerts)
 			r.Get("/alerts/{alertID}", handler.getAlert)
 
-			r.Route("/admin/probe-agents", func(r chi.Router) {
-				r.Get("/", handler.listAgents)
-				r.Get("/{agentID}", handler.getAgent)
-				r.Post("/{agentID}/approve", handler.approveAgent)
-				r.Post("/{agentID}/reject", handler.rejectAgent)
-				r.Post("/{agentID}/disable", handler.disableAgent)
-				r.Post("/{agentID}/enable", handler.enableAgent)
-				r.Post("/{agentID}/revoke", handler.revokeAgent)
-				r.Post("/{agentID}/drain", handler.drainAgent)
-			})
+			r.Route("/admin", func(r chi.Router) {
+				r.Use(requireAdmin)
 
-			r.Post("/admin/probe-agent-enrollment-tokens", handler.createEnrollmentToken)
+				r.Route("/probe-agents", func(r chi.Router) {
+					r.Get("/", handler.listAgents)
+					r.Get("/{agentID}", handler.getAgent)
+					r.Post("/{agentID}/approve", handler.approveAgent)
+					r.Post("/{agentID}/reject", handler.rejectAgent)
+					r.Post("/{agentID}/disable", handler.disableAgent)
+					r.Post("/{agentID}/enable", handler.enableAgent)
+					r.Post("/{agentID}/revoke", handler.revokeAgent)
+					r.Post("/{agentID}/drain", handler.drainAgent)
+				})
+
+				r.Post("/probe-agent-enrollment-tokens", handler.createEnrollmentToken)
+			})
 		})
 	})
 

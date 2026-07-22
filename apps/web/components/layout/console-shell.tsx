@@ -30,6 +30,7 @@ import {
   GearSix,
   List,
   MapPin,
+  PlugsConnected,
   SignOut,
   SquaresFour,
   UserCircle,
@@ -38,7 +39,7 @@ import {
 
 interface NavigationItem {
   href: string;
-  labelKey: "dashboard" | "monitors" | "alerts" | "statusPages" | "locations" | "system" | "settings";
+  labelKey: "dashboard" | "monitors" | "alerts" | "statusPages" | "locations" | "probeAgents" | "system" | "settings";
   icon: AppIcon;
 }
 
@@ -48,6 +49,7 @@ const NAVIGATION: NavigationItem[] = [
   { href: "/app/status-pages", labelKey: "statusPages", icon: PanelTop },
   { href: "/app/alerts", labelKey: "alerts", icon: Warning },
   { href: "/app/locations", labelKey: "locations", icon: MapPin },
+  { href: "/app/probe-agents", labelKey: "probeAgents", icon: PlugsConnected },
   { href: "/app/system", labelKey: "system", icon: Gauge },
   { href: "/app/settings", labelKey: "settings", icon: GearSix },
 ];

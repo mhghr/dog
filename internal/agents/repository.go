@@ -242,6 +242,59 @@ type ListAgentsParams struct {
 	Offset int32
 }
 
+func (r *Repository) UpdateCapacity(ctx context.Context, agentID uuid.UUID, runningJobs int32, spoolBytes int64) error {
+	tag, err := r.pool.Exec(ctx, `
+		UPDATE probe_agents
+		SET running_jobs = $2,
+		    spool_bytes = $3,
+		    updated_at = NOW()
+		WHERE id = $1
+	`, agentID, runningJobs, spoolBytes)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrAgentNotFound
+	}
+	return nil
+}
+
+func (r *Repository) GetActiveAgentsForLocation(ctx context.Context, locationID uuid.UUID) ([]ProbeAgent, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, location_id, name, hostname, machine_fingerprint,
+			public_key, COALESCE(certificate_serial, ''), version, operating_system,
+			architecture, COALESCE(public_ip::text, ''), private_ips, capabilities,
+			max_concurrency, COALESCE(running_jobs, 0), COALESCE(spool_bytes, 0),
+			status, approved_by, approved_at,
+			last_seen_at, revoked_at, created_at, updated_at
+		FROM probe_agents
+		WHERE location_id = $1
+		  AND status IN ('active', 'draining', 'updating')
+		ORDER BY running_jobs ASC
+	`, locationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var agents []ProbeAgent
+	for rows.Next() {
+		var a ProbeAgent
+		if err := rows.Scan(
+			&a.ID, &a.LocationID, &a.Name, &a.Hostname, &a.MachineFingerprint,
+			&a.PublicKey, &a.CertificateSerial, &a.Version, &a.OperatingSystem,
+			&a.Architecture, &a.PublicIP, &a.PrivateIPs, &a.Capabilities,
+			&a.MaxConcurrency, &a.RunningJobs, &a.SpoolBytes,
+			&a.Status, &a.ApprovedBy, &a.ApprovedAt,
+			&a.LastSeenAt, &a.RevokedAt, &a.CreatedAt, &a.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		agents = append(agents, a)
+	}
+	return agents, rows.Err()
+}
+
 type StatusUpdateOpts struct {
 	ApprovedBy *uuid.UUID
 	ApprovedAt *time.Time

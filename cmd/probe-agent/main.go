@@ -10,6 +10,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
+	"monitoring-platform/internal/agent/spool"
 	"monitoring-platform/internal/config"
 	"monitoring-platform/internal/heartbeat"
 	"monitoring-platform/internal/httpserver"
@@ -66,13 +67,28 @@ func main() {
 
 	resultClient := worker.NewResultClient(cfg.APIBaseURL, cfg.WorkerToken)
 
+	spoolDir := os.Getenv("AGENT_SPOOL_DIR")
+	if spoolDir == "" {
+		spoolDir = "./spool"
+	}
+
+	resultSpool, err := spool.New(spoolDir)
+	if err != nil {
+		logger.Error("failed to create result spool", "error", err)
+		os.Exit(1)
+	}
+	defer resultSpool.Close()
+
+	batcher := spool.NewBatcher(resultSpool, resultClient, spool.DefaultBatcherConfig(), logger)
+	go batcher.Run(ctx)
+
 	promRegistry := metrics.NewRegistry()
 	workerMetrics := metrics.NewWorkerMetrics(promRegistry)
 
 	service := worker.New(
 		probeQueue,
 		probeRegistry,
-		resultClient,
+		resultSpool,
 		cfg.WorkerName,
 		cfg.WorkerConcurrency,
 		logger,

@@ -12,4 +12,9 @@ type ProbeJob struct {
 	Config          map[string]any `json:"config"`
 	ProbeLocationID string         `json:"probe_location_id"`
 	ScheduledAt     time.Time      `json:"scheduled_at"`
+	Deadline        time.Time      `json:"deadline"`
+	LeaseID         string         `json:"lease_id,omitempty"`
+	LeaseExpiresAt  time.Time      `json:"lease_expires_at,omitempty"`
+	Attempt         int            `json:"attempt,omitempty"`
+	ConfigVersion   string         `json:"config_version,omitempty"`
 }

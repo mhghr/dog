@@ -35,6 +35,8 @@ type ProbeAgent struct {
 	PrivateIPs         []string
 	Capabilities       []string
 	MaxConcurrency     int32
+	RunningJobs        int32
+	SpoolBytes         int64
 	Status             AgentStatus
 	ApprovedBy         *uuid.UUID
 	ApprovedAt         *time.Time
@@ -42,6 +44,26 @@ type ProbeAgent struct {
 	RevokedAt          *time.Time
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
+}
+
+type AgentCapacity struct {
+	MaxConcurrency int32
+	RunningJobs    int32
+	AvailableSlots int32
+	SpoolBytes     int64
+}
+
+func (a *ProbeAgent) GetCapacity() AgentCapacity {
+	available := a.MaxConcurrency - a.RunningJobs
+	if available < 0 {
+		available = 0
+	}
+	return AgentCapacity{
+		MaxConcurrency: a.MaxConcurrency,
+		RunningJobs:    a.RunningJobs,
+		AvailableSlots: available,
+		SpoolBytes:     a.SpoolBytes,
+	}
 }
 
 type EnrollmentToken struct {

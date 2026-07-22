@@ -13,6 +13,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"monitoring-platform/internal/config"
+	"monitoring-platform/internal/domain"
 	"monitoring-platform/internal/heartbeat"
 	"monitoring-platform/internal/httpserver"
 	"monitoring-platform/internal/logging"
@@ -52,10 +53,11 @@ func main() {
 	defer redisClient.Close()
 
 	probeQueue := queue.NewRedisQueue(redisClient, queue.StreamConfig{
-		Stream:     cfg.QueueStream,
-		Group:      cfg.QueueGroup,
-		DeadLetter: cfg.QueueDeadLetter,
-		MaxLen:     cfg.QueueMaxLen,
+		Stream:         cfg.QueueStream,
+		Group:          cfg.QueueGroup,
+		DeadLetter:     cfg.QueueDeadLetter,
+		MaxLen:         cfg.QueueMaxLen,
+		LocationPrefix: cfg.QueueLocationPrefix,
 	}, logger)
 
 	if err := probeQueue.EnsureGroup(ctx); err != nil {
@@ -63,12 +65,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	locationID, err := resolveLocationID(ctx, cfg, pool)
+	enabledLocations, err := loadProbeLocations(ctx, cfg, pool)
 	if err != nil {
-		logger.Error("resolve probe location failed", "error", err)
+		logger.Error("load probe locations failed", "error", err)
 		os.Exit(1)
 	}
-	logger.Info("probe location resolved", "location_id", locationID, "code", cfg.ProbeLocationCode)
+	if len(enabledLocations) == 0 {
+		logger.Warn("no active probe locations found; scheduler will publish to the default queue only")
+	}
+	logger.Info("probe locations loaded", "count", len(enabledLocations))
 
 	registry := metrics.NewRegistry()
 	schedulerMetrics := metrics.NewSchedulerMetrics(registry)
@@ -78,7 +83,7 @@ func main() {
 	service := scheduler.New(
 		monitorRepo,
 		probeQueue,
-		locationID,
+		enabledLocations,
 		cfg.SchedulerBatchSize,
 		cfg.SchedulerInterval,
 		logger,
@@ -102,20 +107,25 @@ func main() {
 	logger.Info("scheduler stopped")
 }
 
-// resolveLocationID prefers an explicit PROBE_LOCATION_ID and otherwise looks
-// the location up by PROBE_LOCATION_CODE (seeded as local-dev).
-func resolveLocationID(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) (string, error) {
-	if cfg.ProbeLocationID != "" {
-		return cfg.ProbeLocationID, nil
-	}
-
+func loadProbeLocations(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool) ([]domain.ProbeLocation, error) {
 	locations := postgres.NewLocationRepository(pool)
-	location, err := locations.GetByCode(ctx, cfg.ProbeLocationCode)
+	all, err := locations.List(ctx)
 	if err != nil {
-		return "", fmt.Errorf("lookup probe location by code %q: %w", cfg.ProbeLocationCode, err)
+		return nil, fmt.Errorf("list locations: %w", err)
 	}
 
-	return location.ID, nil
+	enabled := make([]domain.ProbeLocation, 0, len(all))
+	for _, loc := range all {
+		if !loc.Enabled {
+			continue
+		}
+		if cfg.ProbeLocationID != "" && loc.ID != cfg.ProbeLocationID {
+			continue
+		}
+		enabled = append(enabled, loc)
+	}
+
+	return enabled, nil
 }
 
 func healthMux(pool *pgxpool.Pool, redisClient *redis.Client, promHandler http.Handler) http.Handler {

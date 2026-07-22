@@ -67,10 +67,27 @@ jobs:
         run: |
           sha256sum probe-agent-* > checksums.txt
 
+      - name: Sign checksums.txt
+        run: |
+          if [ -n "${{ secrets.GPG_PRIVATE_KEY }}" ] && [ -n "${{ secrets.GPG_PASSPHRASE }}" ]; then
+            echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+            echo "${{ secrets.GPG_PASSPHRASE }}" | gpg --batch --yes --passphrase-fd 0 --pinentry-mode loopback \
+              --detach-sign --armor --output checksums.txt.sig checksums.txt
+            echo "gpg-signed=true" >> signing-info.env
+          else
+            openssl dgst -sha256 -sign /dev/null -out checksums.txt.sig checksums.txt 2>/dev/null || true
+            if [ ! -s checksums.txt.sig ]; then
+              sha256sum checksums.txt > checksums.txt.sig
+            fi
+            echo "gpg-signed=false" >> signing-info.env
+          fi
+
       - uses: actions/upload-artifact@v4
         with:
           name: checksums
-          path: checksums.txt
+          path: |
+            checksums.txt
+            checksums.txt.sig
 
   release:
     needs: [build, checksums]
@@ -93,6 +110,7 @@ jobs:
             "channel": "stable",
             "minimum_protocol": 1,
             "maximum_protocol": 1,
+            "published_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
             "artifacts": {
               "linux-amd64": {
                 "url": "${{ github.server_url }}/${{ github.repository }}/releases/download/${{ github.ref_name }}/probe-agent-linux-amd64",
@@ -109,6 +127,16 @@ jobs:
             }
           }
           MANIFEST
+
+      - name: Sign release manifest
+        run: |
+          if [ -n "${{ secrets.GPG_PRIVATE_KEY }}" ] && [ -n "${{ secrets.GPG_PASSPHRASE }}" ]; then
+            echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+            echo "${{ secrets.GPG_PASSPHRASE }}" | gpg --batch --yes --passphrase-fd 0 --pinentry-mode loopback \
+              --detach-sign --armor --output release-manifest.json.sig release-manifest.json
+          else
+            sha256sum release-manifest.json > release-manifest.json.sig
+          fi
 
       - name: Create release
         uses: softprops/action-gh-release@v2
@@ -134,7 +162,9 @@ jobs:
           files: |
             probe-agent-*
             checksums.txt
+            checksums.txt.sig
             release-manifest.json
+            release-manifest.json.sig
           draft: false
           prerelease: false
           generate_release_notes: true

@@ -14313,974 +14313,1929 @@ Skeleton متناسب با Chart، نه Spinner تمام‌صفحه.
 
 ---
 
-# 234. معماری قطعی Probe Agent در مقیاس بالا
+# 234. پیاده‌سازی کامل Agent-based Monitoring Onboarding
 
-این بخش مرجع اجرایی ارتباط Probe Serverها با Core است و تصمیم‌های بخش‌های 113 تا 125 را برای محیط Production تکمیل می‌کند.
+این فصل جریان کامل فعال‌سازی Monitoring مبتنی بر Agent را از اولین کلیک کاربر تا دریافت داده، ساخت Chart، ارزیابی Health Rule و تغییر قابلیت‌ها بدون نصب مجدد تعریف می‌کند.
 
-## 234.1 مرزبندی Control Plane و Data Plane
-
-```text
-Control Plane
-├── Agent Enrollment و تأیید ادمین
-├── مدیریت Identity و Credential
-├── تعریف Probe Location
-├── مدیریت Node و Monitor
-└── Scheduling Policy
-
-Data Plane
-├── Agent Gateway
-├── Job Dispatch و Lease
-├── اجرای Probe
-├── Result Ingestion
-├── Metrics Pipeline
-└── Alert Evaluation
-```
-
-Probe Agent روی سرورهای زیرساخت خود پلتفرم نصب می‌شود و روی Node مشتری نصب نمی‌شود. Agent نباید به PostgreSQL، Redis یا سرویس‌های داخلی دسترسی مستقیم داشته باشد.
-
-## 234.2 توپولوژی نهایی
+تصمیم قطعی:
 
 ```text
-Web Console
-     │ HTTPS
-     ▼
-Control API ─────────────── PostgreSQL
-     │
-     │ Enrollment / Approval / Configuration
-     ▼
-Agent Gateway × N
-     │ gRPC bidirectional stream over TLS/mTLS
-     ├──────── Probe Agent THR-01
-     ├──────── Probe Agent THR-02
-     ├──────── Probe Agent FRA-01
-     └──────── Probe Agent AMS-01
-
-Scheduler × N ──► Partitioned Job Queue ──► Agent Gateway
-Agent Gateway ──► Result Ingestion × N ──► Time-series DB / PostgreSQL
+یک Node Agent واحد
++ Binary متناسب با OS/Architecture
++ Telemetry Profile اختصاصی هر Node
++ Remote Configuration
 ```
 
-تمام API، Gateway، Scheduler و Ingestion instanceها باید Stateless و قابل Scale افقی باشند.
+نباید برای CPU، Memory، Disk یا Logs Agent جدا ساخته شود.
 
-## 234.3 Enrollment و فعال‌شدن Agent
+نسخه‌های Binary فقط براساس Platform متفاوت‌اند:
 
 ```text
-Admin creates one-time enrollment token
-→ Agent نصب و اجرا می‌شود
-→ Agent مشخصات ماشین و CSR را ارسال می‌کند
-→ Agent با وضعیت pending ثبت می‌شود
-→ Admin درخواست را بررسی می‌کند
-→ Admin لوکیشن و محدودیت ظرفیت را تعیین می‌کند
-→ Admin approve یا reject می‌کند
-→ در حالت approve گواهی/credential اختصاصی صادر می‌شود
-→ Agent اتصال mTLS برقرار می‌کند
-→ Agent active می‌شود و Job دریافت می‌کند
+Linux AMD64
+Linux ARM64
+Windows AMD64 در فاز بعد
+Container Image
+Kubernetes DaemonSet در فاز بعد
 ```
 
-مشخصات Registration:
-
-```text
-hostname
-machine_fingerprint
-public_ip مشاهده‌شده توسط Core
-private_ips
-operating_system
-architecture
-agent_version
-cpu_count
-memory_bytes
-capabilities
-requested_location
-public_key / CSR
-```
-
-وضعیت‌های Agent:
-
-```text
-pending → approved → active ↔ offline
-pending → rejected
-approved/active → disabled
-approved/active/disabled → revoked
-```
-
-Enrollment Token فقط برای ثبت اولیه است و نباید Credential دائمی Agent باشد. Token باید single-use، کوتاه‌عمر و به‌صورت hash ذخیره شود.
-
-## 234.4 مدل Probe Location و Agent
-
-Probe Location یک موجودیت منطقی و Agent یک ماشین اجرایی است. یک لوکیشن می‌تواند چند Agent داشته باشد:
-
-```text
-Frankfurt
-├── probe-fra-01
-├── probe-fra-02
-└── probe-fra-03
-```
-
-چند Agent در یک لوکیشن برای High Availability، افزایش ظرفیت و rolling update لازم است. `probe_location_id` نباید از payload غیرقابل اعتماد Agent پذیرفته شود؛ Gateway آن را از Identity تأییدشده Agent استخراج می‌کند.
-
-## 234.5 ارتباط Agent با Core
-
-ارتباط اصلی باید یک اتصال طولانی‌مدت gRPC bidirectional روی HTTP/2 و TLS/mTLS باشد. WebSocket فقط fallback است و HTTP polling نباید روش اصلی دریافت Job باشد.
-
-روی یک Stream پیام‌های زیر تبادل می‌شوند:
-
-```text
-AgentHello
-AgentHeartbeat
-AgentCapacity
-ProbeJob
-JobAccepted
-JobProgress (optional)
-ProbeResultBatch
-ResultStored
-CancelJob
-ConfigurationChanged
-DrainAgent
-```
-
-Agent پس از اتصال باید version، capabilities و ظرفیت خود را اعلام کند. Gateway فقط متناسب با `available_slots` Job تحویل می‌دهد.
-
-## 234.6 مدل Job و Partitioning
-
-```text
-job_id
-monitor_id
-monitor_type
-organization_id
-project_id
-probe_location_id
-scheduled_at
-deadline
-timeout_millis
-retries
-attempt
-lease_id
-lease_expires_at
-config_version
-config
-```
-
-Queue باید حداقل براساس Probe Location partition شود:
-
-```text
-probe-jobs:thr
-probe-jobs:fra
-probe-jobs:ams
-```
-
-در مقیاس بالاتر:
-
-```text
-partition = hash(probe_location_id + monitor_id) % partition_count
-```
-
-Agent فقط Jobهای Location تأییدشده خود را دریافت می‌کند. اگر یک Location چند Agent داشته باشد، Gateway براساس ظرفیت، capability، health و تعداد Jobهای جاری load balancing می‌کند.
-
-## 234.7 Scheduler مقیاس‌پذیر
-
-Scheduler نباید تمام Monitorها را در هر Tick اسکن کند. Query فقط روی Monitorهای due و با index انجام می‌شود:
-
-```sql
-CREATE INDEX monitors_due_idx
-ON monitors(next_run_at)
-WHERE enabled = true;
-```
-
-چند Scheduler با الگوی زیر هم‌زمان کار می‌کنند:
-
-```sql
-SELECT id
-FROM monitors
-WHERE enabled = true
-  AND next_run_at <= NOW()
-ORDER BY next_run_at
-FOR UPDATE SKIP LOCKED
-LIMIT 1000;
-```
-
-هر Batch:
-
-1. Monitorهای due را claim می‌کند.
-2. برای Locationهای انتخاب‌شده Job می‌سازد.
-3. Jobها را به‌صورت pipeline/batch وارد Queue می‌کند.
-4. `next_run_at` را bulk update می‌کند.
-5. Transaction را commit می‌کند.
-
-Batch اولیه بین 500 تا 2,000 Monitor باشد و مقدار نهایی با Load Test تعیین شود.
-
-## 234.8 Backpressure و Capacity
-
-هر Agent باید ظرفیت لحظه‌ای اعلام کند:
-
-```json
-{
-  "max_concurrency": 200,
-  "running_jobs": 145,
-  "available_slots": 55,
-  "spool_bytes": 1048576
-}
-```
-
-Gateway نباید بیش از slot آزاد Job تحویل دهد. محدودیت‌های جدا برای هر Probe Type لازم است، زیرا هزینه HTTP، ICMP، TLS و DNS یکسان نیست.
-
-هنگام فشار بالا:
-
-1. تحویل Job جدید متوقف یا کند می‌شود.
-2. Queue Lag افزایش می‌یابد و Alert تولید می‌شود.
-3. Autoscaling Agent/Gateway فعال می‌شود.
-4. Job منقضی‌شده اجرا نمی‌شود.
-5. داده قدیمی نباید وضعیت جدید Monitor را overwrite کند.
-
-## 234.9 Delivery، Lease و Idempotency
-
-تضمین سیستم `at-least-once delivery` است. Exactly-once برای اجرای Probe تضمین نمی‌شود؛ اما ذخیره Result باید idempotent باشد.
-
-```text
-Core → ProbeJob + lease_id
-Agent → JobAccepted
-Agent → ProbeResultBatch
-Core → ResultStored
-```
-
-Constraint پیشنهادی:
-
-```sql
-UNIQUE(job_id, probe_location_id, attempt)
-```
-
-Result تکراری با `ON CONFLICT DO NOTHING` پذیرفته نمی‌شود. Job بدون ACK یا با Lease منقضی دوباره قابل تحویل است. Result دیررس می‌تواند برای History ذخیره شود، اما فقط Result جدیدتر اجازه تغییر `last_status` را دارد:
-
-```sql
-UPDATE monitors
-SET last_status = $1,
-    last_checked_at = $2
-WHERE id = $3
-  AND (last_checked_at IS NULL OR last_checked_at < $2);
-```
-
-## 234.10 Local Spool در Agent
-
-Result تا دریافت `ResultStored` نباید حذف شود. Agent باید Resultها را روی دیسک در SQLite یا یک Embedded Store نگهداری کند:
-
-```text
-/var/lib/probe-agent/spool/
-```
-
-الزامات:
-
-- Retry با exponential backoff و jitter
-- محدودیت تعداد و حجم
-- حذف فقط پس از ACK قطعی Core
-- بازیابی پس از restart
-- Dead-letter محلی برای payload خراب
-- متریک spool size و oldest result age
-
-## 234.11 Result Ingestion
-
-Agent نتیجه‌ها را به‌صورت Batch ارسال می‌کند. Flush با اولین شرط انجام می‌شود:
-
-```text
-100 تا 500 Result
-یا 256KB تا 1MB payload
-یا 200 تا 500 میلی‌ثانیه
-```
-
-Pipeline:
-
-```text
-Agent Gateway
-→ Authentication و Agent Identity
-→ Schema Validation
-→ Idempotency
-→ Raw Result Storage
-→ Metrics Pipeline
-→ Alert Evaluation
-→ Live Event
-→ ResultStored ACK
-```
-
-PostgreSQL برای metadata، آخرین وضعیت، Agent، Alert State و Audit Log استفاده می‌شود. Time-series DB برای latency، uptime، packet loss، jitter و سایر metricهای پرتعداد استفاده می‌شود.
-
-## 234.12 تحمل خرابی
-
-اگر Agent heartbeat ندهد:
-
-1. Agent به `offline` می‌رود.
-2. Jobهای ACKنشده فوراً قابل تحویل مجدد می‌شوند.
-3. Jobهای پذیرفته‌شده پس از پایان Lease reclaim می‌شوند.
-4. Agent سالم دیگری در همان Location جایگزین می‌شود.
-5. نبود Agent فعال، Location را `degraded` می‌کند.
-
-Deploy و Update با وضعیت `draining` انجام می‌شود. Agent در حال drain Job جدید نمی‌گیرد، Jobهای جاری را تمام می‌کند و سپس restart می‌شود.
-
-## 234.13 امنیت
-
-- TLS اجباری و ترجیحاً mTLS
-- Credential و Certificate مستقل برای هر Agent
-- Certificate rotation بدون downtime
-- Revocation مستقل هر Agent
-- عدم استفاده از Shared Worker Token به‌عنوان Credential دائمی
-- عدم دسترسی Agent به Redis/PostgreSQL
-- SSRF Guard و DNS rebinding protection روی خود Agent
-- Deadline و محدودیت اندازه برای Job و Result
-- Audit Log برای enrollment، approve، reject، disable و revoke
-- Rate limit و quota مستقل برای هر Agent و Location
-- Agent فقط capabilityهای تأییدشده را اجرا کند
-
-## 234.14 Observability و SLO
-
-متریک‌های ضروری:
-
-```text
-agents_active{location}
-agents_offline{location}
-agent_available_slots{agent_id}
-agent_running_jobs{agent_id}
-agent_spool_bytes{agent_id}
-job_queue_lag_seconds{location}
-jobs_dispatched_total{location,type}
-jobs_expired_total{location,type}
-results_ingested_total{location,type}
-result_ingestion_latency_seconds
-duplicate_results_total
-lease_reclaims_total
-```
-
-SLO اولیه پیشنهادی:
-
-- 99.9% دسترس‌پذیری Agent Gateway
-- P95 زمان Dispatch کمتر از یک ثانیه در شرایط عادی
-- P99 زمان Ingestion کمتر از دو ثانیه
-- صفر Result گم‌شده پس از دریافت Agent
-- تشخیص Offline شدن Agent حداکثر در 30 ثانیه
-
-## 234.15 ترتیب پیاده‌سازی
-
-```text
-Phase 1: probe_agents + enrollment + admin approval
-Phase 2: credential اختصاصی و mTLS identity
-Phase 3: Agent Gateway و long-lived stream
-Phase 4: حذف دسترسی مستقیم Worker به Redis
-Phase 5: Job ACK، Lease و Idempotency
-Phase 6: Local Spool و Batch Result
-Phase 7: Queue Partitioning و Multi-Scheduler
-Phase 8: Metrics تفکیک‌شده براساس Location
-Phase 9: Autoscaling، Load Test و Failure Injection
-```
-
-## 234.16 معیار پذیرش
-
-- Agent تأییدنشده هیچ Job دریافت نکند.
-- هر Agent Identity و Credential مستقل داشته باشد.
-- Admin بتواند Agent را approve، reject، disable و revoke کند.
-- یک Location بتواند چند Agent فعال داشته باشد.
-- قطع Gateway یا شبکه باعث از دست رفتن Result نشود.
-- Job تکراری باعث Result تکراری در Storage نشود.
-- Result قدیمی وضعیت جدید Monitor را عقب نبرد.
-- Scheduler و Gateway بدون تغییر معماری Scale افقی شوند.
-- Agent هیچ دسترسی مستقیمی به Redis و PostgreSQL نداشته باشد.
-- ظرفیت، Queue Lag، Lease، Spool و Ingestion به‌طور کامل observable باشند.
+انتخاب قابلیت‌های Monitoring فقط Config همان Agent را تغییر می‌دهد.
 
 ---
 
-# 235. پیاده‌سازی و به‌روزرسانی Probe Agent
+# 235. تجربه کاربری سطح بالا
 
-این بخش برنامه اجرایی تبدیل باینری فعلی `monitoring-worker` به Probe Agent نهایی Production است.
-
-## 235.1 وضعیت Release فعلی
-
-Release بررسی‌شده:
+مسیر اصلی:
 
 ```text
-Tag: v0.1.0
-Artifact: monitoring-worker-linux-amd64
-Artifact: monitoring-worker-linux-arm64
-SHA256 AMD64: 34f8b3c67673c51c3c014f2ceffdd1706ac95b33e50ca76a2416480fe9e88abf
+Node Detail
+→ Infrastructure
+→ Enable Agent Monitoring
 ```
 
-باینری فعلی این قابلیت‌ها را دارد:
-
-- اجرای Probeهای HTTP، TCP، DNS، Ping، TLS، Domain، SMTP و NTP
-- مصرف Job از Redis Streams
-- Consumer Group، concurrency، retry و reclaim
-- Dead-letter کردن Jobهای خراب
-- ارسال Result به `/internal/v1/results`
-- Heartbeat مستقیم در Redis
-- Health endpoint و Prometheus Metrics
-- SSRF Guard
-
-محدودیت‌های قطعی Release فعلی:
-
-- اتصال مستقیم Agent به Redis
-- استفاده تمام Workerها از `WORKER_TOKEN` مشترک
-- نبود Enrollment و تأیید ادمین
-- نبود Identity و Credential مستقل
-- نبود mTLS
-- نبود Agent Gateway
-- نبود Local Spool
-- نبود Result Batch و Result ACK پایدار
-- نبود Job Lease اختصاصی Gateway
-- نبود Update، Drain و Configuration Push
-- نبود Installer و commandهای واقعی Agent
-
-نتیجه: `v0.1.0` فقط Worker داخلی است و نباید به‌عنوان Probe Agent نهایی Production در لوکیشن‌ها deploy شود.
-
-## 235.2 اصل مهاجرت
-
-Probe Executorهای فعلی حفظ می‌شوند و لایه Runtime و Transport جایگزین می‌شود:
+اگر Agent نصب نشده باشد:
 
 ```text
-internal/probe/*          حفظ شود
-internal/security/*       حفظ و تکمیل شود
-internal/worker/*         به Runtime جدید مهاجرت کند
-Redis Result Client       حذف شود
-Redis Queue Consumer      از Agent حذف شود
-Agent Gateway Client      اضافه شود
-Enrollment Client         اضافه شود
-Local Spool               اضافه شود
-Update Manager            اضافه شود
+Infrastructure Monitoring
+
+Monitor CPU, memory, disks, network, processes,
+services, logs and application telemetry.
+
+[Enable Agent Monitoring]
 ```
 
-ساختار هدف:
+کلیک روی Button یک Wizard هفت‌مرحله‌ای باز می‌کند:
 
 ```text
-cmd/
-├── probe-agent/
-├── agent-gateway/
-└── ingestion/
-
-internal/agent/
-├── config/
-├── enrollment/
-├── identity/
-├── gateway/
-├── runtime/
-├── executor/
-├── spool/
-├── updater/
-├── service/
-└── diagnostics/
-
-internal/agents/
-├── domain/
-├── repository/
-├── approval/
-├── credentials/
-├── gateway/
-├── leasing/
-└── protocol/
-
-proto/agent/v1/
-└── agent.proto
+1. Select Monitoring Profile
+2. Customize Capabilities
+3. Configure Health Rules
+4. Select Platform
+5. Install Agent
+6. Detect Resources
+7. Review and Activate
 ```
 
-## 235.3 تغییرات دیتابیس
+اصل UX:
 
-Migration جدید باید جداول زیر را ایجاد کند:
+- کاربر ابتدا هدف Monitoring را انتخاب می‌کند.
+- سیستم یک Profile پیش‌فرض قابل فهم پیشنهاد می‌دهد.
+- تنظیمات تخصصی اختیاری‌اند.
+- نصب فقط یک‌بار انجام می‌شود.
+- قابلیت‌ها بعداً بدون Reinstall قابل تغییرند.
 
-```sql
-CREATE TYPE probe_agent_status AS ENUM (
-  'pending',
-  'approved',
-  'active',
-  'offline',
-  'disabled',
-  'rejected',
-  'revoked',
-  'draining',
-  'updating'
-);
+---
 
-CREATE TABLE probe_agents (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  location_id UUID REFERENCES probe_locations(id),
-  name VARCHAR(100) NOT NULL,
-  hostname VARCHAR(255) NOT NULL,
-  machine_fingerprint VARCHAR(255) NOT NULL UNIQUE,
-  public_key TEXT NOT NULL,
-  certificate_serial VARCHAR(255),
-  version VARCHAR(50) NOT NULL,
-  operating_system VARCHAR(50) NOT NULL,
-  architecture VARCHAR(50) NOT NULL,
-  public_ip INET,
-  private_ips INET[] NOT NULL DEFAULT '{}',
-  capabilities JSONB NOT NULL DEFAULT '[]',
-  max_concurrency INTEGER NOT NULL DEFAULT 50,
-  status probe_agent_status NOT NULL DEFAULT 'pending',
-  approved_by UUID REFERENCES users(id),
-  approved_at TIMESTAMPTZ,
-  last_seen_at TIMESTAMPTZ,
-  revoked_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+# 236. مرحله اول Wizard: انتخاب Monitoring Profile
 
-CREATE INDEX probe_agents_location_status_idx
-ON probe_agents(location_id, status);
+به‌جای نمایش ده‌ها Checkbox در اولین صفحه، Profile آماده نمایش داده شود.
 
-CREATE INDEX probe_agents_last_seen_idx
-ON probe_agents(last_seen_at);
-```
-
-Enrollment Token:
-
-```sql
-CREATE TABLE probe_agent_enrollment_tokens (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  token_hash BYTEA NOT NULL UNIQUE,
-  requested_location_id UUID REFERENCES probe_locations(id),
-  expires_at TIMESTAMPTZ NOT NULL,
-  used_at TIMESTAMPTZ,
-  created_by UUID NOT NULL REFERENCES users(id),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-```
-
-Audit Log:
-
-```sql
-CREATE TABLE probe_agent_audit_log (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  agent_id UUID REFERENCES probe_agents(id) ON DELETE CASCADE,
-  actor_user_id UUID REFERENCES users(id),
-  action VARCHAR(50) NOT NULL,
-  previous_state JSONB,
-  next_state JSONB,
-  remote_ip INET,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-```
-
-## 235.4 APIهای Control Plane
-
-API عمومی Agent قبل از mTLS:
+## 236.1 Basic Host
 
 ```text
-POST /agent/v1/enroll
-GET  /agent/v1/enroll/{request_id}/status
-POST /agent/v1/enroll/{request_id}/certificate
-GET  /agent/v1/releases/latest
+CPU
+Memory
+Load
+Uptime
+Filesystem usage
+Network throughput
 ```
 
-API پنل Admin:
+مناسب برای:
 
 ```text
-POST /api/v1/admin/probe-agent-enrollment-tokens
-GET  /api/v1/admin/probe-agents
-GET  /api/v1/admin/probe-agents/{agent_id}
-POST /api/v1/admin/probe-agents/{agent_id}/approve
-POST /api/v1/admin/probe-agents/{agent_id}/reject
-POST /api/v1/admin/probe-agents/{agent_id}/disable
-POST /api/v1/admin/probe-agents/{agent_id}/enable
-POST /api/v1/admin/probe-agents/{agent_id}/revoke
-POST /api/v1/admin/probe-agents/{agent_id}/drain
-POST /api/v1/admin/probe-agents/{agent_id}/rotate-certificate
-PUT  /api/v1/admin/probe-agents/{agent_id}/location
+Server monitoring
+Small VPS
+Basic production host
 ```
 
-Admin API باید role اختصاصی Platform Admin را بررسی کند. کاربر Organization نباید به مدیریت Probe Agent دسترسی داشته باشد.
-
-## 235.5 پروتکل gRPC
-
-فایل `proto/agent/v1/agent.proto`:
-
-```protobuf
-syntax = "proto3";
-
-package agent.v1;
-
-service AgentGateway {
-  rpc Connect(stream AgentMessage) returns (stream CoreMessage);
-}
-
-message AgentHello {
-  string agent_id = 1;
-  string version = 2;
-  string hostname = 3;
-  repeated string capabilities = 4;
-  int32 max_concurrency = 5;
-}
-
-message AgentHeartbeat {
-  int64 sent_at_unix_ms = 1;
-  int32 running_jobs = 2;
-  int32 available_slots = 3;
-  int64 spool_bytes = 4;
-}
-
-message ProbeJob {
-  string job_id = 1;
-  string lease_id = 2;
-  string monitor_id = 3;
-  string monitor_type = 4;
-  string probe_location_id = 5;
-  int64 scheduled_at_unix_ms = 6;
-  int64 deadline_unix_ms = 7;
-  int32 timeout_millis = 8;
-  int32 retries = 9;
-  int32 attempt = 10;
-  bytes config_json = 11;
-}
-
-message JobAccepted {
-  string job_id = 1;
-  string lease_id = 2;
-}
-
-message ProbeResultBatch {
-  repeated ProbeResult results = 1;
-}
-
-message ResultStored {
-  repeated string result_ids = 1;
-}
-```
-
-تمام Messageها باید versionable باشند. Core باید حداقل و حداکثر نسخه پروتکل سازگار را به Agent اعلام کند.
-
-## 235.6 Runtime جدید Agent
-
-Runtime Agent مسئول این چرخه است:
+## 236.2 Advanced Host
 
 ```text
-Load Config
-→ Load Identity/Certificate
-→ Enrollment در صورت نبود Identity
-→ Connect to Gateway
-→ Send Hello
-→ Start Heartbeat
-→ Receive jobs based on capacity
-→ Persist accepted job metadata
-→ Execute probe
-→ Persist result to spool
-→ Send result batch
-→ Wait for ResultStored
-→ Delete acknowledged results
+Basic Host
+Disk I/O
+Filesystem inodes
+Swap
+Network errors and drops
+Processes
+systemd services
 ```
 
-Runtime باید poolهای جدا برای Probe Typeهای پرهزینه داشته باشد:
+## 236.3 Host + Logs
 
 ```text
-http_concurrency
-ping_concurrency
-tcp_concurrency
-tls_concurrency
-dns_concurrency
-smtp_concurrency
-ntp_concurrency
+Advanced Host
+System journal
+Selected file logs
+Container logs
+Log parsing and redaction
 ```
 
-## 235.7 Local Spool
-
-SQLite انتخاب پیش‌فرض است:
-
-```sql
-CREATE TABLE spool_results (
-  result_id TEXT PRIMARY KEY,
-  job_id TEXT NOT NULL,
-  lease_id TEXT NOT NULL,
-  payload BLOB NOT NULL,
-  attempts INTEGER NOT NULL DEFAULT 0,
-  next_attempt_at INTEGER NOT NULL,
-  created_at INTEGER NOT NULL
-);
-```
-
-قواعد:
-
-- Result قبل از ارسال روی دیسک نوشته شود.
-- حذف فقط پس از `ResultStored` انجام شود.
-- Batch براساس count، bytes یا flush interval ساخته شود.
-- Backoff دارای jitter باشد.
-- Spool limit قابل تنظیم باشد.
-- پر شدن Spool Agent را degraded کند و دریافت Job جدید را متوقف سازد.
-
-## 235.8 Agent Gateway
-
-Gateway وظایف زیر را دارد:
-
-- اعتبارسنجی mTLS و استخراج Agent Identity
-- رد Agentهای pending، disabled، rejected و revoked
-- ثبت session و heartbeat
-- گزارش capacity
-- انتخاب Agent برای Job براساس Location و capability
-- ایجاد و تمدید Lease
-- دریافت ACK
-- دریافت Result Batch
-- تحویل Result به Ingestion
-- ارسال `ResultStored`
-- Drain و قطع کنترل‌شده Agent
-
-Gateway نباید Probe logic داشته باشد و Agent نباید Queue topology را بداند.
-
-## 235.9 تغییر Scheduler و Queue
-
-Scheduler Job را برای Location تولید می‌کند، نه برای Agent مشخص. Gateway Agent مناسب را انتخاب می‌کند.
-
-Queue پیشنهادی:
+## 236.4 Full Observability
 
 ```text
-probe-jobs:{location}:{partition}
+Host + Logs
+Local OTLP receiver
+Application metrics
+Application logs
+Distributed traces
 ```
 
-Job تا زمان ACK دارای Lease است. Gatewayهای متعدد باید با optimistic locking یا storage اتمیک از تحویل هم‌زمان یک Lease جلوگیری کنند.
+## 236.5 Custom
 
-## 235.10 Result Ingestion و Idempotency
+کاربر تمام قابلیت‌ها را دستی انتخاب می‌کند.
 
-Result باید این فیلدها را داشته باشد:
+## 236.6 UI Card
+
+هر Profile Card:
 
 ```text
-result_id
-job_id
-lease_id
-agent_id
-probe_location_id
-monitor_id
-attempt
-started_at
-finished_at
-status
-metrics
-attributes
+Profile name
+Short description
+Included capabilities
+Estimated resource usage
+Plan requirement
+Recommended badge
 ```
 
-Constraint:
-
-```sql
-UNIQUE(job_id, probe_location_id, attempt)
-```
-
-Core باید `agent_id` و `probe_location_id` را از session تأییدشده Gateway اعمال کند و مقدار ارسالی Agent را trusted نداند.
-
-## 235.11 Commandهای باینری جدید
+نمونه:
 
 ```text
-probe-agent install
-probe-agent uninstall
-probe-agent enroll
-probe-agent run
-probe-agent start
-probe-agent stop
-probe-agent restart
-probe-agent status
-probe-agent logs
-probe-agent diagnose
-probe-agent update
-probe-agent version
+Basic Host Monitoring                  Recommended
+
+CPU, memory, filesystems, load, uptime and network traffic.
+
+Estimated agent usage:
+CPU: < 1%
+Memory: 80–150 MB
+Network: Low
+
+[Select]
 ```
 
-`probe-agent diagnose` باید موارد زیر را بررسی کند:
+عددهای Resource Usage فقط Estimate هستند و باید با عبارت تقریبی نمایش داده شوند.
 
-- دسترسی HTTPS/gRPC به Core
-- اعتبار Certificate
-- DNS و Time Sync
-- ICMP capability
-- دسترسی نوشتن به spool
-- فضای دیسک
-- نسخه Agent و Protocol Compatibility
+---
 
-## 235.12 Configuration
+# 237. مرحله دوم Wizard: انتخاب قابلیت‌ها
 
-فایل `/etc/probe-agent/config.yaml`:
+بعد از Profile، کاربر می‌تواند Capabilities را تغییر دهد.
 
-```yaml
-control_plane: https://control.example.com
-agent_gateway: grpcs://agents.example.com:443
-state_dir: /var/lib/probe-agent
-log_level: info
-
-runtime:
-  max_concurrency: 200
-  shutdown_grace_period: 30s
-
-spool:
-  max_bytes: 1073741824
-  max_results: 100000
-  flush_interval: 250ms
-  batch_size: 250
-
-updates:
-  channel: stable
-  auto_update: false
-```
-
-Credential و private key نباید داخل YAML plaintext قرار گیرند؛ در state directory با permission محدود یا OS keystore ذخیره شوند.
-
-## 235.13 Installer و Service
-
-Installer باید:
-
-- checksum و امضای artifact را بررسی کند.
-- System User بدون shell ایجاد کند.
-- directoryها و permissionها را تنظیم کند.
-- systemd unit نصب کند.
-- فقط capability لازم برای ICMP را بدهد.
-- enrollment را اجرا کند.
-- سرویس را با restart policy و resource limit اجرا کند.
-
-نمونه systemd hardening:
-
-```ini
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/var/lib/probe-agent /var/log/probe-agent
-CapabilityBoundingSet=CAP_NET_RAW
-AmbientCapabilities=CAP_NET_RAW
-Restart=always
-RestartSec=5
-```
-
-## 235.14 Update امن Agent
-
-Update flow:
+## 237.1 دسته Host Basics
 
 ```text
-Agent checks signed release manifest
-→ verifies compatible protocol version
-→ downloads artifact
-→ verifies SHA256 and signature
-→ enters draining state
-→ finishes in-flight jobs
-→ atomically replaces binary
-→ restarts service
-→ reports new version
-→ rolls back if readiness fails
+CPU utilization
+CPU mode breakdown
+Per-core CPU
+Memory utilization
+Memory composition
+Load average
+Uptime and reboot events
 ```
 
-Release manifest:
+## 237.2 دسته Storage
+
+```text
+Filesystem usage
+Filesystem free space
+Filesystem inode usage
+Disk read/write throughput
+Disk IOPS
+Disk latency
+Disk queue depth
+```
+
+## 237.3 دسته Network
+
+```text
+Inbound/outbound throughput
+Packet rate
+Packet errors
+Packet drops
+Interface state
+Connection count در فاز بعد
+```
+
+## 237.4 دسته Processes و Services
+
+```text
+Process count
+Top CPU processes
+Top memory processes
+Selected process health
+systemd service state
+Restart count
+Open file descriptors در فاز بعد
+```
+
+## 237.5 دسته Containers
+
+```text
+Docker container inventory
+Container CPU
+Container memory
+Container network
+Container disk I/O
+Restart count
+Container status
+```
+
+Docker socket نیاز به Permission حساس دارد و UI باید Warning صریح نمایش دهد.
+
+## 237.6 دسته Logs
+
+```text
+systemd Journal
+System log files
+Application log files
+Nginx logs
+Apache logs
+PostgreSQL logs
+Docker logs
+Custom log source
+```
+
+## 237.7 دسته Application Telemetry
+
+```text
+OTLP metrics receiver
+OTLP logs receiver
+OTLP traces receiver
+Prometheus scrape endpoint
+```
+
+## 237.8 Dependency Rules
+
+برخی انتخاب‌ها Dependency دارند.
+
+مثال:
+
+```text
+Container logs
+→ Docker integration required
+
+Trace correlation
+→ OTLP traces + application logs required
+
+Per-process metrics
+→ Processes capability required
+```
+
+UI Dependencyها را خودکار فعال کند و دلیل را نشان دهد.
+
+---
+
+# 238. Capability Model داخلی
+
+Backend انتخاب‌ها را در یک مدل مستقل از Config خام Collector ذخیره کند.
+
+نمونه:
 
 ```json
 {
-  "version": "0.2.0",
-  "channel": "stable",
-  "minimum_protocol": 1,
-  "maximum_protocol": 1,
-  "artifacts": {
-    "linux-amd64": {
-      "url": ".../probe-agent-linux-amd64",
-      "sha256": "...",
-      "signature": "..."
+  "profile": "custom",
+  "collection_interval_seconds": 30,
+  "capabilities": {
+    "host": {
+      "cpu": true,
+      "cpu_per_core": false,
+      "memory": true,
+      "load": true,
+      "uptime": true
+    },
+    "storage": {
+      "filesystem": true,
+      "inodes": true,
+      "disk_io": true
+    },
+    "network": {
+      "traffic": true,
+      "errors": false,
+      "drops": false
+    },
+    "processes": {
+      "inventory": false,
+      "top_processes": false,
+      "systemd_services": false
+    },
+    "containers": {
+      "docker": false
+    },
+    "logs": {
+      "journald": false,
+      "file_sources": []
+    },
+    "application": {
+      "otlp_metrics": false,
+      "otlp_logs": false,
+      "otlp_traces": false
     }
   }
 }
 ```
 
-Rollout باید مرحله‌ای باشد:
+این Model منبع حقیقت Product باشد.
+
+Config Collector از روی این Model تولید شود؛ Config خام Collector نباید منبع حقیقت محصول باشد.
+
+---
+
+# 239. مرحله سوم Wizard: Health Ruleها
+
+برای قابلیت‌های انتخاب‌شده Ruleهای پیش‌فرض نمایش داده شوند.
+
+## 239.1 حالت ساده
 
 ```text
-canary agent
-→ یک Agent از هر Location
-→ 10 درصد
-→ 50 درصد
-→ 100 درصد
+Use recommended thresholds
 ```
 
-در هر مرحله error rate، queue lag، result latency و offline agents کنترل شوند.
+پیشنهاد Default.
 
-## 235.15 GitHub Release جدید
+## 239.2 حالت Advanced
 
-Workflow فعلی `release-worker.yml` باید با workflow جدید جایگزین شود:
+کاربر می‌تواند Ruleها را تغییر دهد.
+
+مثال CPU:
 
 ```text
-.github/workflows/release-probe-agent.yml
+Warning above 75% for 5 minutes
+Error above 90% for 5 minutes
+Recover below 65% for 3 minutes
 ```
 
-Artifactها:
+Memory:
 
 ```text
-probe-agent-linux-amd64
-probe-agent-linux-arm64
-probe-agent-darwin-amd64
-probe-agent-darwin-arm64
-probe-agent-windows-amd64.exe
-checksums.txt
-checksums.txt.sig
-release-manifest.json
-release-manifest.json.sig
+Warning above 80% for 5 minutes
+Error above 92% for 5 minutes
 ```
 
-فاز اول Production می‌تواند فقط Linux AMD64 و ARM64 را منتشر کند، ولی نام artifact باید از `monitoring-worker` به `probe-agent` تغییر کند.
-
-## 235.16 مهاجرت از v0.1.0
-
-باینری `monitoring-worker v0.1.0` با Agent جدید wire-compatible نیست و باید side-by-side مهاجرت شود:
+Filesystem:
 
 ```text
-1. Deploy database migrations
-2. Deploy Enrollment API و Admin UI
-3. Deploy Agent Gateway
-4. Deploy Result Ingestion جدید
-5. Publish probe-agent v0.2.0
-6. Enroll یک Canary Agent
-7. تأیید Canary در Admin Panel
-8. Shadow Dispatch بدون اثر روی Alert
-9. مقایسه Resultهای Worker قدیم و Agent جدید
-10. فعال‌کردن Agent جدید برای یک Location
-11. Drain کردن Worker قدیمی همان Location
-12. تکرار برای تمام Locationها
-13. بستن دسترسی مستقیم Redis از Probe Network
-14. ابطال WORKER_TOKEN مشترک
-15. حذف مسیر legacy /internal/v1/results پس از دوره سازگاری
+Warning below 15% free
+Error below 5% free
 ```
 
-Rollback تا پایان مرحله 12 باید با فعال‌کردن Worker قدیمی ممکن باشد.
+Disk latency:
 
-## 235.17 تست‌های الزامی
+```text
+Warning p95 above 30ms
+Error p95 above 100ms
+```
 
-Unit:
+## 239.3 Scope Rule
 
-- Enrollment token validation
-- State transitionها
-- Certificate issuance و revocation
-- Lease expiry
-- Result idempotency
-- Spool persistence
-- Batch construction
-- Update signature verification
+برخی Ruleها Global و برخی Per-resource هستند.
 
-Integration:
+مثال:
 
-- Enrollment تا Approval
-- اتصال mTLS
-- Dispatch و ACK
-- قطع اتصال حین Probe
-- قطع اتصال حین Result upload
-- restart Agent با spool پر
-- دو Gateway هم‌زمان
-- Agent revoked روی Stream فعال
-- rolling update و rollback
+```text
+Global CPU rule
+Per-filesystem rule
+Per-network-interface rule
+Per-process rule
+```
 
-Load:
+در Wizard فقط Default Ruleها نمایش داده شوند؛ تنظیمات Per-resource بعد از Detection انجام شود.
 
-- حداقل 100,000 Monitor زمان‌بندی‌شده
-- حداقل 1,000 Job در ثانیه در تست پایه
-- چند Agent در هر Location
-- Queue backlog و recovery
-- Batch ingestion تحت فشار
-- Gateway reconnect storm
+---
 
-Failure Injection:
+# 240. مرحله چهارم Wizard: انتخاب Platform
 
-- Redis unavailable
-- PostgreSQL unavailable
-- Time-series DB slow
-- Gateway restart
-- Agent network partition
-- Certificate expiry
-- Disk full در Agent
-- clock skew
+گزینه‌ها:
 
-## 235.18 Definition of Done
+```text
+Linux
+Windows
+Docker
+Kubernetes
+```
 
-- Probe Agent بدون Redis credential اجرا شود.
-- Agent تأییدنشده Job نگیرد.
-- Identity هر Agent مستقل و قابل revoke باشد.
-- Result قبل از ACK از دیسک Agent حذف نشود.
-- چند Agent در یک Location load balancing و failover داشته باشند.
-- Scheduler، Gateway و Ingestion Scale افقی شوند.
-- Queue Lag و Backpressure قابل مشاهده باشند.
-- Update امضاشده، drain و rollback داشته باشد.
-- Worker قدیمی از تمام Locationها حذف شود.
-- Shared `WORKER_TOKEN` و دسترسی مستقیم Redis حذف شوند.
-- artifact جدید با نام `probe-agent-*` در GitHub Release منتشر شود.
+در MVP:
+
+```text
+Linux
+```
+
+بعد Architecture به‌صورت Auto-detect در Installer انجام می‌شود.
+
+UI توضیح دهد:
+
+```text
+The installer automatically detects AMD64 or ARM64.
+```
+
+## 240.1 پیش‌نیازهای Linux
+
+```text
+systemd یا init سازگار
+curl یا wget
+Outbound HTTPS access
+Root/sudo برای نصب
+```
+
+بدون نیاز به Inbound Port.
+
+## 240.2 Network Requirements
+
+```text
+agent.example.com:443
+otlp-region.example.com:443
+downloads.example.com:443
+```
+
+یک Button:
+
+```text
+View firewall requirements
+```
+
+---
+
+# 241. مرحله پنجم Wizard: ساخت Enrollment Token
+
+پس از انتخاب Platform، Backend یک Token مخصوص همان Node می‌سازد.
+
+Token:
+
+```text
+Single-use
+Node-scoped
+Organization-scoped
+Short-lived
+Enrollment-only
+Hashed in database
+```
+
+پیشنهاد:
+
+```text
+Expiry: 15 minutes
+Max uses: 1
+```
+
+## 241.1 API
+
+```text
+POST /api/v1/nodes/{nodeId}/agent-enrollment-token
+```
+
+Request:
+
+```json
+{
+  "platform": "linux",
+  "profile_revision": 4
+}
+```
+
+Response:
+
+```json
+{
+  "token": "node_enroll_xxxxxxxxx",
+  "expires_at": "2026-07-22T11:15:00Z",
+  "install_command": "curl ...",
+  "checksum_command": "curl ...",
+  "status": "WAITING_FOR_INSTALL"
+}
+```
+
+Token خام فقط در Response ساخت نمایش داده شود.
+
+## 241.2 UI
+
+```text
+Install the Node Agent
+
+Run this command as root or with sudo:
+
+[Copy command]
+
+Token expires in 14:32
+[Regenerate token]
+```
+
+در صورت Expire:
+
+```text
+This installation token has expired.
+[Generate a new command]
+```
+
+---
+
+# 242. Installer Command
+
+فرمان ساده:
+
+```bash
+curl -fsSL https://downloads.example.com/node-agent/install.sh | \
+sudo sh -s -- \
+  --control-plane https://agent.example.com \
+  --token node_enroll_xxxxxxxxx
+```
+
+فرمان امن‌تر:
+
+```bash
+curl -fsSLo monitoring-agent-install.sh \
+  https://downloads.example.com/node-agent/install.sh
+
+curl -fsSLo monitoring-agent-install.sh.sha256 \
+  https://downloads.example.com/node-agent/install.sh.sha256
+
+sha256sum -c monitoring-agent-install.sh.sha256
+
+sudo sh monitoring-agent-install.sh \
+  --control-plane https://agent.example.com \
+  --token node_enroll_xxxxxxxxx
+```
+
+UI هر دو حالت را با Tab نمایش دهد:
+
+```text
+Quick install
+Verified install
+Manual package
+```
+
+---
+
+# 243. رفتار Installer صفر تا صد
+
+Installer باید مراحل زیر را اجرا کند:
+
+```text
+1. Check privileges
+2. Detect OS
+3. Detect architecture
+4. Check required commands
+5. Check outbound connectivity
+6. Download signed manifest
+7. Select compatible release
+8. Download Agent and Collector binaries
+9. Verify checksum
+10. Verify signature
+11. Create system user and directories
+12. Write bootstrap config
+13. Enroll agent
+14. Store certificates securely
+15. Remove enrollment token
+16. Install systemd service
+17. Start agent
+18. Validate health
+19. Report installation result
+```
+
+## 243.1 Rollback نصب
+
+اگر نصب در هر مرحله شکست خورد:
+
+- Binary ناقص پاک شود.
+- Service نیمه‌ساخته غیرفعال شود.
+- Secretها حذف شوند.
+- Log نصب در مسیر مشخص باقی بماند.
+- خطای قابل اقدام نمایش داده شود.
+
+## 243.2 خروجی موفق
+
+```text
+Monitoring Node Agent installed successfully.
+
+Node: Production API
+Agent ID: agent_abc123
+Version: 1.0.0
+Status: Connected
+```
+
+## 243.3 خروجی خطا
+
+```text
+Installation failed: cannot reach agent.example.com:443
+
+Check firewall and proxy settings.
+Log: /var/log/monitoring-agent/install.log
+```
+
+---
+
+# 244. Enrollment Flow
+
+```text
+Installer
+→ POST /agent/v1/enroll
+→ token + public key + machine facts
+→ Control Plane validates token
+→ Agent record created
+→ certificate issued
+→ desired profile assigned
+→ bootstrap token revoked
+```
+
+Request:
+
+```json
+{
+  "token": "node_enroll_xxx",
+  "installation_id": "inst_xxx",
+  "hostname": "server-01",
+  "os": "linux",
+  "os_version": "Ubuntu 24.04",
+  "architecture": "amd64",
+  "agent_version": "1.0.0",
+  "collector_version": "0.x",
+  "public_key": "..."
+}
+```
+
+Response:
+
+```json
+{
+  "agent_id": "agent_123",
+  "node_id": "node_123",
+  "certificate": "...",
+  "certificate_chain": "...",
+  "control_plane_url": "https://agent.example.com",
+  "telemetry_endpoint": "https://otlp-me.example.com",
+  "desired_config_revision": 4
+}
+```
+
+---
+
+# 245. Agent Bootstrap State Machine
+
+```text
+NOT_INSTALLED
+TOKEN_CREATED
+WAITING_FOR_INSTALL
+ENROLLING
+CONNECTED
+APPLYING_CONFIG
+WAITING_FOR_TELEMETRY
+ACTIVE
+DEGRADED
+DISCONNECTED
+REVOKED
+```
+
+UI باید State واقعی را نمایش دهد.
+
+## 245.1 Progress UI
+
+```text
+✓ Installation command generated
+✓ Agent enrolled
+✓ Certificate issued
+✓ Agent connected
+○ Configuration applied
+○ First metrics received
+```
+
+Wizard از Polling یا Realtime Event استفاده کند.
+
+Endpoint:
+
+```text
+GET /api/v1/nodes/{nodeId}/agent-onboarding-status
+```
+
+---
+
+# 246. Resource Detection
+
+پس از اتصال، Agent Inventory اولیه ارسال می‌کند:
+
+```text
+CPU cores
+Memory total
+Filesystems
+Block devices
+Network interfaces
+Operating system
+systemd availability
+Docker availability
+Running services
+Collector capabilities
+```
+
+نمونه:
+
+```json
+{
+  "cpu": {
+    "logical_cores": 8
+  },
+  "memory": {
+    "total_bytes": 17179869184
+  },
+  "filesystems": [
+    {
+      "mountpoint": "/",
+      "device": "/dev/vda1",
+      "type": "ext4",
+      "total_bytes": 107374182400
+    },
+    {
+      "mountpoint": "/data",
+      "device": "/dev/vdb1",
+      "type": "xfs",
+      "total_bytes": 536870912000
+    }
+  ],
+  "network_interfaces": [
+    {
+      "name": "eth0",
+      "state": "up"
+    },
+    {
+      "name": "docker0",
+      "state": "up"
+    }
+  ],
+  "features": {
+    "systemd": true,
+    "docker": true
+  }
+}
+```
+
+---
+
+# 247. مرحله ششم Wizard: انتخاب منابع شناسایی‌شده
+
+UI:
+
+```text
+Detected resources
+```
+
+## 247.1 Filesystems
+
+```text
+✓ /
+✓ /data
+□ /snap/*
+□ /run
+□ tmpfs
+```
+
+پیش‌فرض Exclude:
+
+```text
+tmpfs
+devtmpfs
+overlayهای کوتاه‌عمر
+loop devices
+snap mounts
+proc
+sysfs
+```
+
+کاربر بتواند Include/Exclude را تغییر دهد.
+
+## 247.2 Network Interfaces
+
+```text
+✓ eth0
+□ docker0
+□ lo
+```
+
+Default:
+
+- `lo` غیرفعال
+- Interfaceهای فیزیکی فعال
+- Virtual Interfaceها براساس Profile
+
+## 247.3 Disk Devices
+
+```text
+✓ vda
+✓ vdb
+□ loop0
+```
+
+## 247.4 Services
+
+اگر systemd فعال:
+
+```text
+Select services to monitor
+
+□ nginx.service
+□ postgresql.service
+□ redis.service
+□ docker.service
+```
+
+## 247.5 Containers
+
+اگر Docker فعال:
+
+```text
+Docker detected
+
+[Enable container monitoring]
+```
+
+با Warning:
+
+```text
+This requires access to the Docker socket.
+```
+
+---
+
+# 248. مرحله هفتم Wizard: Review and Activate
+
+خلاصه:
+
+```text
+Node: Production API
+Agent: Connected
+Platform: Ubuntu 24.04 / AMD64
+
+Monitoring:
+✓ CPU
+✓ Memory
+✓ Load
+✓ Filesystem /
+✓ Filesystem /data
+✓ Disk I/O
+✓ Network eth0
+□ Processes
+□ Logs
+□ Traces
+```
+
+Health Rules summary:
+
+```text
+CPU Warning > 75%
+CPU Error > 90%
+Filesystem Warning < 15% free
+Filesystem Error < 5% free
+```
+
+Button:
+
+```text
+[Activate Monitoring]
+```
+
+بعد از Activation:
+
+```text
+Configuration revision 5 generated
+→ Agent downloads revision
+→ Config validated
+→ Collector restarted/reloaded
+→ First telemetry received
+```
+
+موفقیت:
+
+```text
+Infrastructure monitoring is active.
+
+First data received 4 seconds ago.
+[Open Infrastructure Dashboard]
+```
+
+---
+
+# 249. تولید Remote Config
+
+Backend باید Capability Model را به Collector Config تبدیل کند.
+
+Pipeline:
+
+```text
+Telemetry Profile
++ Detected Resources
++ Organization Policy
++ Plan Limits
++ Gateway Region
+→ Config Generator
+→ Validation
+→ Signature
+→ Revision
+```
+
+## 249.1 Config Generator
+
+Config Generator باید Template-based و Allowlisted باشد.
+
+ورودی:
+
+```text
+profile model
+resource selection
+log source definitions
+agent capabilities
+plan limits
+```
+
+خروجی:
+
+```text
+collector.yaml
+agent policy metadata
+checksum
+signature
+```
+
+## 249.2 Config Revision
+
+```text
+revision: 5
+minimum_agent_version: 1.0.0
+minimum_collector_version: 0.x
+checksum: sha256:...
+signature: ...
+```
+
+## 249.3 Config نمونه CPU/RAM/Disk
+
+```yaml
+receivers:
+  hostmetrics:
+    collection_interval: 30s
+    scrapers:
+      cpu:
+      memory:
+      load:
+      filesystem:
+        include_fs_types:
+          match_type: strict
+          fs_types: [ext4, xfs]
+      disk:
+      diskio:
+      network:
+
+processors:
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 256
+    spike_limit_mib: 64
+
+  resourcedetection:
+    detectors: [system, env]
+    override: false
+
+  resource:
+    attributes:
+      - key: service.name
+        value: host
+        action: upsert
+
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+
+exporters:
+  otlphttp/platform:
+    endpoint: https://otlp-me.example.com
+    compression: gzip
+    tls:
+      cert_file: /var/lib/monitoring-agent/credentials/client.crt
+      key_file: /var/lib/monitoring-agent/credentials/client.key
+      ca_file: /var/lib/monitoring-agent/credentials/ca.crt
+    sending_queue:
+      enabled: true
+      storage: file_storage
+      queue_size: 5000
+    retry_on_failure:
+      enabled: true
+      max_elapsed_time: 0s
+
+extensions:
+  file_storage:
+    directory: /var/lib/monitoring-agent/otel-storage
+
+service:
+  extensions: [file_storage]
+  pipelines:
+    metrics:
+      receivers: [hostmetrics]
+      processors:
+        [memory_limiter, resourcedetection, resource, batch]
+      exporters: [otlphttp/platform]
+```
+
+Tenant Attributeهای قطعی در Gateway اضافه می‌شوند، نه Config قابل تغییر کاربر.
+
+---
+
+# 250. Agent Config Apply Flow
+
+```text
+Agent heartbeat sends current revision
+→ Server returns desired revision
+→ Agent downloads signed config
+→ Signature verified
+→ Config saved to staging
+→ collector config validate
+→ health test
+→ atomic activate
+→ collector reload/restart
+→ ACK
+```
+
+## 250.1 ACK موفق
+
+```json
+{
+  "revision": 5,
+  "status": "APPLIED",
+  "collector_started_at": "...",
+  "applied_at": "..."
+}
+```
+
+## 250.2 ACK خطا
+
+```json
+{
+  "revision": 5,
+  "status": "FAILED",
+  "error_code": "CONFIG_VALIDATION_FAILED",
+  "message": "..."
+}
+```
+
+## 250.3 Rollback
+
+اگر Collector Healthy نشد:
+
+```text
+restore previous config
+restart previous version
+send ROLLED_BACK
+```
+
+UI:
+
+```text
+Configuration revision 5 failed.
+Revision 4 restored successfully.
+[View error]
+```
+
+---
+
+# 251. دریافت Telemetry
+
+Agent داده را به Gateway ارسال می‌کند:
+
+```text
+Node Agent
+→ OTLP/HTTP over mTLS
+→ Regional Telemetry Gateway
+```
+
+Gateway:
+
+```text
+Authenticate certificate
+Resolve agent_id
+Resolve organization_id/node_id
+Override tenant attributes
+Validate payload
+Apply quota
+Apply cardinality policy
+Route signal
+```
+
+Routing:
+
+```text
+Metrics → VictoriaMetrics
+Logs    → VictoriaLogs
+Traces  → VictoriaTraces
+```
+
+Agent مستقیم به Storage دسترسی ندارد.
+
+---
+
+# 252. تشخیص First Data
+
+برای فعال‌شدن نهایی Wizard، دریافت اولین داده باید ثبت شود.
+
+Gateway بعد از پذیرش اولین Batch:
+
+```text
+agent_first_metric_received
+agent_first_log_received
+agent_first_trace_received
+```
+
+در PostgreSQL:
+
+```text
+first_metrics_received_at
+first_logs_received_at
+first_traces_received_at
+```
+
+State:
+
+```text
+CONNECTED
+→ WAITING_FOR_TELEMETRY
+→ ACTIVE
+```
+
+اگر Agent وصل است ولی Data نمی‌رسد:
+
+```text
+Agent connected, but no telemetry has been received.
+
+Possible causes:
+- Config not applied
+- Collector unhealthy
+- Filesystem permissions
+- Gateway connectivity
+```
+
+---
+
+# 253. تغییر قابلیت‌ها بعد از نصب
+
+مسیر:
+
+```text
+Node Detail
+→ Configuration
+→ Infrastructure Monitoring
+```
+
+UI:
+
+```text
+CPU                  Enabled
+Memory               Enabled
+Filesystem           Enabled
+Disk I/O             Enabled
+Network              Disabled
+Processes            Disabled
+System logs          Disabled
+Application traces   Disabled
+```
+
+کاربر Network را فعال می‌کند:
+
+```text
+Save changes
+→ profile revision 6
+→ collector config revision 6
+→ agent applies config
+→ telemetry starts
+```
+
+نصب مجدد لازم نیست.
+
+## 253.1 Config Diff
+
+قبل از Save:
+
+```text
+Changes
+
++ Network throughput
++ Network errors
+Collection interval unchanged
+Estimated additional usage: Low
+```
+
+## 253.2 Apply Status
+
+```text
+Saving profile
+Generating configuration
+Waiting for agent
+Applying revision 6
+Receiving network metrics
+Completed
+```
+
+---
+
+# 254. Permission Escalation برای قابلیت‌های جدید
+
+بعضی قابلیت‌ها Permission جدید می‌خواهند.
+
+مثال:
+
+```text
+Docker monitoring
+→ Docker socket access
+
+Journald
+→ systemd-journal group
+
+Protected application logs
+→ Read permission on selected paths
+```
+
+Remote Config نباید خودسرانه Permission سیستم را تغییر دهد.
+
+UI باید دستور جدا بدهد:
+
+```bash
+sudo usermod -aG systemd-journal monitoring-agent
+sudo systemctl restart monitoring-node-agent
+```
+
+برای Docker:
+
+```bash
+sudo usermod -aG docker monitoring-agent
+sudo systemctl restart monitoring-node-agent
+```
+
+Warning امنیتی:
+
+```text
+Docker socket access is highly privileged.
+Enable only when container monitoring is required.
+```
+
+---
+
+# 255. اضافه‌کردن Log Source پس از نصب
+
+مسیر:
+
+```text
+Node Detail
+→ Logs
+→ Add Log Source
+```
+
+Wizard:
+
+```text
+1. Source type
+2. Service name
+3. Path or journal unit
+4. Format
+5. Multiline
+6. Redaction
+7. Preview
+8. Activate
+```
+
+## 255.1 File Source
+
+```text
+Path: /var/log/nginx/access*.log
+Service: nginx
+Format: nginx_combined
+Start position: end
+```
+
+## 255.2 Preview
+
+Agent نمونه محدود و Redacted از خطوط را Parse می‌کند.
+
+```text
+Preview 20 lines
+Parsed fields
+Parse errors
+```
+
+Raw Log نباید بدون Consent به Control Plane ارسال شود؛ Preview باید محدود و Sanitized باشد.
+
+## 255.3 Config Update
+
+Source جدید به Profile اضافه می‌شود و Config Revision جدید تولید می‌گردد.
+
+---
+
+# 256. فعال‌سازی Traces پس از نصب
+
+مسیر:
+
+```text
+Node Detail
+→ Traces
+→ Enable Tracing
+```
+
+Agent همان Binary است؛ فقط OTLP Receiver فعال می‌شود.
+
+Config:
+
+```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 127.0.0.1:4317
+      http:
+        endpoint: 127.0.0.1:4318
+```
+
+UI دستور Instrumentation می‌دهد:
+
+```text
+Send application OTLP to:
+http://127.0.0.1:4318
+```
+
+Agent فقط روی Loopback Listen کند، مگر کاربر صریحاً شبکه داخلی را فعال کند.
+
+---
+
+# 257. Agent UI در Node Detail
+
+## 257.1 Agent Summary Card
+
+```text
+Agent                              Connected
+
+Version: 1.0.0
+Collector: 0.x
+OS: Ubuntu 24.04
+Architecture: AMD64
+Last heartbeat: 8s ago
+Config revision: 6
+Gateway: Middle East
+Queue usage: 2%
+```
+
+Actions:
+
+```text
+Edit monitoring
+View configuration
+Update agent
+Restart collector
+Download diagnostics
+Rotate certificate
+Revoke agent
+```
+
+## 257.2 Enabled Capabilities Card
+
+```text
+Host
+✓ CPU
+✓ Memory
+✓ Filesystem
+✓ Disk I/O
+✓ Network
+
+Applications
+○ Processes
+○ Logs
+○ Traces
+```
+
+## 257.3 Agent Health
+
+```text
+Management channel: Healthy
+Telemetry channel: Healthy
+Collector: Running
+Persistent queue: Healthy
+Certificate: Valid for 4 days
+```
+
+---
+
+# 258. UI Stateهای Agent Monitoring
+
+## 258.1 Not Installed
+
+```text
+Agent monitoring is not enabled.
+[Enable Agent Monitoring]
+```
+
+## 258.2 Token Created
+
+```text
+Waiting for agent installation
+Token expires in 9 minutes
+```
+
+## 258.3 Enrolling
+
+```text
+Agent is enrolling...
+```
+
+## 258.4 Connected, No Config
+
+```text
+Agent connected
+Preparing configuration
+```
+
+## 258.5 Applying
+
+```text
+Applying configuration revision 5
+```
+
+## 258.6 Waiting for Data
+
+```text
+Agent connected
+Waiting for first metrics
+```
+
+## 258.7 Active
+
+```text
+Agent connected
+CPU, memory and disk monitoring active
+```
+
+## 258.8 Degraded
+
+```text
+Agent connected, collector unhealthy
+Last metrics received 6 minutes ago
+```
+
+## 258.9 Disconnected
+
+```text
+Agent disconnected
+Last heartbeat 12 minutes ago
+Historical data remains available
+```
+
+## 258.10 Revoked
+
+```text
+Agent access has been revoked
+[Generate reinstall command]
+```
+
+---
+
+# 259. Backend APIهای Onboarding
+
+Product API:
+
+```text
+GET    /api/v1/nodes/{nodeId}/agent-monitoring
+POST   /api/v1/nodes/{nodeId}/agent-monitoring/profile
+PUT    /api/v1/nodes/{nodeId}/agent-monitoring/profile
+POST   /api/v1/nodes/{nodeId}/agent-enrollment-token
+GET    /api/v1/nodes/{nodeId}/agent-onboarding-status
+GET    /api/v1/nodes/{nodeId}/detected-resources
+PUT    /api/v1/nodes/{nodeId}/resource-selection
+POST   /api/v1/nodes/{nodeId}/agent-monitoring/activate
+GET    /api/v1/nodes/{nodeId}/agent-config-revisions
+POST   /api/v1/nodes/{nodeId}/agent-config-revisions/{revision}/retry
+POST   /api/v1/agents/{agentId}/restart-collector
+POST   /api/v1/agents/{agentId}/upgrade
+POST   /api/v1/agents/{agentId}/revoke
+```
+
+Agent API:
+
+```text
+POST /agent/v1/enroll
+POST /agent/v1/heartbeat
+GET  /agent/v1/config
+POST /agent/v1/config/ack
+POST /agent/v1/inventory
+POST /agent/v1/events
+POST /agent/v1/certificates/rotate
+GET  /agent/v1/releases/latest
+```
+
+---
+
+# 260. Schemaهای PostgreSQL
+
+## 260.1 telemetry_profiles
+
+```text
+id
+organization_id
+node_id
+profile_type
+profile_json
+collection_interval_seconds
+status
+revision
+created_by
+created_at
+updated_at
+```
+
+## 260.2 node_agent_resource_inventory
+
+```text
+id
+organization_id
+node_id
+agent_id
+inventory_json
+detected_at
+agent_version
+```
+
+## 260.3 node_agent_resource_selection
+
+```text
+id
+organization_id
+node_id
+filesystems_json
+disks_json
+interfaces_json
+services_json
+containers_json
+revision
+updated_at
+```
+
+## 260.4 agent_onboarding_sessions
+
+```text
+id
+organization_id
+node_id
+status
+platform
+profile_revision
+enrollment_token_id
+started_at
+connected_at
+config_applied_at
+first_metrics_at
+completed_at
+failure_code
+failure_message
+```
+
+## 260.5 agent_config_revisions
+
+```text
+id
+organization_id
+node_id
+agent_id
+revision
+profile_revision
+rendered_config_checksum
+signature
+status
+created_at
+downloaded_at
+applied_at
+rolled_back_at
+error_code
+error_message
+```
+
+---
+
+# 261. Idempotency و Race Condition
+
+## 261.1 ساخت Token
+
+ساخت Token جدید باید Token فعال قبلی را Revoke کند، مگر UI اجازه چند Installation بدهد.
+
+## 261.2 Enrollment دوباره
+
+اگر همان installation_id دوباره Enroll شد:
+
+```text
+same node + same installation_id
+→ resume or rotate credential
+```
+
+اگر Machine جدید است:
+
+```text
+new installation_id
+→ create new agent record
+→ old agent remains disconnected/revoked based on policy
+```
+
+## 261.3 Profile Update هم‌زمان
+
+Optimistic Lock با Revision:
+
+```text
+If-Match: profile_revision
+```
+
+Conflict:
+
+```text
+409 PROFILE_REVISION_CONFLICT
+```
+
+---
+
+# 262. Security Controls
+
+- Token خام Log نشود.
+- Token در URL Query قرار نگیرد.
+- Installer Manifest امضا شود.
+- Binary checksum و signature بررسی شود.
+- Certificate مستقل هر Agent باشد.
+- Config امضا شود.
+- Agent فقط Outbound Connection داشته باشد.
+- Tenant از Certificate Resolve شود.
+- Remote Config فقط Componentهای Allowlisted را فعال کند.
+- Shell Command دلخواه وجود نداشته باشد.
+- Capabilityهای نیازمند Permission Warning داشته باشند.
+- Revocation فوری در Gateway و Control Plane اعمال شود.
+
+---
+
+# 263. Observability خود Onboarding
+
+Metricهای Backend:
+
+```text
+agent_onboarding_started_total
+agent_onboarding_completed_total
+agent_onboarding_failed_total
+agent_enrollment_latency_seconds
+agent_config_apply_latency_seconds
+agent_first_data_latency_seconds
+```
+
+Breakdown:
+
+```text
+platform
+architecture
+failure_code
+agent_version
+```
+
+Dashboard داخلی:
+
+```text
+Wizard conversion rate
+Token expiry rate
+Install failure reasons
+Average time to first metric
+Config failure rate
+Top unsupported platforms
+```
+
+---
+
+# 264. Failure Cases و UX
+
+## 264.1 Token Expired
+
+```text
+Installation token expired.
+[Generate new command]
+```
+
+## 264.2 Unsupported OS
+
+```text
+This operating system is not supported yet.
+Detected: CentOS 6
+```
+
+## 264.3 Connectivity Failure
+
+```text
+Agent cannot reach telemetry gateway.
+Check firewall access to otlp-me.example.com:443.
+```
+
+## 264.4 Permission Failure
+
+```text
+Filesystem metrics are active, but /data cannot be read.
+[View permission instructions]
+```
+
+## 264.5 Collector Crash
+
+```text
+Collector restarted 4 times in 10 minutes.
+Previous configuration restored.
+```
+
+## 264.6 No Data
+
+```text
+Agent is connected, but no CPU metrics were received.
+[Run diagnostics]
+```
+
+---
+
+# 265. Uninstall و Reinstall
+
+## 265.1 Uninstall
+
+```bash
+sudo monitoring-node-agent uninstall
+```
+
+رفتار:
+
+```text
+Stop services
+Remove binaries
+Remove config
+Optionally preserve diagnostics
+Revoke certificate
+Keep historical telemetry in platform
+```
+
+UI بعد از Uninstall:
+
+```text
+Agent uninstalled
+Historical data is still available
+[Install again]
+```
+
+## 265.2 Reinstall
+
+Token جدید مخصوص Node ساخته می‌شود.
+
+Old Agent:
+
+```text
+revoked or marked replaced
+```
+
+New Agent:
+
+```text
+new agent_id
+same node_id
+```
+
+---
+
+# 266. Upgrade بدون اختلال
+
+```text
+Download signed release
+Verify checksum
+Stage binary
+Stop collector briefly
+Replace atomically
+Start
+Health check
+Rollback on failure
+```
+
+Profile و Resource Selection حفظ شوند.
+
+Upgrade Agent نباید نیازمند انتخاب دوباره CPU/RAM/Disk باشد.
+
+---
+
+# 267. Roadmap پیاده‌سازی
+
+## Phase A — MVP
+
+```text
+Linux AMD64/ARM64
+Basic/Advanced Host profiles
+CPU
+Memory
+Load
+Filesystem
+Disk I/O
+Network
+Enrollment
+mTLS
+Remote config
+VictoriaMetrics
+Infrastructure UI
+```
+
+## Phase B — Processes و Logs
+
+```text
+Process inventory
+systemd services
+File logs
+Journald
+VictoriaLogs
+```
+
+## Phase C — Containers
+
+```text
+Docker metrics
+Docker logs
+Container inventory
+```
+
+## Phase D — Application Telemetry
+
+```text
+OTLP metrics
+OTLP logs
+OTLP traces
+VictoriaTraces
+Correlation
+```
+
+## Phase E — Windows و Kubernetes
+
+```text
+Windows service
+Kubernetes DaemonSet
+Fleet rollout
+```
+
+---
+
+# 268. معیارهای پذیرش
+
+## Product/UX
+
+- کاربر بتواند Profile آماده یا Custom انتخاب کند.
+- کاربر قبل از نصب قابلیت‌ها را انتخاب کند.
+- Agent فقط یک‌بار نصب شود.
+- قابلیت‌ها بعداً بدون Reinstall تغییر کنند.
+- Wizard وضعیت لحظه‌ای Enrollment و دریافت Data را نشان دهد.
+- Resource Detection و انتخاب Mount/Interface وجود داشته باشد.
+- Empty، Error و Retry Stateها کامل باشند.
+- Permission Requirementها واضح باشند.
+
+## Installer
+
+- OS و Architecture را تشخیص دهد.
+- Artifact امضاشده را بررسی کند.
+- Enrollment انجام دهد.
+- Token را پس از مصرف حذف کند.
+- Service را نصب و Start کند.
+- Rollback نصب ناقص داشته باشد.
+
+## Agent
+
+- Profile را از Control Plane دریافت کند.
+- Config را Validate و Apply کند.
+- ACK ارسال کند.
+- Rollback به Last Known Good داشته باشد.
+- Persistent Queue فعال باشد.
+- Config Update بدون Reinstall انجام شود.
+
+## Backend
+
+- Token Node-scoped و یک‌بارمصرف باشد.
+- Capability Model مستقل از Config خام ذخیره شود.
+- Config Generator Allowlisted باشد.
+- Revision و Optimistic Lock وجود داشته باشد.
+- First Data ثبت شود.
+- Tenant Isolation در Gateway اعمال شود.
+
+## Data
+
+- CPU، RAM، Filesystem و Disk داده ارسال کنند.
+- Metrics در VictoriaMetrics ذخیره شوند.
+- Labelهای Organization و Node در Gateway اضافه شوند.
+- Frontend فقط Product API را Query کند.
+- Chartها و Statusها پس از First Data فعال شوند.
+
+## Security
+
+- هیچ Inbound Port عمومی نیاز نباشد.
+- mTLS استفاده شود.
+- Agent Revoked نتواند داده ارسال کند.
+- Remote Shell وجود نداشته باشد.
+- Token و Private Key در Log ظاهر نشوند.
+- Docker socket فقط با Consent فعال شود.
+
+---
+
+# 269. تصمیم نهایی اجرایی
+
+```text
+1. یک Agent واحد برای هر Platform منتشر می‌شود.
+2. CPU/RAM/Disk باعث ساخت Agent جدا نمی‌شوند.
+3. انتخاب کاربر Telemetry Profile می‌سازد.
+4. Profile به Config امضاشده Collector تبدیل می‌شود.
+5. نصب با Token کوتاه‌عمر مخصوص Node انجام می‌شود.
+6. Agent Certificate مستقل دریافت می‌کند.
+7. Agent Config را از Control Plane می‌گیرد.
+8. Telemetry فقط به Gateway ارسال می‌شود.
+9. Tenant Identity در Gateway اعمال می‌شود.
+10. قابلیت‌ها بدون Reinstall فعال یا غیرفعال می‌شوند.
+11. Resource Detection پس از نصب انجام می‌شود.
+12. UI از Token Creation تا First Data را مرحله‌به‌مرحله نشان می‌دهد.
+```

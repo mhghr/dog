@@ -20,6 +20,7 @@ const SECTION_LABELS = {
   "status-pages": "statusPages",
   monitors: "monitors",
   locations: "locations",
+  "probe-agents": "probeAgents",
   system: "system",
   settings: "settings",
 } as const;

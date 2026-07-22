@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 
+	"monitoring-platform/internal/agent/spool"
 	"monitoring-platform/internal/domain"
 	"monitoring-platform/internal/metrics"
 	"monitoring-platform/internal/probe"
@@ -29,7 +31,8 @@ const (
 type Worker struct {
 	queue        *queue.RedisQueue
 	registry     *probe.Registry
-	resultClient *ResultClient
+	spool        *spool.Spool
+	runningJobs  atomic.Int32
 	consumerName string
 	concurrency  int
 	logger       *slog.Logger
@@ -39,7 +42,7 @@ type Worker struct {
 func New(
 	probeQueue *queue.RedisQueue,
 	registry *probe.Registry,
-	resultClient *ResultClient,
+	spool *spool.Spool,
 	consumerName string,
 	concurrency int,
 	logger *slog.Logger,
@@ -52,12 +55,24 @@ func New(
 	return &Worker{
 		queue:        probeQueue,
 		registry:     registry,
-		resultClient: resultClient,
+		spool:        spool,
 		consumerName: consumerName,
 		concurrency:  concurrency,
 		logger:       logger,
 		metrics:      workerMetrics,
 	}
+}
+
+func (w *Worker) AvailableSlots() int {
+	available := int32(w.concurrency) - w.runningJobs.Load()
+	if available < 0 {
+		return 0
+	}
+	return int(available)
+}
+
+func (w *Worker) RunningJobs() int {
+	return int(w.runningJobs.Load())
 }
 
 func (w *Worker) Run(ctx context.Context) error {
@@ -107,6 +122,9 @@ func (w *Worker) Run(ctx context.Context) error {
 }
 
 func (w *Worker) process(ctx context.Context, message redis.XMessage) {
+	w.runningJobs.Add(1)
+	defer w.runningJobs.Add(-1)
+
 	if err := w.handleMessage(ctx, message); err != nil {
 		w.metrics.JobsFailed.Inc()
 		w.logger.Error("handle probe job failed", "message_id", message.ID, "error", err)
@@ -131,6 +149,24 @@ func (w *Worker) handleMessage(ctx context.Context, message redis.XMessage) erro
 	var job domain.ProbeJob
 	if err := json.Unmarshal([]byte(fmt.Sprint(rawPayload)), &job); err != nil {
 		return w.poison(ctx, message, fmt.Sprintf("decode probe job: %v", err))
+	}
+
+	if !job.Deadline.IsZero() && time.Now().UTC().After(job.Deadline) {
+		w.logger.Warn("job deadline exceeded, skipping",
+			"job_id", job.ID,
+			"deadline", job.Deadline,
+		)
+		w.metrics.JobsFailed.Inc()
+		return w.poison(ctx, message, "deadline exceeded")
+	}
+
+	if job.Attempt == 0 {
+		deliveries, err := w.queue.DeliveryCount(ctx, message.ID)
+		if err == nil {
+			job.Attempt = int(deliveries) + 1
+		} else {
+			job.Attempt = 1
+		}
 	}
 
 	executor, ok := w.registry.Get(job.Type)
@@ -163,10 +199,11 @@ func (w *Worker) handleMessage(ctx context.Context, message redis.XMessage) erro
 		"success", result.Success,
 		"duration_ms", result.DurationMillis,
 		"error_code", result.ErrorCode,
+		"attempt", job.Attempt,
 	)
 
-	if err := w.resultClient.Send(ctx, result); err != nil {
-		return fmt.Errorf("send probe result: %w", err)
+	if err := w.spool.Store(message.ID, &result); err != nil {
+		return fmt.Errorf("store probe result: %w", err)
 	}
 
 	return nil
