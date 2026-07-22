@@ -140,10 +140,11 @@ func (r *MonitorRepository) List(ctx context.Context, filter domain.MonitorListF
 		SELECT %s,
 			lr.success,
 			lr.duration_millis,
-			lr.error_code
+			lr.error_code,
+			lr.metrics
 		FROM monitors m
 		LEFT JOIN LATERAL (
-			SELECT success, duration_millis, error_code
+			SELECT success, duration_millis, error_code, metrics
 			FROM probe_results pr
 			WHERE pr.monitor_id = m.id
 			ORDER BY pr.started_at DESC
@@ -163,11 +164,12 @@ func (r *MonitorRepository) List(ctx context.Context, filter domain.MonitorListF
 	monitors := make([]domain.MonitorWithLastResult, 0)
 	for rows.Next() {
 		var (
-			item       domain.MonitorWithLastResult
-			configJSON []byte
-			success    *bool
-			duration   *int64
-			errorCode  *string
+			item        domain.MonitorWithLastResult
+			configJSON  []byte
+			success     *bool
+			duration    *int64
+			errorCode   *string
+			metricsJSON []byte
 		)
 
 		if err := rows.Scan(
@@ -175,7 +177,7 @@ func (r *MonitorRepository) List(ctx context.Context, filter domain.MonitorListF
 			&item.IntervalSeconds, &item.TimeoutMillis, &item.Retries, &item.Enabled,
 			&configJSON, &item.LastStatus, &item.LastCheckedAt, &item.NextRunAt,
 			&item.CreatedAt, &item.UpdatedAt,
-			&success, &duration, &errorCode,
+			&success, &duration, &errorCode, &metricsJSON,
 		); err != nil {
 			return nil, 0, fmt.Errorf("scan monitor row: %w", err)
 		}
@@ -189,7 +191,9 @@ func (r *MonitorRepository) List(ctx context.Context, filter domain.MonitorListF
 				Success:        *success,
 				DurationMillis: *duration,
 				ErrorCode:      errorCode,
+				Metrics:        map[string]any{},
 			}
+			_ = json.Unmarshal(metricsJSON, &item.LastResult.Metrics)
 		}
 
 		monitors = append(monitors, item)

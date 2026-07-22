@@ -56,11 +56,11 @@ export function MonitorDetailScreen({ monitorId }: { monitorId: string }) {
   const rangeLabel = t(`range${range}` as "range24h");
 
   return (
-    <div className="flex flex-col gap-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
+    <div className="flex min-w-0 flex-col gap-5">
+      <header className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border/65 bg-card/45 px-4 py-3.5 shadow-sm shadow-foreground/[0.02]">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="max-w-full truncate text-2xl font-semibold tracking-tight">{monitor.name}</h1>
+            <h1 className="max-w-full truncate text-xl font-semibold tracking-tight sm:text-2xl">{monitor.name}</h1>
             <MonitorStatusBadge status={monitor.last_status} />
             <Button variant="outline" size="icon-sm" asChild>
               <Link href={`/app/monitors/${monitor.id}/edit`}>
@@ -69,12 +69,14 @@ export function MonitorDetailScreen({ monitorId }: { monitorId: string }) {
               </Link>
             </Button>
           </div>
-          <p dir="ltr" className="mt-0.5 max-w-full truncate text-start font-mono text-sm text-muted-foreground">{monitor.target}</p>
+          <p dir="ltr" className="mt-1 max-w-full truncate text-start font-mono text-xs text-muted-foreground sm:text-sm">{monitor.target}</p>
         </div>
         <MonitorActions monitor={monitor} afterDeleteHref="/app/nodes" />
       </header>
 
-      <NodeMonitorTabs currentMonitor={monitor} />
+      <div className="rounded-t-xl border-x border-t border-border/60 bg-card/30 px-2 pt-1">
+        <NodeMonitorTabs currentMonitor={monitor} />
+      </div>
 
       <Summary
         monitor={monitor}
@@ -86,8 +88,8 @@ export function MonitorDetailScreen({ monitorId }: { monitorId: string }) {
         rangeLabel={rangeLabel}
       />
 
-      <Card>
-        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
+      <Card className="overflow-hidden border-border/65 py-0 shadow-none">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 border-b border-border/55 px-4 py-3">
           <CardTitle className="text-base">{t("latencyChart")}</CardTitle>
           <Tabs value={range} onValueChange={(value) => setRange(value as MetricsRange)}>
             <TabsList>
@@ -97,7 +99,7 @@ export function MonitorDetailScreen({ monitorId }: { monitorId: string }) {
             </TabsList>
           </Tabs>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-4 py-4">
           {metricsQuery.isPending ? <Skeleton className="h-72 w-full rounded-lg" /> : metricsQuery.isError ? <ErrorState onRetry={() => void metricsQuery.refetch()} /> : <LatencyChart data={metricsQuery.data.series.latency} />}
         </CardContent>
       </Card>

@@ -36,14 +36,19 @@ type EnrollRequest struct {
 }
 
 type EnrollResponse struct {
-	AgentID string `json:"agent_id"`
-	Status  string `json:"status"`
-	Message string `json:"message"`
+	AgentID     string `json:"agent_id"`
+	Status      string `json:"status"`
+	Message     string `json:"message"`
+	AgentSecret string `json:"agent_secret"`
 }
 
 type StatusResponse struct {
-	AgentID string `json:"agent_id"`
-	Status  string `json:"status"`
+	ID                string `json:"id"`
+	Status            string `json:"status"`
+	LocationID        string `json:"location_id"`
+	CertificateSerial string `json:"certificate_serial,omitempty"`
+	Certificate       string `json:"certificate,omitempty"`
+	ApprovedAt        string `json:"approved_at,omitempty"`
 }
 
 type EnrollResult struct {
@@ -149,18 +154,18 @@ func Enroll(ctx context.Context, cfg agent.AgentConfig, version string, logger *
 		case <-time.After(pollInterval):
 		}
 
-		statusResp, err := getStatus(ctx, controlPlane, enrollResp.AgentID)
+		statusResp, err := getStatus(ctx, controlPlane, enrollResp.AgentID, enrollResp.AgentSecret)
 		if err != nil {
 			logger.Warn("failed to check enrollment status", "error", err)
 			continue
 		}
 
-		logger.Info("enrollment status", "agent_id", statusResp.AgentID, "status", statusResp.Status)
+		logger.Info("enrollment status", "agent_id", statusResp.ID, "status", statusResp.Status)
 
 		if statusResp.Status == "approved" {
 			return &EnrollResult{
 				AgentID:     enrollResp.AgentID,
-				Certificate: "",
+				Certificate: statusResp.Certificate,
 				PrivateKey:  privateKeyPEM,
 			}, nil
 		}
@@ -173,8 +178,8 @@ func Enroll(ctx context.Context, cfg agent.AgentConfig, version string, logger *
 	return nil, fmt.Errorf("enrollment approval timed out after %s", pollTimeout)
 }
 
-func getStatus(ctx context.Context, controlPlane, agentID string) (*StatusResponse, error) {
-	url := fmt.Sprintf("%s/agent/v1/status/%s", controlPlane, agentID)
+func getStatus(ctx context.Context, controlPlane, agentID, secret string) (*StatusResponse, error) {
+	url := fmt.Sprintf("%s/agent/v1/status/%s?secret=%s", controlPlane, agentID, secret)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -186,6 +191,10 @@ func getStatus(ctx context.Context, controlPlane, agentID string) (*StatusRespon
 		return nil, err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("status API returned %s", resp.Status)
+	}
 
 	var status StatusResponse
 	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {

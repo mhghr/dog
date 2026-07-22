@@ -52,6 +52,8 @@ export function createMonitorFormSchema(t: Translator) {
 
       ping_packet_count: optionalInt(1, 20),
       ping_packet_interval_millis: optionalInt(10, 10000),
+      ping_warning_latency_millis: optionalInt(1, 60000),
+      ping_critical_latency_millis: optionalInt(1, 60000),
 
       tls_port: optionalInt(1, 65535),
       tls_server_name: optionalText,
@@ -230,6 +232,8 @@ export function buildProbeConfig(values: MonitorFormValues): Record<string, unkn
     case "ping": {
       set("packet_count", values.ping_packet_count);
       set("packet_interval_millis", values.ping_packet_interval_millis);
+      set("warning_latency_millis", values.ping_warning_latency_millis);
+      set("critical_latency_millis", values.ping_critical_latency_millis);
       break;
     }
     case "tls": {
@@ -352,6 +356,8 @@ export function monitorToFormValues(monitor: Monitor): MonitorFormValues {
     case "ping": {
       values.ping_packet_count = num("packet_count") ?? values.ping_packet_count;
       values.ping_packet_interval_millis = num("packet_interval_millis");
+      values.ping_warning_latency_millis = num("warning_latency_millis") ?? values.ping_warning_latency_millis;
+      values.ping_critical_latency_millis = num("critical_latency_millis") ?? values.ping_critical_latency_millis;
       break;
     }
     case "tls": {

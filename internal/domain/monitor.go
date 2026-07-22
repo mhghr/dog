@@ -101,9 +101,10 @@ type Monitor struct {
 }
 
 type LastResultSummary struct {
-	Success        bool    `json:"success"`
-	DurationMillis int64   `json:"duration_millis"`
-	ErrorCode      *string `json:"error_code"`
+	Success        bool           `json:"success"`
+	DurationMillis int64          `json:"duration_millis"`
+	ErrorCode      *string        `json:"error_code"`
+	Metrics        map[string]any `json:"metrics,omitempty"`
 }
 
 type MonitorWithLastResult struct {

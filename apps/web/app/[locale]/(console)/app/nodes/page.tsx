@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, MonitorCheck } from "lucide-react";
+import { ChevronLeft, ChevronRight, Grid2X2, List, MonitorCheck, Plus } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 
@@ -15,6 +15,7 @@ import {
   MonitorTable,
   MonitorTableSkeleton,
 } from "@/components/monitors/monitor-table";
+import { MonitorGrid, MonitorGridSkeleton } from "@/components/monitors/monitor-grid";
 import { NodeCreateFlow } from "@/components/monitors/node-create-flow";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -33,6 +34,7 @@ export default function NodesPage() {
   const locale = useLocale();
 
   const [view, setView] = useState<"list" | "add">("list");
+  const [layout, setLayout] = useState<"grid" | "table">("grid");
 
   const [filters, setFilters] = useState<MonitorFilterState>({
     search: "",
@@ -84,30 +86,58 @@ export default function NodesPage() {
 
   return (
     <Tabs value={view} onValueChange={(v) => setView(v as "list" | "add")}>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-border/65 pb-4">
         <TabsList>
           <TabsTrigger value="list">{tNav("myNodes")}</TabsTrigger>
           <TabsTrigger value="add">{tNav("addNode")}</TabsTrigger>
         </TabsList>
 
         {view === "list" ? (
-          <Button onClick={() => setView("add")}>{t("newMonitor")}</Button>
+          <Button onClick={() => setView("add")}>
+            <Plus className="size-4" aria-hidden />
+            {t("newMonitor")}
+          </Button>
         ) : null}
       </div>
 
       <TabsContent value="list">
-        <MonitorFilters
-          value={filters}
-          onChange={(next) => {
-            setFilters(next);
-            if (next.type !== filters.type || next.status !== filters.status) {
-              setPage(1);
-            }
-          }}
-        />
+        <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <MonitorFilters
+            value={filters}
+            className="mb-0"
+            onChange={(next) => {
+              setFilters(next);
+              if (next.type !== filters.type || next.status !== filters.status) {
+                setPage(1);
+              }
+            }}
+          />
+          <div className="inline-flex w-fit items-center rounded-lg border border-border/70 bg-muted/25 p-1" role="group" aria-label={t("viewMode")}>
+            <Button
+              type="button"
+              variant={layout === "grid" ? "secondary" : "ghost"}
+              size="icon-sm"
+              onClick={() => setLayout("grid")}
+              aria-label={t("gridView")}
+              aria-pressed={layout === "grid"}
+            >
+              <Grid2X2 className="size-4" />
+            </Button>
+            <Button
+              type="button"
+              variant={layout === "table" ? "secondary" : "ghost"}
+              size="icon-sm"
+              onClick={() => setLayout("table")}
+              aria-label={t("listView")}
+              aria-pressed={layout === "table"}
+            >
+              <List className="size-4" />
+            </Button>
+          </div>
+        </div>
 
         {monitorsQuery.isPending ? (
-          <MonitorTableSkeleton />
+          layout === "grid" ? <MonitorGridSkeleton /> : <MonitorTableSkeleton />
         ) : monitorsQuery.isError ? (
           <ErrorState onRetry={() => void monitorsQuery.refetch()} />
         ) : monitorsQuery.data.items.length === 0 ? (
@@ -127,7 +157,11 @@ export default function NodesPage() {
           )
         ) : (
           <>
-            <MonitorTable monitors={monitorsQuery.data.items} />
+            {layout === "grid" ? (
+              <MonitorGrid monitors={monitorsQuery.data.items} />
+            ) : (
+              <MonitorTable monitors={monitorsQuery.data.items} />
+            )}
 
             {pagination && pagination.total_pages > 1 ? (
               <div className="mt-4 flex items-center justify-between gap-3">

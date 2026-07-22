@@ -224,6 +224,9 @@ func (h *Handler) approveAgent(w http.ResponseWriter, r *http.Request) {
 					if setErr := h.deps.AgentRepo.SetAgentCertificate(r.Context(), id, serial); setErr != nil {
 						h.deps.Logger.Warn("set agent certificate failed", "error", setErr)
 					}
+					if setErr := h.deps.AgentRepo.SetAgentGatewayCert(r.Context(), id, certPEM); setErr != nil {
+						h.deps.Logger.Warn("set agent gateway cert failed", "error", setErr)
+					}
 				} else {
 					h.deps.Logger.Warn("issue certificate failed", "error", pubErr)
 				}
@@ -370,6 +373,9 @@ func (h *Handler) agentStatus(w http.ResponseWriter, r *http.Request) {
 	if agent.CertificateSerial != "" {
 		resp["certificate_serial"] = agent.CertificateSerial
 	}
+	if agent.GatewayCert != "" {
+		resp["certificate"] = agent.GatewayCert
+	}
 	if agent.ApprovedAt != nil {
 		resp["approved_at"] = agent.ApprovedAt.Format(time.RFC3339)
 	}
@@ -419,7 +425,7 @@ func (h *Handler) agentEnroll(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"request_id":   agent.ID.String(),
+		"agent_id":     agent.ID.String(),
 		"status":       string(agent.Status),
 		"message":      "Agent registered successfully. Waiting for admin approval.",
 		"agent_secret": agent.AgentSecret,

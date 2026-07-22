@@ -80,7 +80,7 @@ func (g *GatewayServer) ListenAndServe(ctx context.Context) error {
 
 	go func() {
 		g.logger.Info("gateway listening", "address", g.config.ListenAddress)
-		if err := g.server.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+		if err := g.server.ListenAndServeTLS(g.config.TLSCertFile, g.config.TLSKeyFile); err != nil && err != http.ErrServerClosed {
 			errChan <- err
 		}
 	}()
@@ -138,6 +138,10 @@ func (g *GatewayServer) buildGatewayMux() http.Handler {
 	mux.HandleFunc("/agent/v1/hello", g.handleAgentHello)
 	mux.HandleFunc("/agent/v1/heartbeat", g.handleAgentHeartbeat)
 	mux.HandleFunc("/agent/v1/connect", g.handleAgentConnect)
+	mux.HandleFunc("/agent/v1/jobs/poll", g.handleJobPoll)
+	mux.HandleFunc("/agent/v1/jobs/ack", g.handleJobAck)
+	mux.HandleFunc("/agent/v1/results/batch", g.handleResultBatch)
+	mux.HandleFunc("/agent/v1/capacity", g.handleCapacity)
 
 	return mux
 }
@@ -277,4 +281,153 @@ func (g *GatewayServer) verifyAgent(r *http.Request) (uuid.UUID, error) {
 	}
 
 	return agentID, nil
+}
+
+func (g *GatewayServer) handleJobPoll(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	agentID, err := g.verifyAgent(r)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	agent, err := g.agentRepo.GetAgent(ctx, agentID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if agent.Status != agents.AgentActive && agent.Status != agents.AgentDraining {
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]string{
+			"status":       "forbidden",
+			"agent_status": string(agent.Status),
+		})
+		return
+	}
+
+	var req struct {
+		RunningJobs int32 `json:"running_jobs"`
+		MaxJobs     int32 `json:"max_jobs"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		req.MaxJobs = 10
+	}
+	if req.MaxJobs <= 0 {
+		req.MaxJobs = 1
+	}
+
+	available := agent.MaxConcurrency - req.RunningJobs
+	if available <= 0 {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"jobs":       []interface{}{},
+			"backpressure": true,
+			"available":  0,
+		})
+		return
+	}
+	if int32(req.MaxJobs) > available {
+		req.MaxJobs = available
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"jobs":        []interface{}{},
+		"backpressure": false,
+		"available":   int(available),
+	})
+}
+
+func (g *GatewayServer) handleJobAck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	agentID, err := g.verifyAgent(r)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		JobID   string `json:"job_id"`
+		LeaseID string `json:"lease_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	g.logger.Info("job acknowledged", "agent_id", agentID, "job_id", req.JobID)
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func (g *GatewayServer) handleResultBatch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	agentID, err := g.verifyAgent(r)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		Results []map[string]interface{} `json:"results"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	stored := make([]string, 0, len(req.Results))
+	for _, r := range req.Results {
+		if id, ok := r["result_id"].(string); ok {
+			stored = append(stored, id)
+		}
+	}
+
+	g.logger.Info("result batch received", "agent_id", agentID, "count", len(req.Results))
+	json.NewEncoder(w).Encode(map[string]interface{}{"stored": stored})
+}
+
+func (g *GatewayServer) handleCapacity(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	agentID, err := g.verifyAgent(r)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		RunningJobs int32 `json:"running_jobs"`
+		AvailableSlots int32 `json:"available_slots"`
+		SpoolBytes  int64 `json:"spool_bytes"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	if err := g.agentRepo.UpdateCapacity(ctx, agentID, req.RunningJobs, req.SpoolBytes); err != nil {
+		g.logger.Warn("capacity update failed", "agent_id", agentID, "error", err)
+	}
+
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }

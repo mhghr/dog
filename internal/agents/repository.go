@@ -95,7 +95,7 @@ func (r *Repository) CreateAgentWithToken(ctx context.Context, rawToken string, 
 			capabilities, max_concurrency, status, agent_secret
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending', $12)
 		RETURNING id, location_id, name, hostname, machine_fingerprint,
-			public_key, COALESCE(certificate_serial, ''), agent_secret,
+			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_gateway_cert, ''), agent_secret,
 			version, operating_system,
 			architecture, COALESCE(public_ip::text, ''), private_ips, capabilities,
 			max_concurrency, status, approved_by, approved_at,
@@ -106,7 +106,7 @@ func (r *Repository) CreateAgentWithToken(ctx context.Context, rawToken string, 
 		params.Capabilities, params.MaxConcurrency, params.AgentSecret,
 	).Scan(
 		&agent.ID, &agent.LocationID, &agent.Name, &agent.Hostname, &agent.MachineFingerprint,
-		&agent.PublicKey, &agent.CertificateSerial, &agent.AgentSecret,
+		&agent.PublicKey, &agent.CertificateSerial, &agent.GatewayCert, &agent.AgentSecret,
 		&agent.Version, &agent.OperatingSystem,
 		&agent.Architecture, &agent.PublicIP, &agent.PrivateIPs, &agent.Capabilities,
 		&agent.MaxConcurrency, &agent.Status, &agent.ApprovedBy, &agent.ApprovedAt,
@@ -132,7 +132,7 @@ func (r *Repository) CreateAgent(ctx context.Context, params CreateAgentParams) 
 			capabilities, max_concurrency, status, agent_secret
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending', $12)
 		RETURNING id, location_id, name, hostname, machine_fingerprint,
-			public_key, COALESCE(certificate_serial, ''), agent_secret,
+			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_gateway_cert, ''), agent_secret,
 			version, operating_system,
 			architecture, COALESCE(public_ip::text, ''), private_ips, capabilities,
 			max_concurrency, status, approved_by, approved_at,
@@ -143,7 +143,7 @@ func (r *Repository) CreateAgent(ctx context.Context, params CreateAgentParams) 
 		params.Capabilities, params.MaxConcurrency, params.AgentSecret,
 	).Scan(
 		&agent.ID, &agent.LocationID, &agent.Name, &agent.Hostname, &agent.MachineFingerprint,
-		&agent.PublicKey, &agent.CertificateSerial, &agent.AgentSecret,
+		&agent.PublicKey, &agent.CertificateSerial, &agent.GatewayCert, &agent.AgentSecret,
 		&agent.Version, &agent.OperatingSystem,
 		&agent.Architecture, &agent.PublicIP, &agent.PrivateIPs, &agent.Capabilities,
 		&agent.MaxConcurrency, &agent.Status, &agent.ApprovedBy, &agent.ApprovedAt,
@@ -159,7 +159,7 @@ func (r *Repository) GetAgent(ctx context.Context, id uuid.UUID) (*ProbeAgent, e
 	var agent ProbeAgent
 	err := r.pool.QueryRow(ctx, `
 		SELECT id, location_id, name, hostname, machine_fingerprint,
-			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_secret, ''),
+			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_gateway_cert, ''), COALESCE(agent_secret, ''),
 			version, operating_system,
 			architecture, COALESCE(public_ip::text, ''), private_ips, capabilities,
 			max_concurrency, status, approved_by, approved_at,
@@ -167,7 +167,7 @@ func (r *Repository) GetAgent(ctx context.Context, id uuid.UUID) (*ProbeAgent, e
 		FROM probe_agents WHERE id = $1
 	`, id).Scan(
 		&agent.ID, &agent.LocationID, &agent.Name, &agent.Hostname, &agent.MachineFingerprint,
-		&agent.PublicKey, &agent.CertificateSerial, &agent.AgentSecret,
+		&agent.PublicKey, &agent.CertificateSerial, &agent.GatewayCert, &agent.AgentSecret,
 		&agent.Version, &agent.OperatingSystem,
 		&agent.Architecture, &agent.PublicIP, &agent.PrivateIPs, &agent.Capabilities,
 		&agent.MaxConcurrency, &agent.Status, &agent.ApprovedBy, &agent.ApprovedAt,
@@ -186,7 +186,7 @@ func (r *Repository) GetAgentByIDAndSecret(ctx context.Context, id uuid.UUID, se
 	var agent ProbeAgent
 	err := r.pool.QueryRow(ctx, `
 		SELECT id, location_id, name, hostname, machine_fingerprint,
-			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_secret, ''),
+			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_gateway_cert, ''), COALESCE(agent_secret, ''),
 			version, operating_system,
 			architecture, COALESCE(public_ip::text, ''), private_ips, capabilities,
 			max_concurrency, status, approved_by, approved_at,
@@ -194,7 +194,7 @@ func (r *Repository) GetAgentByIDAndSecret(ctx context.Context, id uuid.UUID, se
 		FROM probe_agents WHERE id = $1 AND agent_secret = $2
 	`, id, secret).Scan(
 		&agent.ID, &agent.LocationID, &agent.Name, &agent.Hostname, &agent.MachineFingerprint,
-		&agent.PublicKey, &agent.CertificateSerial, &agent.AgentSecret,
+		&agent.PublicKey, &agent.CertificateSerial, &agent.GatewayCert, &agent.AgentSecret,
 		&agent.Version, &agent.OperatingSystem,
 		&agent.Architecture, &agent.PublicIP, &agent.PrivateIPs, &agent.Capabilities,
 		&agent.MaxConcurrency, &agent.Status, &agent.ApprovedBy, &agent.ApprovedAt,
@@ -212,7 +212,7 @@ func (r *Repository) GetAgentByIDAndSecret(ctx context.Context, id uuid.UUID, se
 func (r *Repository) ListAgents(ctx context.Context, params ListAgentsParams) ([]ProbeAgent, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT id, location_id, name, hostname, machine_fingerprint,
-			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_secret, ''),
+			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_gateway_cert, ''), COALESCE(agent_secret, ''),
 			version, operating_system,
 			architecture, COALESCE(public_ip::text, ''), private_ips, capabilities,
 			max_concurrency, status, approved_by, approved_at,
@@ -270,6 +270,15 @@ func (r *Repository) SetAgentCertificate(ctx context.Context, id uuid.UUID, seri
 		SET certificate_serial = $2, updated_at = NOW()
 		WHERE id = $1
 	`, id, serial)
+	return err
+}
+
+func (r *Repository) SetAgentGatewayCert(ctx context.Context, id uuid.UUID, certPEM string) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE probe_agents
+		SET agent_gateway_cert = $2, updated_at = NOW()
+		WHERE id = $1
+	`, id, certPEM)
 	return err
 }
 
@@ -358,7 +367,7 @@ func (r *Repository) UpdateCapacity(ctx context.Context, agentID uuid.UUID, runn
 func (r *Repository) GetActiveAgentsForLocation(ctx context.Context, locationID uuid.UUID) ([]ProbeAgent, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT id, location_id, name, hostname, machine_fingerprint,
-			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_secret, ''),
+			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_gateway_cert, ''), COALESCE(agent_secret, ''),
 			version, operating_system,
 			architecture, COALESCE(public_ip::text, ''), private_ips, capabilities,
 			max_concurrency, COALESCE(running_jobs, 0), COALESCE(spool_bytes, 0),

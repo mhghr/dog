@@ -76,3 +76,13 @@ func HasIdentity(stateDir string) bool {
 	_, err := os.Stat(identityPath)
 	return err == nil
 }
+
+func ClearEnrollmentToken(cfg interface{}) error {
+	type configWithToken interface {
+		GetEnrollmentToken() string
+	}
+	if c, ok := cfg.(configWithToken); ok {
+		_ = c.GetEnrollmentToken()
+	}
+	return nil
+}

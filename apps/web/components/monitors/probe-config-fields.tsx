@@ -129,6 +129,13 @@ export function PingConfigFields({ form }: ConfigFieldsProps) {
         min={10}
         max={10000}
       />
+      <div className="sm:col-span-2 mt-2 border-t border-border/60 pt-4">
+        <p className="mb-3 text-sm font-medium">{t("statusThresholds")}</p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <NumberField form={form} name="ping_warning_latency_millis" label={t("warningLatencyMillis")} min={1} max={60000} />
+          <NumberField form={form} name="ping_critical_latency_millis" label={t("criticalLatencyMillis")} min={1} max={60000} />
+        </div>
+      </div>
     </div>
   );
 }

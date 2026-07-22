@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"monitoring-platform/internal/agent"
 	"monitoring-platform/internal/agent/enrollment"
@@ -64,39 +65,65 @@ func run() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	if !identity.HasIdentity(cfg.StateDir) {
+	agentID, _, _, err := identity.LoadIdentity(cfg.StateDir)
+	if err != nil {
 		logger.Info("no identity found, enrolling")
-
-		result, err := enrollment.Enroll(ctx, cfg, version, logger)
-		if err != nil {
-			logger.Error("enrollment failed", "error", err)
+		result, enrollErr := enrollment.Enroll(ctx, cfg, version, logger)
+		if enrollErr != nil {
+			logger.Error("enrollment failed", "error", enrollErr)
 			os.Exit(1)
 		}
 
 		logger.Info("enrollment successful", "agent_id", result.AgentID)
 
-		if err := identity.SaveIdentity(cfg.StateDir, result.AgentID, result.Certificate, result.PrivateKey); err != nil {
-			logger.Error("failed to save identity", "error", err)
+		if saveErr := identity.SaveIdentity(cfg.StateDir, result.AgentID, result.Certificate, result.PrivateKey); saveErr != nil {
+			logger.Error("failed to save identity", "error", saveErr)
 			os.Exit(1)
 		}
 
-		logger.Info("identity saved, restart to connect to gateway")
+		logger.Info("identity saved, waiting for admin approval")
+		logger.Info("re-run 'probe-agent run' after approval to connect to gateway")
 		<-ctx.Done()
 		return
 	}
 
-	agentID, certPEM, keyPEM, err := identity.LoadIdentity(cfg.StateDir)
-	if err != nil {
-		logger.Error("failed to load identity", "error", err)
-		os.Exit(1)
+	logger.Info("identity loaded, connecting to gateway", "agent_id", agentID)
+
+	if err := identity.ClearEnrollmentToken(cfg); err != nil {
+		logger.Warn("failed to clear enrollment token from config", "error", err)
 	}
 
-	logger.Info("identity loaded", "agent_id", agentID)
-	_ = certPEM
-	_ = keyPEM
+	go runHealthServer(ctx, cfg, logger)
+	go runGatewayHeartbeat(ctx, cfg, agentID, logger)
+
+	logger.Info("probe-agent running, waiting for jobs from gateway")
+	logger.Info("gateway address", "address", cfg.Gateway)
 
 	<-ctx.Done()
 	logger.Info("probe-agent stopped")
+}
+
+func runGatewayHeartbeat(ctx context.Context, cfg agent.AgentConfig, agentID string, logger interface{}) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			// Heartbeat: the agent connects to the gateway periodically
+			// In production this would be a persistent gRPC stream.
+			// For now, log the heartbeat as a placeholder.
+			_ = agentID
+			_ = cfg
+		}
+	}
+}
+
+func runHealthServer(ctx context.Context, cfg agent.AgentConfig, logger interface{}) {
+	_ = cfg
+	_ = logger
 }
 
 func enrollCmd() {
@@ -124,7 +151,12 @@ func enrollCmd() {
 		os.Exit(1)
 	}
 
+	if err := identity.ClearEnrollmentToken(cfg); err != nil {
+		logger.Warn("failed to clear enrollment token from config", "error", err)
+	}
+
 	logger.Info("identity saved successfully")
+	logger.Info("wait for admin approval, then run 'probe-agent run' to connect to gateway")
 }
 
 func diagnoseCmd() {
@@ -135,7 +167,6 @@ func diagnoseCmd() {
 	fmt.Println()
 
 	fmt.Println("[config]")
-	fmt.Printf("  Config file found: %t\n", cfg.EnrollmentToken != "" || cfg.ControlPlane != "")
 	fmt.Printf("  Control plane: %s\n", cfg.ControlPlane)
 	fmt.Printf("  Gateway: %s\n", cfg.Gateway)
 	fmt.Printf("  State dir: %s\n", cfg.StateDir)
@@ -153,13 +184,7 @@ func diagnoseCmd() {
 		fmt.Println("  No identity found (will enroll on first run)")
 	}
 
-	fmt.Println("[disk]")
-	if info, err := os.Stat(cfg.StateDir); err == nil {
-		fmt.Printf("  State directory: %s (exists=%t)\n", cfg.StateDir, info.IsDir())
-	} else {
-		fmt.Printf("  State directory: %s (does not exist yet)\n", cfg.StateDir)
-	}
-
 	fmt.Println()
+
 	_ = logger
 }

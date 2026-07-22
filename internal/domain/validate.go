@@ -33,7 +33,7 @@ var allowedConfigKeys = map[MonitorType]map[string]struct{}{
 	),
 	MonitorTCP:  keySet("port"),
 	MonitorDNS:  keySet("server", "record_type", "expected_values"),
-	MonitorPing: keySet("packet_count", "packet_interval_millis", "privileged"),
+	MonitorPing: keySet("packet_count", "packet_interval_millis", "privileged", "warning_latency_millis", "critical_latency_millis"),
 	MonitorTLS: keySet(
 		"server_name", "port", "verify_chain", "verify_hostname", "minimum_tls_version",
 		"warning_days", "critical_days", "expected_issuer_contains", "expected_fingerprint_sha256",
@@ -274,6 +274,26 @@ func validateDNS(target string, cfg map[string]any, fieldErrors FieldErrors) {
 func validatePing(target string, cfg map[string]any, fieldErrors FieldErrors) {
 	if !validHost(target) {
 		fieldErrors.add("target", "Ping target must be a valid hostname or IP address")
+	}
+
+	warningRaw, hasWarning := cfg["warning_latency_millis"]
+	warning, warningOK := toInt(warningRaw)
+	criticalRaw, hasCritical := cfg["critical_latency_millis"]
+	critical, criticalOK := toInt(criticalRaw)
+	if hasWarning && !warningOK {
+		fieldErrors.add("config.warning_latency_millis", "warning_latency_millis must be an integer")
+	}
+	if hasCritical && !criticalOK {
+		fieldErrors.add("config.critical_latency_millis", "critical_latency_millis must be an integer")
+	}
+	if hasWarning && warningOK && (warning < 1 || warning > 60000) {
+		fieldErrors.add("config.warning_latency_millis", "warning_latency_millis must be between 1 and 60000")
+	}
+	if hasCritical && criticalOK && (critical < 1 || critical > 60000) {
+		fieldErrors.add("config.critical_latency_millis", "critical_latency_millis must be between 1 and 60000")
+	}
+	if hasWarning && warningOK && hasCritical && criticalOK && critical <= warning {
+		fieldErrors.add("config.critical_latency_millis", "critical_latency_millis must be greater than warning_latency_millis")
 	}
 
 	if packetCount, exists := cfg["packet_count"]; exists {

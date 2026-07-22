@@ -10,6 +10,7 @@ export interface LastResultSummary {
   success: boolean;
   duration_millis: number;
   error_code: string | null;
+  metrics?: Record<string, number>;
 }
 
 export interface Monitor {

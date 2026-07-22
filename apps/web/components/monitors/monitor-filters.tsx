@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { MONITOR_TYPES } from "@/lib/monitor-meta";
 import type { MonitorStatus, MonitorType } from "@/types/monitor";
+import { cn } from "@/lib/utils";
 
 export interface MonitorFilterState {
   search: string;
@@ -25,16 +26,18 @@ const STATUSES: MonitorStatus[] = ["up", "down", "unknown", "paused"];
 export function MonitorFilters({
   value,
   onChange,
+  className,
 }: {
   value: MonitorFilterState;
   onChange: (next: MonitorFilterState) => void;
+  className?: string;
 }) {
   const t = useTranslations("monitors");
   const tTypes = useTranslations("types");
   const tStatus = useTranslations("status");
 
   return (
-    <div className="mb-6 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+    <div className={cn("mb-6 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center", className)}>
       <div className="relative w-full sm:max-w-xs">
         <Search
           className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
