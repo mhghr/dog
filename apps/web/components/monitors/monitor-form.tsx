@@ -19,6 +19,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { MonitorThresholdFields } from "@/components/monitors/monitor-threshold-fields";
 import { ApiError } from "@/lib/api-client";
 import { getMonitorDefinition, getMonitorFormField, MONITOR_TYPE_GROUPS } from "@/features/monitors/core/registry";
 import {
@@ -206,6 +207,7 @@ export function MonitorForm({
         </CardHeader>
         <CardContent className="flex flex-col gap-6">
           <monitorDefinition.ConfigFields form={form} />
+          <MonitorThresholdFields type={monitorType} form={form} />
 
           <div className="flex flex-col gap-1.5">
             <Label>{t("form.configSummary")}</Label>

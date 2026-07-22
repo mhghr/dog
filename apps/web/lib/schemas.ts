@@ -34,6 +34,8 @@ export function createMonitorFormSchema(t: Translator) {
       timeout_millis: z.coerce.number().int().min(100, t("timeoutRange")).max(60000, t("timeoutRange")),
       retries: z.coerce.number().int().min(0, t("retriesRange")).max(5, t("retriesRange")),
       enabled: z.boolean(),
+      warning_duration_millis: optionalInt(1, 60000),
+      critical_duration_millis: optionalInt(1, 60000),
 
       http_method: optionalText,
       http_expected_status_codes: optionalText,
@@ -54,6 +56,10 @@ export function createMonitorFormSchema(t: Translator) {
       ping_packet_interval_millis: optionalInt(10, 10000),
       ping_warning_latency_millis: optionalInt(1, 60000),
       ping_critical_latency_millis: optionalInt(1, 60000),
+      ping_warning_packet_loss_percent: optionalInt(0, 100),
+      ping_critical_packet_loss_percent: optionalInt(0, 100),
+      ping_warning_jitter_millis: optionalInt(0, 60000),
+      ping_critical_jitter_millis: optionalInt(0, 60000),
 
       tls_port: optionalInt(1, 65535),
       tls_server_name: optionalText,
@@ -85,6 +91,8 @@ export function createMonitorFormSchema(t: Translator) {
       ntp_max_round_trip_millis: optionalInt(1, 600000),
       ntp_stratum_min: optionalInt(1, 16),
       ntp_stratum_max: optionalInt(1, 16),
+      ntp_warning_offset_millis: optionalInt(1, 600000),
+      ntp_warning_round_trip_millis: optionalInt(1, 600000),
     })
     .superRefine((value, context) => {
       const target = value.target.trim();
@@ -201,6 +209,9 @@ export function buildProbeConfig(values: MonitorFormValues): Record<string, unkn
     config[key] = value;
   };
 
+  set("warning_duration_millis", values.warning_duration_millis);
+  set("critical_duration_millis", values.critical_duration_millis);
+
   switch (values.type) {
     case "http": {
       set("method", values.http_method?.toUpperCase());
@@ -234,6 +245,10 @@ export function buildProbeConfig(values: MonitorFormValues): Record<string, unkn
       set("packet_interval_millis", values.ping_packet_interval_millis);
       set("warning_latency_millis", values.ping_warning_latency_millis);
       set("critical_latency_millis", values.ping_critical_latency_millis);
+      set("warning_packet_loss_percent", values.ping_warning_packet_loss_percent);
+      set("critical_packet_loss_percent", values.ping_critical_packet_loss_percent);
+      set("warning_jitter_millis", values.ping_warning_jitter_millis);
+      set("critical_jitter_millis", values.ping_critical_jitter_millis);
       break;
     }
     case "tls": {
@@ -281,6 +296,8 @@ export function buildProbeConfig(values: MonitorFormValues): Record<string, unkn
       set("max_round_trip_millis", values.ntp_max_round_trip_millis);
       set("allowed_stratum_min", values.ntp_stratum_min);
       set("allowed_stratum_max", values.ntp_stratum_max);
+      set("warning_offset_millis", values.ntp_warning_offset_millis);
+      set("warning_round_trip_millis", values.ntp_warning_round_trip_millis);
       break;
     }
   }
@@ -323,6 +340,8 @@ export function monitorToFormValues(monitor: Monitor): MonitorFormValues {
   values.timeout_millis = monitor.timeout_millis;
   values.retries = monitor.retries;
   values.enabled = monitor.enabled;
+  values.warning_duration_millis = num("warning_duration_millis");
+  values.critical_duration_millis = num("critical_duration_millis");
 
   switch (monitor.type) {
     case "http": {
@@ -358,6 +377,10 @@ export function monitorToFormValues(monitor: Monitor): MonitorFormValues {
       values.ping_packet_interval_millis = num("packet_interval_millis");
       values.ping_warning_latency_millis = num("warning_latency_millis") ?? values.ping_warning_latency_millis;
       values.ping_critical_latency_millis = num("critical_latency_millis") ?? values.ping_critical_latency_millis;
+      values.ping_warning_packet_loss_percent = num("warning_packet_loss_percent");
+      values.ping_critical_packet_loss_percent = num("critical_packet_loss_percent");
+      values.ping_warning_jitter_millis = num("warning_jitter_millis");
+      values.ping_critical_jitter_millis = num("critical_jitter_millis");
       break;
     }
     case "tls": {
@@ -406,6 +429,8 @@ export function monitorToFormValues(monitor: Monitor): MonitorFormValues {
         num("max_round_trip_millis") ?? values.ntp_max_round_trip_millis;
       values.ntp_stratum_min = num("allowed_stratum_min");
       values.ntp_stratum_max = num("allowed_stratum_max");
+      values.ntp_warning_offset_millis = num("warning_offset_millis");
+      values.ntp_warning_round_trip_millis = num("warning_round_trip_millis");
       break;
     }
   }

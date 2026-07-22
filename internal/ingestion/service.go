@@ -12,18 +12,21 @@ import (
 
 	"monitoring-platform/internal/domain"
 	"monitoring-platform/internal/events"
+	"monitoring-platform/internal/health"
 	"monitoring-platform/internal/metrics"
 	"monitoring-platform/internal/repository"
 )
 
 type Service struct {
-	results   repository.ResultRepository
-	monitors  repository.MonitorRepository
-	locations repository.LocationRepository
-	victoria  *metrics.VictoriaClient
-	bus       *events.Bus
-	logger    *slog.Logger
-	counters  *metrics.IngestionMetrics
+	results      repository.ResultRepository
+	monitors     repository.MonitorRepository
+	locations    repository.LocationRepository
+	victoria     *metrics.VictoriaClient
+	bus          *events.Bus
+	logger       *slog.Logger
+	counters     *metrics.IngestionMetrics
+	healthEngine *health.Engine
+	healthNotif  *health.NotificationEngine
 
 	locationCodes sync.Map // location id -> code
 }
@@ -36,15 +39,19 @@ func NewService(
 	bus *events.Bus,
 	logger *slog.Logger,
 	counters *metrics.IngestionMetrics,
+	healthEngine *health.Engine,
+	healthNotif *health.NotificationEngine,
 ) *Service {
 	return &Service{
-		results:   results,
-		monitors:  monitors,
-		locations: locations,
-		victoria:  victoria,
-		bus:       bus,
-		logger:    logger,
-		counters:  counters,
+		results:      results,
+		monitors:     monitors,
+		locations:    locations,
+		victoria:     victoria,
+		bus:          bus,
+		logger:       logger,
+		counters:     counters,
+		healthEngine: healthEngine,
+		healthNotif:  healthNotif,
 	}
 }
 
@@ -95,6 +102,12 @@ func (s *Service) Ingest(ctx context.Context, result *domain.ProbeResult) (bool,
 	locationCode := s.locationCode(ctx, result.ProbeLocationID)
 	s.victoria.Enqueue(result, string(monitor.Type), locationCode)
 	s.publishEvent(result)
+
+	if s.healthEngine != nil {
+		if err := s.healthEngine.EvaluateResult(ctx, result); err != nil {
+			s.logger.Warn("health evaluation failed", "error", err)
+		}
+	}
 
 	s.logger.Info(
 		"probe result ingested",

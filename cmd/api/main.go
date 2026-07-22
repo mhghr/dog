@@ -14,6 +14,7 @@ import (
 	"monitoring-platform/internal/auth"
 	"monitoring-platform/internal/config"
 	"monitoring-platform/internal/events"
+	"monitoring-platform/internal/health"
 	"monitoring-platform/internal/httpserver"
 	"monitoring-platform/internal/ingestion"
 	"monitoring-platform/internal/logging"
@@ -78,6 +79,10 @@ func main() {
 	channelRepo := postgres.NewChannelRepository(pool)
 	alertEngine := alerting.NewEngine(alertRepo, logger)
 	alertNotifier := alerting.NewNotifier(channelRepo, logger)
+
+	healthRepo := postgres.NewHealthRepository(pool)
+	healthEngine := health.NewEngine(healthRepo, logger)
+	healthNotifier := health.NewNotificationEngine(healthRepo, logger)
 
 	agentRepo := agents.NewRepository(pool)
 
@@ -155,35 +160,39 @@ func main() {
 		bus,
 		logger,
 		ingestionMetrics,
+		healthEngine,
+		healthNotifier,
 	)
 
 	go watchQueueDepth(ctx, probeQueue, ingestionMetrics)
 	go watchOfflineAgents(ctx, agentRepo, logger)
 
 	router := api.NewRouter(api.Deps{
-		Config:        cfg,
-		Logger:        logger,
-		Monitors:      monitorRepo,
-		Results:       resultRepo,
-		Locations:     locationRepo,
-		StatusPages:   postgres.NewStatusPageRepository(pool),
-		Orgs:          postgres.NewOrganizationRepository(pool),
-		Projects:      postgres.NewProjectRepository(pool),
-		AlertRepo:     alertRepo,
-		ChannelRepo:   channelRepo,
-		AlertEngine:   alertEngine,
-		Notifier:      alertNotifier,
-		Ingestion:     ingestionService,
-		Auth:          authService,
-		Issuer:        tokenIssuer,
-		Bus:           bus,
-		Queue:         probeQueue,
-		Pool:          pool,
-		Redis:         redisClient,
-		Victoria:      victoria,
-		Prom:          metrics.Handler(registry),
-		AgentRepo:     agentRepo,
-		CA:            ca,
+		Config:         cfg,
+		Logger:         logger,
+		Monitors:       monitorRepo,
+		Results:        resultRepo,
+		Locations:      locationRepo,
+		StatusPages:    postgres.NewStatusPageRepository(pool),
+		Orgs:           postgres.NewOrganizationRepository(pool),
+		Projects:       postgres.NewProjectRepository(pool),
+		AlertRepo:      alertRepo,
+		ChannelRepo:    channelRepo,
+		AlertEngine:    alertEngine,
+		Notifier:       alertNotifier,
+		HealthRepo:     healthRepo,
+		HealthNotifier: healthNotifier,
+		Ingestion:      ingestionService,
+		Auth:           authService,
+		Issuer:         tokenIssuer,
+		Bus:            bus,
+		Queue:          probeQueue,
+		Pool:           pool,
+		Redis:          redisClient,
+		Victoria:       victoria,
+		Prom:           metrics.Handler(registry),
+		AgentRepo:      agentRepo,
+		CA:             ca,
 	})
 
 	server := httpserver.New(cfg.HTTPAddress, router)

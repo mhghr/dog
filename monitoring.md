@@ -16239,3 +16239,1196 @@ Fleet rollout
 11. Resource Detection پس از نصب انجام می‌شود.
 12. UI از Token Creation تا First Data را مرحله‌به‌مرحله نشان می‌دهد.
 ```
+
+---
+
+# 270. مدل پارامترمحور Health Rule و Notification Routing
+
+این فصل مدل کامل تعریف وضعیت و Notification برای تمام پارامترهای هر Monitor را مشخص می‌کند.
+
+اصل محصول:
+
+```text
+هر Monitor → چند Parameter قابل اندازه‌گیری دارد
+هر Parameter → Default Health Rule دارد
+کاربر → می‌تواند Default را استفاده یا همان Parameter را Override کند
+هر وضعیت ایجادشده → می‌تواند Notification Policy مستقل داشته باشد
+```
+
+مثال Ping:
+
+```text
+Ping Monitor
+├── Reachability
+├── Average RTT
+├── Minimum RTT
+├── Maximum RTT
+├── Packet Loss
+├── Jitter
+├── TTL
+└── Response Consistency
+```
+
+کاربر می‌تواند برای هر Parameter تعیین کند چه زمانی `OK`، `WARNING`، `ERROR` یا `UNKNOWN` شود، ارزیابی روی چند نمونه یا چه بازه‌ای انجام شود، Recovery چگونه باشد و هر وضعیت به چه مقصدی Notification بفرستد. اگر کاربر چیزی مشخص نکند، Default استاندارد Platform اعمال می‌شود.
+
+# 271. تفکیک مفاهیم
+
+```text
+Parameter Definition
+Health Rule
+Health State
+Notification Policy
+```
+
+- **Parameter Definition:** چیزی که Monitor اندازه می‌گیرد؛ مانند `ping.rtt.avg_ms` یا `ping.jitter_ms`.
+- **Health Rule:** تبدیل مقدار Parameter به Status.
+- **Health State:** نتیجه جاری Rule؛ یعنی `OK/WARNING/ERROR/UNKNOWN`.
+- **Notification Policy:** واکنش به Status یا Transition.
+
+مثال:
+
+```text
+Parameter: ping.rtt.avg_ms
+OK:       < 150ms
+WARNING:  150ms تا کمتر از 300ms
+ERROR:    >= 300ms
+```
+
+# 272. Parameter Catalog
+
+تمام Monitor Typeها باید Parameter Catalog استاندارد داشته باشند. هر Parameter Definition شامل این فیلدهاست:
+
+```text
+key
+monitor_type
+name
+description
+data_type
+unit
+direction
+supported_operators
+default_aggregation
+default_window
+default_rules
+notification_eligible
+chart_type
+```
+
+Directionها:
+
+```text
+HIGHER_IS_WORSE
+LOWER_IS_WORSE
+BOOLEAN_FAILURE
+ENUM_STATE
+RANGE_DEVIATION
+CHANGE_EVENT
+RATE
+COUNT
+```
+
+نمونه‌ها:
+
+```text
+RTT                    → HIGHER_IS_WORSE
+Disk free percent      → LOWER_IS_WORSE
+TLS hostname valid     → BOOLEAN_FAILURE
+HTTP status class      → ENUM_STATE
+NTP offset             → RANGE_DEVIATION
+Certificate changed    → CHANGE_EVENT
+5xx rate               → RATE
+Critical log count     → COUNT
+```
+
+Data Typeها:
+
+```text
+NUMBER
+BOOLEAN
+ENUM
+STRING
+DURATION
+PERCENTAGE
+BYTES
+TIMESTAMP
+```
+
+# 273. Default Rule Catalog
+
+Platform باید برای هر Parameter یک Default Rule نسخه‌بندی‌شده داشته باشد:
+
+```text
+monitor_type
+parameter_key
+default_profile
+warning_rule
+error_rule
+recovery_rule
+missing_data_policy
+effective_from
+version
+```
+
+Profileها:
+
+```text
+Sensitive
+Recommended
+Relaxed
+```
+
+Default اولیه هر Monitor، `Recommended` است. کاربر می‌تواند یکی از این حالت‌ها را انتخاب کند:
+
+```text
+INHERIT_DEFAULT
+USE_PROFILE
+CUSTOM
+DISABLED
+```
+
+- `INHERIT_DEFAULT`: استفاده از Default Recommended جاری Platform.
+- `USE_PROFILE`: استفاده از Sensitive یا Relaxed.
+- `CUSTOM`: Rule اختصاصی کاربر.
+- `DISABLED`: Parameter جمع‌آوری و در Chart نمایش داده می‌شود، ولی در Health محاسبه نمی‌شود.
+
+اگر Default جدید منتشر شود، Ruleهای `CUSTOM` بدون تغییر می‌مانند. Ruleهای موروثی باید با Changelog، Preview و Grace Period به نسخه جدید منتقل شوند.
+
+# 274. ساخت Rangeهای وضعیت
+
+برای `HIGHER_IS_WORSE`، UI فقط این دو مقدار را می‌گیرد:
+
+```text
+Warning above: X
+Error above: Y
+```
+
+و سیستم می‌سازد:
+
+```text
+OK       value < X
+WARNING  X <= value < Y
+ERROR    value >= Y
+```
+
+برای `LOWER_IS_WORSE`:
+
+```text
+Warning below: X
+Error below: Y
+```
+
+و سیستم می‌سازد:
+
+```text
+OK       value > X
+WARNING  Y < value <= X
+ERROR    value <= Y
+```
+
+برای `RANGE_DEVIATION` مانند NTP Offset:
+
+```text
+Warning when abs(value) > 100ms
+Error when abs(value) > 500ms
+```
+
+Validation باید از هم‌پوشانی، Gap، Unit نامعتبر، Error ضعیف‌تر از Warning و درصد خارج از بازه جلوگیری کند.
+
+# 275. Evaluation Model
+
+هر Rule شامل:
+
+```text
+Parameter
+Aggregation
+Evaluation Window
+Condition
+Required Duration
+Minimum Samples
+Consecutive Failures
+Consecutive Successes
+Recovery Condition
+Missing Data Policy
+```
+
+Aggregationها:
+
+```text
+last
+avg
+min
+max
+sum
+count
+rate
+increase
+p50
+p90
+p95
+p99
+```
+
+مثال Ping RTT:
+
+```text
+Average of last 3 checks
+Warning >= 150ms
+Error >= 300ms
+Recovery < 120ms
+```
+
+مثال CPU:
+
+```text
+Average over 5 minutes
+Warning > 75%
+Error > 90%
+Recovery < 65%
+```
+
+Recovery Threshold مستقل برای جلوگیری از Flapping الزامی است.
+
+# 276. وضعیت Parameter، Monitor و Node
+
+هر Parameter وضعیت مستقل دارد:
+
+```text
+ping.rtt.avg_ms          WARNING
+ping.packet_loss_percent OK
+ping.jitter_ms           OK
+ping.ttl                 OK
+```
+
+Monitor از بدترین Parameter فعال محاسبه می‌شود:
+
+```text
+ERROR > WARNING > UNKNOWN > OK
+```
+
+Node نیز از Monitor Status و Criticality محاسبه می‌شود.
+
+# 277. Notification Policy پارامترمحور
+
+Notification Policy می‌تواند در سطوح زیر تعریف شود:
+
+```text
+Organization
+Project
+Node
+Monitor
+Parameter
+```
+
+اولویت:
+
+```text
+Parameter override
+> Monitor policy
+> Node policy
+> Project policy
+> Organization default
+```
+
+Triggerها:
+
+```text
+STATUS_ENTERED_WARNING
+STATUS_ENTERED_ERROR
+STATUS_ENTERED_UNKNOWN
+RECOVERED_TO_OK
+DEGRADED_FROM_ERROR_TO_WARNING
+REPEATED_WARNING
+REPEATED_ERROR
+NO_DATA
+FLAPPING_DETECTED
+```
+
+مثال:
+
+```text
+Monitor: Public Ping
+Parameter: Average RTT
+When: OK → WARNING
+Send to: Telegram / NOC Team, Email / oncall@example.com
+Delay: 2 minutes
+Repeat: every 30 minutes while active
+Stop when: Recovered or escalated to ERROR
+```
+
+Health Rule و Notification Policy مستقل‌اند. ممکن است Parameter `WARNING` شود اما Notification Warning غیرفعال باشد؛ در این حالت UI و Event History وضعیت را نشان می‌دهند ولی پیام خارجی ارسال نمی‌شود.
+
+# 278. Notification Channels و Targets
+
+مسیر:
+
+```text
+Settings → Notification Channels
+```
+
+انواع:
+
+```text
+Email
+Telegram
+Slack
+Microsoft Teams
+Discord
+Webhook
+SMS در فاز بعد
+PagerDuty/Opsgenie در فاز بعد
+```
+
+Target Typeها:
+
+```text
+CHANNEL
+USER
+TEAM
+ON_CALL_SCHEDULE
+ESCALATION_POLICY
+```
+
+در MVP، `CHANNEL` و `TEAM` کافی است.
+
+Telegram شامل Bot Token، Chat ID، Topic ID اختیاری و Test Message است. Email می‌تواند فرد یا Contact Group باشد. Webhook شامل URL، Headers، Secret، Timeout و Retry است. تمام Secretها Encrypt شوند.
+
+# 279. UI تعریف Rule برای هر Parameter
+
+مسیر:
+
+```text
+Monitor Detail → Parameters
+```
+
+جدول:
+
+| Parameter | Current | Status | Rule source | Notifications |
+|---|---:|---|---|---|
+| Average RTT | 184ms | Warning | Custom | Telegram NOC |
+| Packet Loss | 0% | OK | Recommended | Error only |
+| Jitter | 12ms | OK | Recommended | None |
+| TTL | 54 | OK | Change detection | Warning |
+
+کلیک روی Row، Drawer باز می‌کند:
+
+```text
+Average RTT
+Current status: WARNING
+Current value: 184ms
+
+Rule
+Warning >= 150ms
+Error >= 300ms
+Recovery < 120ms
+Average of last 3 checks
+
+Notifications
+Warning → Telegram NOC
+Error → Telegram Critical + Email On-call
+Recovery → Email On-call
+
+[Edit rule] [Edit notifications] [View chart]
+```
+
+# 280. Rule Builder UI
+
+Simple Mode:
+
+```text
+Parameter: Average RTT
+Rule mode: Recommended / Sensitive / Relaxed / Custom / Disabled
+Warning above [150] ms
+Error above [300] ms
+Notify [NOC Telegram]
+```
+
+Advanced Mode:
+
+```text
+Aggregation
+Window
+Required duration
+Minimum samples
+Recovery threshold
+Consecutive failures
+Consecutive successes
+Missing data policy
+Cooldown
+```
+
+Preview:
+
+```text
+Current value: 184ms
+Result: WARNING
+OK < 150ms
+WARNING 150–299.99ms
+ERROR >= 300ms
+```
+
+Buttonها:
+
+```text
+Test on historical data
+Send test notification
+Reset to default
+Save
+```
+
+Historical Test:
+
+```text
+Last 7 days
+Warning periods: 8
+Error periods: 2
+Notifications that would be sent: 11
+Longest warning: 14 minutes
+```
+
+# 281. Notification Builder UI
+
+```text
+Notify when
+☑ Enters Warning
+☑ Enters Error
+☑ Recovers
+☐ Becomes Unknown
+☐ Repeats while active
+
+Warning destinations
+[Telegram / NOC Team]
+
+Error destinations
+[Telegram / Critical]
+[Email / On-call]
+
+Recovery destinations
+[Email / On-call]
+```
+
+تنظیمات تکمیلی:
+
+```text
+Warning delay
+Error delay
+Repeat interval
+Group with other parameter alerts
+Mute during maintenance
+Cooldown
+```
+
+# 282. Inheritance UI
+
+UI باید منبع Rule را واضح نشان دهد:
+
+```text
+Platform Default
+Organization Default
+Project Override
+Node Override
+Monitor Override
+Parameter Custom
+```
+
+نمونه:
+
+```text
+Average RTT
+Using Organization Default: Network Standard v3
+[Customize for this monitor]
+```
+
+پس از Custom:
+
+```text
+Custom override
+[Reset to organization default]
+```
+
+# 283. Default Ruleهای Ping
+
+## Reachability
+
+```text
+OK: پاسخ دریافت شود
+WARNING: یک Failure از سه Check اخیر
+ERROR: سه Failure متوالی
+Recovery: دو Success متوالی
+Missing data: ERROR پس از سه Check ازدست‌رفته
+```
+
+## Average RTT
+
+Recommended:
+
+```text
+OK       < 150ms
+WARNING  150 تا کمتر از 300ms
+ERROR    >= 300ms
+Recovery < 120ms
+Aggregation: average of last 3 checks
+```
+
+Sensitive:
+
+```text
+Warning >= 80ms
+Error >= 150ms
+```
+
+Relaxed:
+
+```text
+Warning >= 300ms
+Error >= 600ms
+```
+
+## Packet Loss
+
+```text
+OK       < 1%
+WARNING  1 تا کمتر از 5%
+ERROR    >= 5%
+Recovery < 0.5%
+```
+
+## Jitter
+
+```text
+OK       < 30ms
+WARNING  30 تا کمتر از 80ms
+ERROR    >= 80ms
+Recovery < 20ms
+```
+
+## TTL
+
+TTL Threshold مطلق قابل اتکای عمومی ندارد. Default:
+
+```text
+Health rule disabled
+Change detection enabled
+WARNING when TTL deviates significantly from learned baseline
+ERROR disabled by default
+```
+
+کاربر می‌تواند Range سفارشی تعریف کند.
+
+## Maximum RTT
+
+```text
+Visible in charts
+Health disabled by default
+```
+
+# 284. Default Ruleهای HTTP
+
+```text
+Reachability:
+Connection success → OK
+Timeout/refused/DNS failure → ERROR
+
+Status code:
+200–399 → OK
+429 → WARNING اختیاری
+Unexpected 4xx/5xx → ERROR
+
+Total response time:
+OK < 1000ms
+WARNING 1000–2999ms
+ERROR >= 3000ms
+Recovery < 800ms
+
+TTFB:
+Warning >= 700ms
+Error >= 2000ms
+
+DNS time:
+Warning >= 250ms
+Error >= 1000ms
+
+Connect time:
+Warning >= 500ms
+Error >= 2000ms
+
+TLS handshake:
+Warning >= 750ms
+Error >= 2000ms
+
+Response size:
+Health disabled; change detection optional
+
+Content assertion:
+Match → OK
+Mismatch → ERROR
+```
+
+# 285. Default Ruleهای DNS، TCP، TLS، Domain، SMTP و NTP
+
+## DNS
+
+```text
+NOERROR → OK
+NXDOMAIN/SERVFAIL/REFUSED → ERROR مگر Expected باشد
+Resolution time: Warning >= 250ms, Error >= 1000ms
+Expected record mismatch → ERROR
+TTL health disabled by default
+Answer count: change detection only
+```
+
+## TCP
+
+```text
+Connection success → OK
+Timeout/refused/unreachable → ERROR
+Connect time: Warning >= 500ms, Error >= 2000ms
+Banner mismatch → ERROR
+TLS expected but unavailable → ERROR
+```
+
+## TLS
+
+```text
+Certificate invalid → ERROR
+Hostname mismatch → ERROR
+Untrusted chain → ERROR
+Days remaining: OK > 30, WARNING 7–30, ERROR < 7
+Weak protocol/cipher → WARNING یا ERROR طبق Policy
+```
+
+## Domain
+
+```text
+Days remaining: OK > 30, WARNING 7–30, ERROR < 7
+Expired/hold → ERROR
+Nameserver or registrar change → WARNING
+Lookup unavailable → UNKNOWN
+```
+
+## SMTP
+
+```text
+Connection failure → ERROR
+Banner mismatch → ERROR
+Handshake: Warning >= 1500ms, Error >= 5000ms
+STARTTLS expected but unavailable → ERROR
+4xx → WARNING
+5xx → ERROR
+```
+
+## NTP
+
+```text
+No response → ERROR
+Absolute offset: Warning > 100ms, Error > 500ms
+Round-trip delay: Warning > 500ms, Error > 1500ms
+Jitter: Warning > 50ms, Error > 200ms
+Stratum outside expected range → WARNING
+Unsynchronized → ERROR
+```
+
+# 286. Default Ruleهای Agent Metrics
+
+## CPU
+
+```text
+Utilization: Warning > 75% for 5m, Error > 90% for 5m, Recovery < 65%
+IOWait: Warning > 20%, Error > 40%
+Load: Warning > CPU core count, Error > 2 × CPU core count
+```
+
+## Memory
+
+```text
+Utilization: Warning > 80%, Error > 92%
+Available: Warning < 20%, Error < 8%
+OOM event → ERROR
+Sustained swap activity → WARNING
+```
+
+## Filesystem
+
+```text
+Free: Warning < 15%, Error < 5%
+Inodes free: Warning < 15%, Error < 5%
+Read-only filesystem → ERROR
+```
+
+## Disk IO
+
+```text
+Utilization: Warning > 85%, Error > 95%
+Latency p95: Warning > 30ms, Error > 100ms
+Device error increase → ERROR
+```
+
+## Network
+
+```text
+Expected interface down → ERROR
+Error rate above threshold → WARNING
+Drops: Warning > 1%, Error > 5%
+Bandwidth: Warning > 80%, Error > 95%
+```
+
+# 287. Logs و Traces
+
+Logs Parameterها:
+
+```text
+log.error.count
+log.error.rate
+log.critical_pattern.count
+log.source.silence
+```
+
+Default:
+
+```text
+Critical pattern count > 0 → ERROR
+Error rate spike → WARNING
+Required source silent → UNKNOWN/WARNING
+```
+
+بسیاری از Log Ruleها باید Opt-in باشند.
+
+Trace Parameterها:
+
+```text
+trace.request_rate
+trace.error_rate
+trace.duration.p95
+trace.duration.p99
+trace.no_traffic
+```
+
+Default:
+
+```text
+Error rate > 2% → WARNING
+Error rate > 5% → ERROR
+p95 above SLO → WARNING
+p99 above severe SLO → ERROR
+```
+
+# 288. Deduplication، Grouping و Escalation
+
+Dedup Key:
+
+```text
+organization_id
+node_id
+monitor_id
+parameter_key
+state
+```
+
+Grouping می‌تواند Alertهای چند Parameter یک Monitor یا چند Monitor یک Node را تجمیع کند.
+
+Delay نمونه:
+
+```text
+WARNING: پس از 2 دقیقه
+ERROR: فوری
+```
+
+Repeat:
+
+```text
+Never
+Every 10 minutes
+Every 30 minutes
+Every hour
+Custom
+```
+
+Recovery فقط وقتی ارسال شود که قبلاً Notification مربوط به Alert ارسال شده باشد.
+
+Escalation نمونه:
+
+```text
+WARNING → Telegram NOC after 2m
+Still WARNING after 15m → Email Team Lead
+ERROR → Telegram Critical + Email On-call immediately
+Still ERROR after 10m → Webhook Incident System
+```
+
+# 289. Maintenance، Mute و Acknowledge
+
+- Maintenance: Health محاسبه می‌شود ولی Notification Suppress می‌شود.
+- Mute: Policy یا Destination برای بازه مشخص خاموش می‌شود.
+- Acknowledge: Health را تغییر نمی‌دهد؛ فقط Incident Workflow را تغییر می‌دهد.
+
+# 290. Notification Message Template
+
+پیام باید شامل:
+
+```text
+Node
+Monitor
+Parameter
+New status
+Observed value
+Threshold
+Duration
+Started at
+Location
+Link
+```
+
+نمونه:
+
+```text
+🔴 ERROR — Production API
+Monitor: Public Ping
+Parameter: Packet Loss
+Observed: 8.4%
+Error threshold: 5%
+Duration: 3 checks
+Location: Frankfurt
+```
+
+# 291. APIهای Parameter Rule
+
+```text
+GET    /api/v1/monitor-types/{type}/parameters
+GET    /api/v1/monitors/{monitorId}/parameter-rules
+GET    /api/v1/monitors/{monitorId}/parameter-rules/{parameterKey}
+PUT    /api/v1/monitors/{monitorId}/parameter-rules/{parameterKey}
+DELETE /api/v1/monitors/{monitorId}/parameter-rules/{parameterKey}
+POST   /api/v1/monitors/{monitorId}/parameter-rules/{parameterKey}/test
+POST   /api/v1/monitors/{monitorId}/parameter-rules/{parameterKey}/reset
+```
+
+Request نمونه:
+
+```json
+{
+  "mode": "CUSTOM",
+  "aggregation": "avg",
+  "window": {"type": "checks", "value": 3},
+  "warning": {"operator": "gte", "value": 150},
+  "error": {"operator": "gte", "value": 300},
+  "recovery": {"operator": "lt", "value": 120},
+  "minimum_samples": 3,
+  "missing_data_policy": "ERROR_AFTER_MISSED_CHECKS",
+  "missed_checks": 3
+}
+```
+
+# 292. APIهای Notification Policy
+
+```text
+GET    /api/v1/notification-channels
+POST   /api/v1/notification-channels
+PUT    /api/v1/notification-channels/{channelId}
+POST   /api/v1/notification-channels/{channelId}/test
+GET    /api/v1/monitors/{monitorId}/notification-policies
+POST   /api/v1/monitors/{monitorId}/notification-policies
+PUT    /api/v1/notification-policies/{policyId}
+DELETE /api/v1/notification-policies/{policyId}
+POST   /api/v1/notification-policies/{policyId}/test
+```
+
+Policy نمونه:
+
+```json
+{
+  "parameter_key": "ping.rtt.avg_ms",
+  "triggers": [
+    "STATUS_ENTERED_WARNING",
+    "STATUS_ENTERED_ERROR",
+    "RECOVERED_TO_OK"
+  ],
+  "routes": {
+    "WARNING": ["channel_telegram_noc"],
+    "ERROR": ["channel_telegram_critical", "channel_email_oncall"],
+    "RECOVERY": ["channel_email_oncall"]
+  },
+  "warning_delay_seconds": 120,
+  "error_delay_seconds": 0,
+  "repeat_interval_seconds": 1800,
+  "enabled": true
+}
+```
+
+# 293. Schemaهای Database
+
+## monitor_parameter_definitions
+
+```text
+id
+monitor_type
+parameter_key
+name
+description
+data_type
+unit
+direction
+supported_operators_json
+default_aggregation
+notification_eligible
+chart_definition_json
+created_at
+```
+
+## parameter_rule_defaults
+
+```text
+id
+monitor_type
+parameter_key
+profile
+version
+rule_json
+effective_from
+deprecated_at
+```
+
+## monitor_parameter_rules
+
+```text
+id
+organization_id
+node_id
+monitor_id
+parameter_key
+mode
+profile
+rule_json
+default_version
+enabled
+created_by
+created_at
+updated_at
+```
+
+## parameter_health_states
+
+```text
+organization_id
+node_id
+monitor_id
+parameter_key
+status
+previous_status
+observed_value
+unit
+reason_code
+rule_id
+evaluated_at
+changed_at
+```
+
+## notification_channels
+
+```text
+id
+organization_id
+name
+type
+encrypted_config
+verification_status
+enabled
+created_by
+created_at
+updated_at
+```
+
+## notification_policies
+
+```text
+id
+organization_id
+project_id
+node_id
+monitor_id
+parameter_key
+scope
+triggers_json
+routes_json
+delay_json
+repeat_interval_seconds
+grouping_mode
+enabled
+created_by
+created_at
+updated_at
+```
+
+## notification_deliveries
+
+```text
+id
+organization_id
+policy_id
+alert_event_id
+channel_id
+status
+attempt
+response_code
+error_message
+sent_at
+delivered_at
+```
+
+# 294. Rule Evaluation Pipeline
+
+```text
+Observation received
+→ Parameter mapped
+→ Applicable rule resolved
+→ Aggregation/window calculated
+→ Threshold evaluated
+→ Hysteresis/recovery applied
+→ Parameter state updated
+→ Monitor state recalculated
+→ Node state recalculated
+→ Transition event emitted
+→ Notification policies resolved
+→ Suppression/dedup/grouping applied
+→ Delivery jobs queued
+```
+
+Rule Resolution:
+
+```text
+Parameter custom
+> Monitor override
+> Node default
+> Project default
+> Organization default
+> Platform default
+```
+
+Transition Event:
+
+```json
+{
+  "organization_id": "org_1",
+  "node_id": "node_1",
+  "monitor_id": "mon_1",
+  "parameter_key": "ping.rtt.avg_ms",
+  "previous_status": "OK",
+  "new_status": "WARNING",
+  "observed_value": 184,
+  "unit": "ms",
+  "threshold": 150,
+  "occurred_at": "..."
+}
+```
+
+# 295. Organization Defaults و Templateها
+
+مسیر:
+
+```text
+Settings → Monitoring Defaults
+```
+
+بخش‌ها:
+
+```text
+Ping defaults
+HTTP defaults
+DNS defaults
+TCP defaults
+TLS defaults
+Agent metrics defaults
+Logs defaults
+Traces defaults
+```
+
+Organization Admin می‌تواند Template بسازد:
+
+```text
+Network Standard
+Production Strict
+Internal Services Relaxed
+Database Hosts
+```
+
+Bulk Apply:
+
+```text
+Select monitors
+→ Apply health profile
+→ Preview changes
+→ Confirm
+```
+
+Custom Ruleها بدون Confirmation Overwrite نشوند.
+
+# 296. Audit و Compatibility
+
+تمام تغییرات ثبت شوند:
+
+```text
+Rule created
+Rule changed
+Rule reset to default
+Notification destination added
+Policy disabled
+Default profile updated
+Bulk apply executed
+```
+
+اگر Parameter جدید اضافه شد، Mode پیش‌فرض `INHERIT_DEFAULT` باشد. اگر Parameter Rename یا حذف شد، Migration Mapping و Notification برای Policy شکسته لازم است.
+
+# 297. معیارهای پذیرش
+
+## Parameter Catalog
+
+- هر Monitor Parameter Catalog رسمی داشته باشد.
+- Unit، Data Type، Direction و Operator مشخص باشد.
+- Parameterها Versioned باشند.
+
+## Health Rules
+
+- هر Parameter Default Rule یا Default Disabled صریح داشته باشد.
+- User بتواند Default، Profile یا Custom انتخاب کند.
+- Rangeها Gap یا Overlap نداشته باشند.
+- Aggregation، Window، Duration، Recovery و Missing Data پشتیبانی شوند.
+- وضعیت Parameter مستقل ذخیره شود.
+- Monitor از بدترین Parameter فعال محاسبه شود.
+
+## Notifications
+
+- Notification به Parameter و Status مشخص متصل شود.
+- Warning، Error، Unknown و Recovery Route جدا داشته باشند.
+- Telegram، Email و Webhook پشتیبانی شوند.
+- Delay، Repeat، Dedup، Grouping و Escalation وجود داشته باشد.
+- Maintenance و Mute Notification را Suppress کنند.
+- Test Notification و Delivery Status وجود داشته باشد.
+
+## Defaults
+
+- اگر User تنظیمی ندهد، Platform Default اعمال شود.
+- Sensitive، Recommended و Relaxed وجود داشته باشند.
+- Default Versioning و Audit وجود داشته باشد.
+- Custom Rule با تغییر Default ناخواسته تغییر نکند.
+
+## UI
+
+- Rule Source واضح باشد.
+- Preview Range و Historical Test وجود داشته باشد.
+- Parameter Table وضعیت، مقدار، Rule Source و Notification را نشان دهد.
+- Simple و Advanced Mode وجود داشته باشد.
+- Reset to Default و Bulk Apply ممکن باشد.
+
+# 298. تصمیم نهایی محصول
+
+```text
+1. هر Monitor مجموعه Parameter استاندارد دارد.
+2. هر Parameter وضعیت مستقل OK/WARNING/ERROR/UNKNOWN دارد.
+3. هر Parameter Default Rule نسخه‌بندی‌شده دارد.
+4. کاربر می‌تواند Rule هر Parameter را Override کند.
+5. Ruleها Range، Duration، Window و Recovery دارند.
+6. Notification Policy از Health Rule جداست.
+7. Notification می‌تواند دقیقاً برای یک Parameter و یک Status تعریف شود.
+8. Warning، Error و Recovery می‌توانند مقصد متفاوت داشته باشند.
+9. اگر User چیزی تعیین نکند، Default Recommended اعمال می‌شود.
+10. Monitor Status از بدترین Parameter فعال ساخته می‌شود.
+11. Node Status از Monitorها و Criticality ساخته می‌شود.
+12. تمام تغییرات Rule و Notification Audit می‌شوند.
+```

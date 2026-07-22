@@ -11,27 +11,33 @@ import { MonitorStatusBadge } from "@/components/monitors/monitor-status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GenericMonitorSummary } from "@/features/monitors/detail/generic-summary";
 import { GenericMonitorConfiguration } from "@/features/monitors/detail/generic-configuration";
 import { NodeMonitorTabs } from "@/features/monitors/detail/node-monitor-tabs";
 import { getMonitorDefinition } from "@/features/monitors/core/registry";
+import { ParameterRulesTable } from "@/features/monitors/health/parameter-rules-table";
 import { useMonitor } from "@/hooks/use-monitor";
 import { useMonitorMetrics, type MetricsRange } from "@/hooks/use-monitor-metrics";
 import { useMonitorResults } from "@/hooks/use-monitor-results";
 import { useLocations } from "@/hooks/use-locations";
+import { useParameterRules, useParameterHealthStates } from "@/hooks/use-health-rules";
 import { Link } from "@/i18n/navigation";
 
 export function MonitorDetailScreen({ monitorId }: { monitorId: string }) {
   const t = useTranslations("monitorDetail");
   const tMonitors = useTranslations("monitors");
+  const tHealth = useTranslations("health");
   const locale = useLocale();
   const [range, setRange] = useState<MetricsRange>("24h");
+  const [detailTab, setDetailTab] = useState("overview");
 
   const monitorQuery = useMonitor(monitorId);
   const metricsQuery = useMonitorMetrics(monitorId, range);
   const recentResultsQuery = useMonitorResults(monitorId, 50, 1);
   const locationsQuery = useLocations();
+  const rulesQuery = useParameterRules(monitorId);
+  const healthStatesQuery = useParameterHealthStates(monitorId);
 
   if (monitorQuery.isPending) {
     return (
@@ -78,39 +84,57 @@ export function MonitorDetailScreen({ monitorId }: { monitorId: string }) {
         <NodeMonitorTabs currentMonitor={monitor} />
       </div>
 
-      <Summary
-        monitor={monitor}
-        metrics={metricsQuery.data}
-        latestResult={latestResult}
-        recentResults={recentResults}
-        probeLocations={locationsQuery.data?.items ?? []}
-        locale={locale}
-        rangeLabel={rangeLabel}
-      />
+      <Tabs value={detailTab} onValueChange={setDetailTab}>
+        <TabsList>
+          <TabsTrigger value="overview">{t("latencyChart")}</TabsTrigger>
+          <TabsTrigger value="parameters">{tHealth("parameters")}</TabsTrigger>
+        </TabsList>
 
-      <Card className="overflow-hidden border-border/65 py-0 shadow-none">
-        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 border-b border-border/55 px-4 py-3">
-          <CardTitle className="text-base">{t("latencyChart")}</CardTitle>
-          <Tabs value={range} onValueChange={(value) => setRange(value as MetricsRange)}>
-            <TabsList>
-              <TabsTrigger value="24h">{t("range24h")}</TabsTrigger>
-              <TabsTrigger value="7d">{t("range7d")}</TabsTrigger>
-              <TabsTrigger value="30d">{t("range30d")}</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </CardHeader>
-        <CardContent className="px-4 py-4">
-          {metricsQuery.isPending ? <Skeleton className="h-72 w-full rounded-lg" /> : metricsQuery.isError ? <ErrorState onRetry={() => void metricsQuery.refetch()} /> : <LatencyChart data={metricsQuery.data.series.latency} />}
-        </CardContent>
-      </Card>
+        <TabsContent value="overview" className="mt-4 flex flex-col gap-5">
+          <Summary
+            monitor={monitor}
+            metrics={metricsQuery.data}
+            latestResult={latestResult}
+            recentResults={recentResults}
+            probeLocations={locationsQuery.data?.items ?? []}
+            locale={locale}
+            rangeLabel={rangeLabel}
+          />
 
-      <Configuration
-        monitor={monitor}
-        latestResult={latestResult}
-        recentResults={recentResults}
-        probeLocations={locationsQuery.data?.items ?? []}
-        locale={locale}
-      />
+          <Card className="overflow-hidden border-border/65 py-0 shadow-none">
+            <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 border-b border-border/55 px-4 py-3">
+              <CardTitle className="text-base">{t("latencyChart")}</CardTitle>
+              <Tabs value={range} onValueChange={(value) => setRange(value as MetricsRange)}>
+                <TabsList>
+                  <TabsTrigger value="24h">{t("range24h")}</TabsTrigger>
+                  <TabsTrigger value="7d">{t("range7d")}</TabsTrigger>
+                  <TabsTrigger value="30d">{t("range30d")}</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </CardHeader>
+            <CardContent className="px-4 py-4">
+              {metricsQuery.isPending ? <Skeleton className="h-72 w-full rounded-lg" /> : metricsQuery.isError ? <ErrorState onRetry={() => void metricsQuery.refetch()} /> : <LatencyChart data={metricsQuery.data.series.latency} />}
+            </CardContent>
+          </Card>
+
+          <Configuration
+            monitor={monitor}
+            latestResult={latestResult}
+            recentResults={recentResults}
+            probeLocations={locationsQuery.data?.items ?? []}
+            locale={locale}
+          />
+        </TabsContent>
+
+        <TabsContent value="parameters" className="mt-4">
+          <ParameterRulesTable
+            monitorId={monitor.id}
+            monitorType={monitor.type}
+            rules={rulesQuery.data}
+            healthStates={healthStatesQuery.data}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

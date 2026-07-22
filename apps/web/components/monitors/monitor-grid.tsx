@@ -21,15 +21,29 @@ export function monitorBadgeTone(monitor: Monitor) {
   if (monitor.last_status === "down") {
     return "border-destructive/25 bg-destructive/10 text-destructive";
   }
-  const duration = monitor.type === "ping"
-    ? monitor.last_result?.metrics?.avg_rtt_ms
-    : monitor.last_result?.duration_millis;
-  const warning = monitor.config.warning_latency_millis;
-  const critical = monitor.config.critical_latency_millis;
-  if (typeof duration === "number" && typeof critical === "number" && duration >= critical) {
+  const metrics = monitor.last_result?.metrics ?? {};
+  const duration = monitor.type === "ping" ? metrics.avg_rtt_ms : monitor.last_result?.duration_millis;
+  const criticalChecks = [
+    [duration, monitor.config.critical_duration_millis],
+    [metrics.packet_loss_percent, monitor.config.critical_packet_loss_percent],
+    [metrics.stddev_rtt_ms, monitor.config.critical_jitter_millis],
+    [Math.abs(metrics.offset_ms ?? 0), monitor.config.max_offset_millis],
+    [metrics.round_trip_ms, monitor.config.max_round_trip_millis],
+  ];
+  const warningChecks = [
+    [duration, monitor.config.warning_duration_millis],
+    [metrics.packet_loss_percent, monitor.config.warning_packet_loss_percent],
+    [metrics.stddev_rtt_ms, monitor.config.warning_jitter_millis],
+    [Math.abs(metrics.offset_ms ?? 0), monitor.config.warning_offset_millis],
+    [metrics.round_trip_ms, monitor.config.warning_round_trip_millis],
+  ];
+  const daysRemaining = metrics.days_remaining;
+  if (typeof daysRemaining === "number" && typeof monitor.config.critical_days === "number" && daysRemaining <= monitor.config.critical_days) return "border-destructive/25 bg-destructive/10 text-destructive";
+  if (typeof daysRemaining === "number" && typeof monitor.config.warning_days === "number" && daysRemaining <= monitor.config.warning_days) return "border-warning/25 bg-warning/10 text-warning";
+  if (criticalChecks.some(([value, threshold]) => typeof value === "number" && typeof threshold === "number" && value >= threshold)) {
     return "border-destructive/25 bg-destructive/10 text-destructive";
   }
-  if (typeof duration === "number" && typeof warning === "number" && duration >= warning) {
+  if (warningChecks.some(([value, threshold]) => typeof value === "number" && typeof threshold === "number" && value >= threshold)) {
     return "border-warning/25 bg-warning/10 text-warning";
   }
   if (monitor.last_status === "unknown" || monitor.last_status === "paused") {

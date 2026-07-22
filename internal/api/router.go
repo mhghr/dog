@@ -16,6 +16,7 @@ import (
 	"monitoring-platform/internal/auth"
 	"monitoring-platform/internal/config"
 	"monitoring-platform/internal/events"
+	"monitoring-platform/internal/health"
 	"monitoring-platform/internal/ingestion"
 	"monitoring-platform/internal/metrics"
 	"monitoring-platform/internal/postgres"
@@ -24,29 +25,31 @@ import (
 )
 
 type Deps struct {
-	Config      *config.Config
-	Logger      *slog.Logger
-	Monitors    repository.MonitorRepository
-	Results     repository.ResultRepository
-	Locations   repository.LocationRepository
-	StatusPages repository.StatusPageRepository
-	Orgs        repository.OrganizationRepository
-	Projects    repository.ProjectRepository
-	AlertRepo   *postgres.AlertRepository
-	ChannelRepo *postgres.ChannelRepository
-	AlertEngine *alerting.Engine
-	Notifier    *alerting.Notifier
-	Ingestion   *ingestion.Service
-	Auth        *auth.Service
-	Issuer      *auth.TokenIssuer
-	Bus         *events.Bus
-	Queue       *queue.RedisQueue
-	Pool        *pgxpool.Pool
-	Redis       *redis.Client
-	Victoria    *metrics.VictoriaClient
-	Prom        http.Handler
-	AgentRepo   *agents.Repository
-	CA          *agents.CertAuthority
+	Config         *config.Config
+	Logger         *slog.Logger
+	Monitors       repository.MonitorRepository
+	Results        repository.ResultRepository
+	Locations      repository.LocationRepository
+	StatusPages    repository.StatusPageRepository
+	Orgs           repository.OrganizationRepository
+	Projects       repository.ProjectRepository
+	AlertRepo      *postgres.AlertRepository
+	ChannelRepo    *postgres.ChannelRepository
+	AlertEngine    *alerting.Engine
+	Notifier       *alerting.Notifier
+	HealthRepo     *postgres.HealthRepository
+	HealthNotifier *health.NotificationEngine
+	Ingestion      *ingestion.Service
+	Auth           *auth.Service
+	Issuer         *auth.TokenIssuer
+	Bus            *events.Bus
+	Queue          *queue.RedisQueue
+	Pool           *pgxpool.Pool
+	Redis          *redis.Client
+	Victoria       *metrics.VictoriaClient
+	Prom           http.Handler
+	AgentRepo      *agents.Repository
+	CA             *agents.CertAuthority
 }
 
 func NewRouter(deps Deps) http.Handler {
@@ -144,6 +147,40 @@ func NewRouter(deps Deps) http.Handler {
 					r.Post("/resume", handler.resumeMonitor)
 					r.Get("/results", handler.listMonitorResults)
 					r.Get("/metrics", handler.monitorMetrics)
+
+					r.Route("/parameter-rules", func(r chi.Router) {
+						r.Get("/", handler.listParameterRules)
+						r.Route("/{parameterKey}", func(r chi.Router) {
+							r.Get("/", handler.getParameterRule)
+							r.Put("/", handler.putParameterRule)
+							r.Delete("/", handler.deleteParameterRule)
+						})
+					})
+
+					r.Route("/notification-policies", func(r chi.Router) {
+						r.Get("/", handler.listNotificationPolicies)
+						r.Post("/", handler.createNotificationPolicy)
+					})
+				})
+			})
+
+			r.Get("/monitor-types/{type}/parameters", handler.listMonitorTypeParameters)
+
+			r.Route("/notification-channels", func(r chi.Router) {
+				r.Get("/", handler.listHealthNotificationChannels)
+				r.Post("/", handler.createHealthNotificationChannel)
+
+				r.Route("/{channelId}", func(r chi.Router) {
+					r.Put("/", handler.updateHealthNotificationChannel)
+					r.Delete("/", handler.deleteHealthNotificationChannel)
+					r.Post("/test", handler.testHealthNotificationChannel)
+				})
+			})
+
+			r.Route("/notification-policies", func(r chi.Router) {
+				r.Route("/{policyId}", func(r chi.Router) {
+					r.Put("/", handler.updateNotificationPolicy)
+					r.Delete("/", handler.deleteNotificationPolicy)
 				})
 			})
 

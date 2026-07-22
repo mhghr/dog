@@ -7,7 +7,7 @@ import { PingMonitorConfiguration } from "@/features/monitors/types/ping/configu
 export const pingMonitorDefinition = {
   type: "ping", group: "network", icon: Broadcast,
   defaultIntervalSeconds: 60, minimumIntervalSeconds: 10,
-  defaultValues: { ping_packet_count: 4, ping_warning_latency_millis: 200, ping_critical_latency_millis: 500 }, ConfigFields: PingConfigFields,
+  defaultValues: { ping_packet_count: 4, warning_duration_millis: 200, critical_duration_millis: 500, ping_warning_packet_loss_percent: 5, ping_critical_packet_loss_percent: 20, ping_warning_jitter_millis: 50, ping_critical_jitter_millis: 100 }, ConfigFields: PingConfigFields,
   Summary: PingMonitorSummary,
   Configuration: PingMonitorConfiguration,
   apiFieldMap: {},

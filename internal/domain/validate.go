@@ -33,7 +33,7 @@ var allowedConfigKeys = map[MonitorType]map[string]struct{}{
 	),
 	MonitorTCP:  keySet("port"),
 	MonitorDNS:  keySet("server", "record_type", "expected_values"),
-	MonitorPing: keySet("packet_count", "packet_interval_millis", "privileged", "warning_latency_millis", "critical_latency_millis"),
+	MonitorPing: keySet("packet_count", "packet_interval_millis", "privileged", "warning_latency_millis", "critical_latency_millis", "warning_packet_loss_percent", "critical_packet_loss_percent", "warning_jitter_millis", "critical_jitter_millis"),
 	MonitorTLS: keySet(
 		"server_name", "port", "verify_chain", "verify_hostname", "minimum_tls_version",
 		"warning_days", "critical_days", "expected_issuer_contains", "expected_fingerprint_sha256",
@@ -48,9 +48,11 @@ var allowedConfigKeys = map[MonitorType]map[string]struct{}{
 	),
 	MonitorNTP: keySet(
 		"port", "version", "max_offset_millis", "max_round_trip_millis",
-		"allowed_stratum_min", "allowed_stratum_max",
+		"allowed_stratum_min", "allowed_stratum_max", "warning_offset_millis", "warning_round_trip_millis",
 	),
 }
+
+var sharedThresholdKeys = keySet("warning_duration_millis", "critical_duration_millis")
 
 var validHTTPMethods = map[string]struct{}{
 	"GET": {}, "POST": {}, "PUT": {}, "PATCH": {}, "DELETE": {}, "HEAD": {}, "OPTIONS": {},
@@ -127,11 +129,15 @@ func ValidateMonitorInput(input MonitorInput) (Monitor, FieldErrors) {
 
 	if allowed, exists := allowedConfigKeys[monitorType]; exists {
 		for key := range monitorConfig {
-			if _, known := allowed[key]; !known {
+			_, shared := sharedThresholdKeys[key]
+			if _, known := allowed[key]; !known && !shared {
 				fieldErrors.add("config."+key, "unknown configuration key for this monitor type")
 			}
 		}
 	}
+	validateIncreasingThresholds(monitorConfig, "warning_duration_millis", "critical_duration_millis", 1, 60000, fieldErrors)
+	validateIncreasingThresholds(monitorConfig, "warning_packet_loss_percent", "critical_packet_loss_percent", 0, 100, fieldErrors)
+	validateIncreasingThresholds(monitorConfig, "warning_jitter_millis", "critical_jitter_millis", 0, 60000, fieldErrors)
 
 	if target != "" {
 		validateTargetAndConfig(monitorType, target, monitorConfig, fieldErrors)
@@ -153,6 +159,22 @@ func ValidateMonitorInput(input MonitorInput) (Monitor, FieldErrors) {
 		LastStatus:      StatusUnknown,
 		NextRunAt:       time.Now().UTC(),
 	}, nil
+}
+
+func validateIncreasingThresholds(cfg map[string]any, warningKey, criticalKey string, min, max int, fieldErrors FieldErrors) {
+	wRaw, hasWarning := cfg[warningKey]
+	cRaw, hasCritical := cfg[criticalKey]
+	warning, warningOK := toInt(wRaw)
+	critical, criticalOK := toInt(cRaw)
+	if hasWarning && (!warningOK || warning < min || warning > max) {
+		fieldErrors.add("config."+warningKey, fmt.Sprintf("%s must be between %d and %d", warningKey, min, max))
+	}
+	if hasCritical && (!criticalOK || critical < min || critical > max) {
+		fieldErrors.add("config."+criticalKey, fmt.Sprintf("%s must be between %d and %d", criticalKey, min, max))
+	}
+	if hasWarning && warningOK && hasCritical && criticalOK && critical <= warning {
+		fieldErrors.add("config."+criticalKey, criticalKey+" must be greater than "+warningKey)
+	}
 }
 
 func validateTargetAndConfig(monitorType MonitorType, target string, cfg map[string]any, fieldErrors FieldErrors) {
