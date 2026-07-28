@@ -19,31 +19,88 @@ echo "==================================="
 echo " Control plane : $CONTROL_PLANE"
 echo " Install dir   : $AGENT_DIR"
 echo "==================================="
+echo ""
 
-if ! command -v go &>/dev/null; then
-    echo "[ERROR] Go is not installed. Install from https://go.dev/dl/"
-    echo "  Linux:   sudo snap install go --classic"
-    echo "  macOS:   brew install go"
-    exit 1
+need_go=false
+need_git=false
+install_root=false
+
+if ! command -v go &>/dev/null; then need_go=true; fi
+if ! command -v git &>/dev/null; then need_git=true; fi
+if [ "$(id -u)" = "0" ]; then install_root=true; fi
+
+if $need_go && ! $install_root; then
+    echo "[1/5] Installing Go (user-local)..."
+    GO_VERSION="1.23.0"
+    GO_ARCH="linux-amd64"
+    case "$(uname -s)" in
+        Darwin) GO_ARCH="darwin-amd64"; [ "$(uname -m)" = "arm64" ] && GO_ARCH="darwin-arm64" ;;
+        Linux)  [ "$(uname -m)" = "aarch64" ] && GO_ARCH="linux-arm64" ;;
+    esac
+
+    GO_TAR="go${GO_VERSION}.${GO_ARCH}.tar.gz"
+    GO_URL="https://go.dev/dl/${GO_TAR}"
+
+    mkdir -p "$HOME/.go"
+    echo "   Downloading ${GO_URL}..."
+    curl -fsSL "$GO_URL" -o "/tmp/${GO_TAR}"
+    echo "   Extracting..."
+    tar -C "$HOME/.go" -xzf "/tmp/${GO_TAR}"
+    rm -f "/tmp/${GO_TAR}"
+    export GOROOT="$HOME/.go/go"
+    export PATH="$GOROOT/bin:$PATH"
+    echo "   Go $(go version) installed"
+elif $need_go && $install_root; then
+    echo "[1/5] Installing Go (system)..."
+    GO_VERSION="1.23.0"
+    GO_ARCH="linux-amd64"
+    case "$(uname -m)" in
+        aarch64) GO_ARCH="linux-arm64" ;;
+    esac
+
+    GO_TAR="go${GO_VERSION}.${GO_ARCH}.tar.gz"
+    curl -fsSL "https://go.dev/dl/${GO_TAR}" -o "/tmp/${GO_TAR}"
+    rm -rf /usr/local/go
+    tar -C /usr/local -xzf "/tmp/${GO_TAR}"
+    rm -f "/tmp/${GO_TAR}"
+    export PATH="/usr/local/go/bin:$PATH"
+    echo "   Go $(go version) installed"
+else
+    echo "[1/5] Go: $(go version)"
 fi
 
-echo "[1/4] Creating directories..."
+if $need_git; then
+    echo "   Installing git..."
+    if command -v apt-get &>/dev/null; then
+        apt-get update -qq && apt-get install -y -qq git
+    elif command -v yum &>/dev/null; then
+        yum install -y -q git
+    elif command -v dnf &>/dev/null; then
+        dnf install -y -q git
+    elif command -v apk &>/dev/null; then
+        apk add --no-cache git
+    elif command -v brew &>/dev/null; then
+        brew install git
+    else
+        echo "   [WARN] Cannot install git automatically. Install git manually and re-run."
+        exit 1
+    fi
+    echo "   git installed"
+fi
+
+echo "[2/5] Creating directories..."
 mkdir -p "$AGENT_DIR/state" "$AGENT_DIR/spool"
 
-if [ ! -f "$AGENT_DIR/probe-agent" ]; then
-    echo "[2/4] Building probe-agent..."
-    TMP=$(mktemp -d)
-    trap "rm -rf $TMP" EXIT
+echo "[3/5] Building probe-agent..."
+TMP=$(mktemp -d)
+trap "rm -rf $TMP" EXIT
 
-    git clone --depth 1 https://github.com/mhghr/dog.git "$TMP"
-    cd "$TMP"
-    go build -ldflags="-s -w" -o "$AGENT_DIR/probe-agent" ./cmd/probe-agent
-    echo "   Binary installed to $AGENT_DIR/probe-agent"
-else
-    echo "[2/4] Binary already exists, skipping build"
-fi
+git clone --depth 1 https://github.com/mhghr/dog.git "$TMP"
+cd "$TMP"
+go build -ldflags="-s -w" -o "$AGENT_DIR/probe-agent" ./cmd/probe-agent
+echo "   Binary: $AGENT_DIR/probe-agent"
 
-echo "[3/4] Writing config..."
+echo "[4/5] Writing config..."
 cat > "$AGENT_DIR/config.yaml" <<YAML
 control_plane: "$CONTROL_PLANE"
 agent_gateway: "${AGENT_GATEWAY:-localhost:8443}"
@@ -56,6 +113,7 @@ log_format: "json"
 YAML
 echo "   Config: $AGENT_DIR/config.yaml"
 
-echo "[4/4] Starting probe-agent..."
+echo "[5/5] Starting probe-agent..."
+echo "==================================="
 export AGENT_CONFIG_PATH="$AGENT_DIR/config.yaml"
 exec "$AGENT_DIR/probe-agent" run
