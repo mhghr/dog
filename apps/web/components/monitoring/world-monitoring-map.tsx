@@ -5,6 +5,7 @@ import DottedMap from "dotted-map";
 import { useTheme } from "next-themes";
 import { useMonitoring } from "@/hooks/use-monitoring";
 import { ProbeMarker } from "./probe-marker";
+import { UserMarker } from "./user-marker";
 import { ConnectionLine, ConnectionGradients } from "./connection-line";
 import { cn } from "@/lib/utils";
 
@@ -19,7 +20,7 @@ function projectPoint(lat: number, lng: number) {
 }
 
 export function WorldMonitoringMap({ className }: { className?: string }) {
-  const { probes, connections } = useMonitoring();
+  const { probes, userNodes, connections } = useMonitoring();
   const { theme } = useTheme();
 
   const map = useMemo(
@@ -73,6 +74,10 @@ export function WorldMonitoringMap({ className }: { className?: string }) {
         })}
 
         <g className="pointer-events-auto">
+          {userNodes.map((node) => {
+            const p = projectPoint(node.latitude, node.longitude);
+            return <UserMarker key={node.id} user={node} x={p.x} y={p.y} />;
+          })}
           {probes.map((probe) => {
             const p = projectPoint(probe.latitude, probe.longitude);
             return <ProbeMarker key={probe.id} probe={probe} x={p.x} y={p.y} />;

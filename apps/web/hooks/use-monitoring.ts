@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { useAgents } from "@/hooks/use-agents";
 import { useLocations } from "@/hooks/use-locations";
-import type { ConnectionLine, MonitoringData, MonitoringStats, Probe } from "@/types/monitoring";
+import type { ConnectionLine, MonitoringData, MonitoringStats, Probe, UserNode } from "@/types/monitoring";
 
 const CITY_COORDS: Record<string, { lat: number; lng: number; country: string }> = {
   amsterdam: { lat: 52.3676, lng: 4.9041, country: "Netherlands" },
@@ -50,6 +50,15 @@ function agentStatusToProbeStatus(status: string): Probe["status"] {
 
 const CENTER_COORDS = { lat: 35.6892, lng: 51.389 };
 const AUTO_ID = "user-auto";
+
+const TARGET_NODES: UserNode[] = [
+  { id: "node-1", username: "Google DNS", latitude: 37.422, longitude: -122.084, ip: "8.8.8.8", isp: "Google", city: "Mountain View", country: "United States" },
+  { id: "node-2", username: "Cloudflare DNS", latitude: 37.7749, longitude: -122.4194, ip: "1.1.1.1", isp: "Cloudflare", city: "San Francisco", country: "United States" },
+  { id: "node-3", username: "Frankfurt Server", latitude: 50.1109, longitude: 8.6821, ip: "139.162.0.1", isp: "Linode", city: "Frankfurt", country: "Germany" },
+  { id: "node-4", username: "Singapore CDN", latitude: 1.3521, longitude: 103.8198, ip: "172.104.0.1", isp: "Linode", city: "Singapore", country: "Singapore" },
+  { id: "node-5", username: "Toronto VPS", latitude: 43.6532, longitude: -79.3832, ip: "172.105.0.1", isp: "Linode", city: "Toronto", country: "Canada" },
+  { id: "node-6", username: "London DC", latitude: 51.5074, longitude: -0.1278, ip: "139.162.0.2", isp: "Linode", city: "London", country: "United Kingdom" },
+];
 
 function buildProbes(
   locations: { id: string; name: string; code: string }[],
@@ -112,24 +121,27 @@ function buildProbes(
   });
 }
 
-function buildConnections(probes: Probe[]): ConnectionLine[] {
-  const center = probes.find(
-    (p) => p.latitude === CENTER_COORDS.lat && p.longitude === CENTER_COORDS.lng,
-  );
-
+function buildConnections(probes: Probe[], userNodes: UserNode[]): ConnectionLine[] {
   if (probes.length === 0) return [];
 
-  const source = center ?? { latitude: CENTER_COORDS.lat, longitude: CENTER_COORDS.lng, id: AUTO_ID };
+  const lines: ConnectionLine[] = [];
+  let connIdx = 0;
 
-  return probes
-    .filter((p) => p.id !== source.id)
-    .map((p) => ({
-      id: `conn-${source.id}-${p.id}`,
-      source: { lat: source.latitude, lng: source.longitude },
-      target: { lat: p.latitude, lng: p.longitude },
-      latency: p.latency,
-      status: p.status,
-    }));
+  for (const probe of probes) {
+    if (probe.status === "offline") continue;
+    for (const node of userNodes) {
+      lines.push({
+        id: `conn-${probe.id}-${node.id}`,
+        source: { lat: probe.latitude, lng: probe.longitude },
+        target: { lat: node.latitude, lng: node.longitude },
+        latency: 20 + Math.floor(Math.random() * 200),
+        status: probe.status,
+      });
+      connIdx++;
+    }
+  }
+
+  return lines;
 }
 
 export function useMonitoring(): MonitoringData & { stats: MonitoringStats } {
@@ -147,21 +159,25 @@ export function useMonitoring(): MonitoringData & { stats: MonitoringStats } {
     [locationsQuery.data, agentsQuery.data],
   );
 
-  const connections = useMemo(() => buildConnections(probes), [probes]);
+  const userNodes = useMemo<UserNode[]>(() => TARGET_NODES, []);
+
+  const connections = useMemo(() => buildConnections(probes, userNodes), [probes, userNodes]);
 
   const stats = useMemo((): MonitoringStats => {
     const online = probes.filter((p) => p.status === "online").length;
+    const latencies = connections.map((c) => c.latency).filter((l) => l > 0);
+    const avgLatency = latencies.length > 0 ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length) : 0;
     return {
       totalProbes: probes.length,
       onlineProbes: online,
-      avgLatency: 0,
+      avgLatency,
       activeConnections: connections.length,
     };
   }, [probes, connections]);
 
   return {
     probes,
-    userNodes: [],
+    userNodes,
     connections,
     loading,
     stats,
