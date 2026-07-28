@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { Resolver } from "react-hook-form";
 import { useForm } from "react-hook-form";
-import { Loader2 } from "lucide-react";
+import { Loader2, MapPin } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import {
@@ -95,9 +95,59 @@ function TypeSelection({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Steps 2-4 – form
-// ---------------------------------------------------------------------------
+function GeoLocation({ target }: { target: string }) {
+  const [location, setLocation] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const resolveHost = useCallback((host: string): string => {
+    const cleaned = host.replace(/^https?:\/\//, "").replace(/:\d+$/, "").replace(/\/.*$/, "");
+    return cleaned;
+  }, []);
+
+  useEffect(() => {
+    const host = resolveHost(target);
+    if (!host || host.length < 4) {
+      setLocation(null);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const resp = await fetch(`http://ip-api.com/json/${encodeURIComponent(host)}?fields=city,country`);
+        if (!resp.ok) throw new Error("geo lookup failed");
+        const data = await resp.json();
+        if (data.city && data.country) {
+          setLocation(`${data.city}, ${data.country}`);
+        } else {
+          setLocation(null);
+        }
+      } catch {
+        setLocation(null);
+      } finally {
+        setLoading(false);
+      }
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [target, resolveHost]);
+
+  if (!target || target.length < 4) return null;
+
+  return (
+    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <MapPin className="size-3 shrink-0" />
+      {loading ? (
+        <span className="inline-flex items-center gap-1">
+          <span className="size-2.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          Detecting location...
+        </span>
+      ) : location ? (
+        <span className="text-primary">{location}</span>
+      ) : null}
+    </div>
+  );
+}
 
 interface CreateFormProps {
   type: MonitorType;
@@ -197,6 +247,10 @@ function CreateForm({
                 dir="ltr"
                 placeholder={t(`form.targetPlaceholder.${type}`)}
               />
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs">{t("form.location")}</Label>
+                <GeoLocation target={watchedValues.target || ""} />
+              </div>
             </CardContent>
           </Card>
         )}

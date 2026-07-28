@@ -135,6 +135,7 @@
       "configSummary": "Config summary",
       "submitCreate": "Create node",
       "submitSave": "Save changes",
+      "location": "Location",
       "namePlaceholder": "e.g. Main Website",
       "targetPlaceholder": {
         "http": "https://example.com",

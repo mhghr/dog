@@ -135,6 +135,7 @@
       "configSummary": "خلاصه پیکربندی",
       "submitCreate": "ایجاد نود",
       "submitSave": "ذخیره تغییرات",
+      "location": "لوکیشن",
       "namePlaceholder": "مثلاً وب‌سایت اصلی",
       "targetPlaceholder": {
         "http": "https://example.com",
