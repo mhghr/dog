@@ -21,85 +21,83 @@ echo " Install dir   : $AGENT_DIR"
 echo "==================================="
 echo ""
 
-install_go_pkg() {
-    if command -v apt-get &>/dev/null; then
-        apt-get update -qq && apt-get install -y -qq golang-go
-    elif command -v dnf &>/dev/null; then
-        dnf install -y -q golang
-    elif command -v yum &>/dev/null; then
-        yum install -y -q golang
-    elif command -v apk &>/dev/null; then
-        apk add --no-cache go
-    elif command -v pacman &>/dev/null; then
-        pacman -S --noconfirm go
-    elif command -v zypper &>/dev/null; then
-        zypper install -y go
-    else
-        return 1
+install_go() {
+    if command -v go &>/dev/null; then
+        echo "   Go: $(go version)"
+        return 0
     fi
+
+    echo "   Installing Go..."
+    local use_sudo=""
+    if [ "$(id -u)" != "0" ] && command -v sudo &>/dev/null; then
+        use_sudo="sudo"
+    fi
+
+    if command -v apt-get &>/dev/null; then
+        $use_sudo apt-get update -qq && $use_sudo apt-get install -y -qq golang-go && return 0
+    elif command -v dnf &>/dev/null; then
+        $use_sudo dnf install -y -q golang && return 0
+    elif command -v yum &>/dev/null; then
+        $use_sudo yum install -y -q golang && return 0
+    elif command -v apk &>/dev/null; then
+        $use_sudo apk add --no-cache go && return 0
+    elif command -v pacman &>/dev/null; then
+        $use_sudo pacman -S --noconfirm go && return 0
+    elif command -v zypper &>/dev/null; then
+        $use_sudo zypper install -y go && return 0
+    elif command -v snap &>/dev/null; then
+        $use_sudo snap install go --classic && return 0
+    fi
+    return 1
 }
 
-install_git_pkg() {
-    if command -v apt-get &>/dev/null; then
-        apt-get update -qq && apt-get install -y -qq git
-    elif command -v dnf &>/dev/null; then
-        dnf install -y -q git
-    elif command -v yum &>/dev/null; then
-        yum install -y -q git
-    elif command -v apk &>/dev/null; then
-        apk add --no-cache git
-    elif command -v pacman &>/dev/null; then
-        pacman -S --noconfirm git
-    elif command -v zypper &>/dev/null; then
-        zypper install -y git
-    else
-        return 1
+install_git() {
+    if command -v git &>/dev/null; then
+        return 0
     fi
+
+    local use_sudo=""
+    if [ "$(id -u)" != "0" ] && command -v sudo &>/dev/null; then
+        use_sudo="sudo"
+    fi
+
+    if command -v apt-get &>/dev/null; then
+        $use_sudo apt-get update -qq && $use_sudo apt-get install -y -qq git && return 0
+    elif command -v dnf &>/dev/null; then
+        $use_sudo dnf install -y -q git && return 0
+    elif command -v yum &>/dev/null; then
+        $use_sudo yum install -y -q git && return 0
+    elif command -v apk &>/dev/null; then
+        $use_sudo apk add --no-cache git && return 0
+    elif command -v pacman &>/dev/null; then
+        $use_sudo pacman -S --noconfirm git && return 0
+    elif command -v zypper &>/dev/null; then
+        $use_sudo zypper install -y git && return 0
+    fi
+    return 1
 }
 
-need_go=false
-need_git=false
-
-if ! command -v go &>/dev/null; then need_go=true; fi
-if ! command -v git &>/dev/null; then need_git=true; fi
-
-if $need_go; then
-    echo "[1/5] Installing Go..."
-    if install_go_pkg; then
-        echo "   Go $(go version) installed via package manager"
-    else
-        echo "   Package manager not available, downloading Go binary..."
-        GO_ARCH="linux-amd64"
-        case "$(uname -m)" in
-            aarch64|arm64) GO_ARCH="linux-arm64" ;;
-        esac
-        GO_URL="https://go.dev/dl/go1.22.10.${GO_ARCH}.tar.gz"
-        echo "   Downloading ${GO_URL}..."
-        curl -fsSL -L --retry 3 "$GO_URL" -o "/tmp/go.tar.gz"
-        mkdir -p "$HOME/.go"
-        tar -C "$HOME/.go" -xzf "/tmp/go.tar.gz"
-        rm -f "/tmp/go.tar.gz"
-        export GOROOT="$HOME/.go/go"
-        export PATH="$GOROOT/bin:$PATH"
-        echo "   Go $(go version) installed"
-    fi
-else
-    echo "[1/5] Go: $(go version)"
+if ! install_go; then
+    echo ""
+    echo "[ERROR] Could not install Go automatically."
+    echo "Install Go manually then re-run this script:"
+    echo "  sudo apt install golang-go    # Ubuntu/Debian"
+    echo "  sudo dnf install golang       # Fedora"
+    echo "  https://go.dev/dl/            # Manual download"
+    exit 1
 fi
 
-if $need_git; then
-    echo "   Installing git..."
-    if ! install_git_pkg; then
-        echo "   [ERROR] Cannot install git. Install git manually and re-run."
-        exit 1
-    fi
-    echo "   git installed"
+if ! install_git; then
+    echo ""
+    echo "[ERROR] Could not install git automatically."
+    echo "Install git manually: sudo apt install git"
+    exit 1
 fi
 
-echo "[2/5] Creating directories..."
+echo "[2/4] Creating directories..."
 mkdir -p "$AGENT_DIR/state" "$AGENT_DIR/spool"
 
-echo "[3/5] Building probe-agent..."
+echo "[3/4] Building probe-agent..."
 TMP=$(mktemp -d)
 trap "rm -rf $TMP" EXIT
 
@@ -108,7 +106,7 @@ cd "$TMP"
 go build -ldflags="-s -w" -o "$AGENT_DIR/probe-agent" ./cmd/probe-agent
 echo "   Binary: $AGENT_DIR/probe-agent"
 
-echo "[4/5] Writing config..."
+echo "[4/4] Writing config..."
 cat > "$AGENT_DIR/config.yaml" <<YAML
 control_plane: "$CONTROL_PLANE"
 agent_gateway: "${AGENT_GATEWAY:-localhost:8443}"
@@ -121,7 +119,7 @@ log_format: "json"
 YAML
 echo "   Config: $AGENT_DIR/config.yaml"
 
-echo "[5/5] Starting probe-agent..."
+echo "Starting probe-agent..."
 echo "==================================="
 export AGENT_CONFIG_PATH="$AGENT_DIR/config.yaml"
 exec "$AGENT_DIR/probe-agent" run
