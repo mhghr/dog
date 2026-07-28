@@ -9,15 +9,7 @@ GH_TOKEN="${GITHUB_TOKEN:-}"
 
 if [ -z "$TOKEN" ]; then
     echo "Usage:"
-    echo "  GITHUB_TOKEN=ghp_xxx ./install-agent.sh <ENROLLMENT_TOKEN> [CONTROL_PLANE_URL]"
-    echo ""
-    echo "  GitHub token needs 'repo' scope: https://github.com/settings/tokens"
-    exit 1
-fi
-
-if [ -z "$GH_TOKEN" ]; then
-    echo "[ERROR] GITHUB_TOKEN is required for private repo."
-    echo "Create a token at https://github.com/settings/tokens (scope: repo)"
+    echo "  ./install-agent.sh <ENROLLMENT_TOKEN> [CONTROL_PLANE_URL]"
     exit 1
 fi
 
@@ -35,16 +27,20 @@ echo " Arch          : $ARCH"
 echo "==================================="
 
 BIN_URL="https://github.com/$REPO/releases/download/v0.1.1/probe-agent-${ARCH}"
+AUTH_ARGS=()
+if [ -n "$GH_TOKEN" ]; then
+    AUTH_ARGS=(-H "Authorization: Bearer $GH_TOKEN")
+fi
 
 echo "Downloading $BIN_URL ..."
 mkdir -p "$AGENT_DIR/state" "$AGENT_DIR/spool"
 
 if ! curl -fsSL -L --retry 3 \
-    -H "Authorization: Bearer $GH_TOKEN" \
+    "${AUTH_ARGS[@]}" \
     -H "Accept: application/octet-stream" \
     -o "$AGENT_DIR/probe-agent" \
     "$BIN_URL"; then
-    echo "[ERROR] Download failed. Check GITHUB_TOKEN and network."
+    echo "[ERROR] Download failed."
     exit 1
 fi
 
