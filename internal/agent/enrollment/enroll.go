@@ -111,7 +111,7 @@ func Enroll(ctx context.Context, cfg agent.AgentConfig, version string, logger *
 
 	controlPlane := strings.TrimRight(cfg.ControlPlane, "/")
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, controlPlane+"/agent/v1/enroll", bytes.NewReader(payload))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, controlPlane+"/api/v1/agent/v1/enroll", bytes.NewReader(payload))
 	if err != nil {
 		return nil, fmt.Errorf("create enroll request: %w", err)
 	}
@@ -179,7 +179,7 @@ func Enroll(ctx context.Context, cfg agent.AgentConfig, version string, logger *
 }
 
 func getStatus(ctx context.Context, controlPlane, agentID, secret string) (*StatusResponse, error) {
-	url := fmt.Sprintf("%s/agent/v1/status/%s?secret=%s", controlPlane, agentID, secret)
+	url := fmt.Sprintf("%s/api/v1/agent/v1/status/%s?secret=%s", controlPlane, agentID, secret)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
