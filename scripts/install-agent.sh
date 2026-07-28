@@ -26,7 +26,7 @@ echo " Control plane : $CONTROL_PLANE"
 echo " Arch          : $ARCH"
 echo "==================================="
 
-BIN_URL="https://github.com/$REPO/releases/download/v0.1.1/probe-agent-${ARCH}"
+BIN_URL="https://github.com/$REPO/releases/latest/download/probe-agent-${ARCH}"
 AUTH_ARGS=()
 if [ -n "$GH_TOKEN" ]; then
     AUTH_ARGS=(-H "Authorization: Bearer $GH_TOKEN")
