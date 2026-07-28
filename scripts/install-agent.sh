@@ -66,20 +66,40 @@ download_binary() {
 
 build_from_source() {
     echo "   Building from source..."
+    TMP=$(mktemp -d)
+    trap "rm -rf $TMP" RETURN
+
+    local archive_url="https://github.com/$REPO/archive/refs/heads/main.tar.gz"
+
+    echo "   Downloading source archive..."
+    if ! curl -fsSL -L --retry 3 "$archive_url" -o "$TMP/source.tar.gz"; then
+        echo "   Falling back to git clone..."
+        if ! command -v git &>/dev/null; then
+            echo "   [ERROR] git is not available and archive download failed."
+            return 1
+        fi
+        git clone --depth 1 "https://github.com/$REPO.git" "$TMP/src"
+        mv "$TMP/src"/* "$TMP/src"/.[!.]* "$TMP/" 2>/dev/null || true
+    else
+        tar -xzf "$TMP/source.tar.gz" -C "$TMP"
+        local extracted_dir
+        extracted_dir=$(ls -d "$TMP"/dog-* 2>/dev/null || ls -d "$TMP"/*/ 2>/dev/null | head -1)
+        if [ -n "$extracted_dir" ]; then
+            shopt -s dotglob
+            mv "$extracted_dir"/* "$TMP/" 2>/dev/null || true
+            rmdir "$extracted_dir" 2>/dev/null || true
+            shopt -u dotglob
+        fi
+    fi
+
     if ! command -v go &>/dev/null; then
-        echo "   [ERROR] Go is not installed and pre-built binary is not available."
+        echo "   [ERROR] Go is not installed."
         echo "   Install Go: sudo apt install golang-go"
         return 1
     fi
-    if ! command -v git &>/dev/null; then
-        echo "   [ERROR] git is not installed."
-        echo "   Install git: sudo apt install git"
-        return 1
-    fi
-    TMP=$(mktemp -d)
-    trap "rm -rf $TMP" RETURN
-    git clone --depth 1 "https://github.com/$REPO.git" "$TMP"
+
     cd "$TMP"
+    echo "   Compiling..."
     go build -ldflags="-s -w" -o "$AGENT_DIR/probe-agent" ./cmd/probe-agent
     chmod +x "$AGENT_DIR/probe-agent"
 }
