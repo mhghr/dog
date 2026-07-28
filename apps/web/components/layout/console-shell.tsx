@@ -102,7 +102,7 @@ function SidebarNav() {
                             "flex size-6 items-center justify-center rounded-full transition-colors",
                             active
                               ? "bg-primary text-primary-foreground"
-                              : "text-muted-foreground group-hover:text-sidebar-accent-foreground",
+                              : "bg-muted text-muted-foreground",
                           )}
                         >
                           <Icon className="size-3.5" aria-hidden />
