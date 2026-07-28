@@ -5,13 +5,21 @@ TOKEN="${1:-$AGENT_ENROLLMENT_TOKEN}"
 CONTROL_PLANE="${2:-${AGENT_CONTROL_PLANE:-http://localhost:5000}}"
 AGENT_DIR="${AGENT_DIR:-$HOME/probe-agent}"
 REPO="mhghr/dog"
+GH_TOKEN="${GITHUB_TOKEN:-}"
 
 if [ -z "$TOKEN" ]; then
     echo "Usage:"
-    echo "  curl -fsSL https://raw.githubusercontent.com/$REPO/main/scripts/install-agent.sh | bash -s -- <TOKEN> [CONTROL_PLANE_URL]"
-    echo "  or"
-    echo "  AGENT_ENROLLMENT_TOKEN=<TOKEN> bash install-agent.sh"
+    echo "  GITHUB_TOKEN=ghp_xxx AGENT_ENROLLMENT_TOKEN=<TOKEN> bash install-agent.sh [CONTROL_PLANE_URL]"
+    echo ""
+    echo "For private repos, create a GitHub token at https://github.com/settings/tokens"
+    echo "with 'repo' scope and set GITHUB_TOKEN env var."
     exit 1
+fi
+
+if [ -z "$GH_TOKEN" ]; then
+    echo "[WARNING] GITHUB_TOKEN not set. Downloads may fail for private repos."
+    echo "Create a token at https://github.com/settings/tokens (scope: repo)"
+    echo ""
 fi
 
 echo "==================================="
@@ -47,16 +55,21 @@ detect_arch() {
 download_binary() {
     local arch="$1"
     local dest="$2"
+    local auth=""
+    if [ -n "$GH_TOKEN" ]; then
+        auth="-H Authorization: Bearer $GH_TOKEN"
+    fi
+
     local url="https://github.com/$REPO/releases/latest/download/probe-agent-${arch}"
 
     echo "   Downloading $url ..."
-    if curl -fsSL -L --retry 3 -o "$dest" "$url"; then
+    if curl -fsSL -L --retry 3 $auth -o "$dest" "$url"; then
         chmod +x "$dest"
         return 0
     fi
 
     url="https://github.com/$REPO/releases/download/latest/probe-agent-${arch}"
-    if curl -fsSL -L --retry 3 -o "$dest" "$url"; then
+    if curl -fsSL -L --retry 3 $auth -o "$dest" "$url"; then
         chmod +x "$dest"
         return 0
     fi
@@ -69,16 +82,26 @@ build_from_source() {
     TMP=$(mktemp -d)
     trap "rm -rf $TMP" RETURN
 
+    local auth=""
+    if [ -n "$GH_TOKEN" ]; then
+        auth="-H Authorization: Bearer $GH_TOKEN"
+    fi
+
     local archive_url="https://github.com/$REPO/archive/refs/heads/main.tar.gz"
 
     echo "   Downloading source archive..."
-    if ! curl -fsSL -L --retry 3 "$archive_url" -o "$TMP/source.tar.gz"; then
+    if ! curl -fsSL -L --retry 3 $auth -o "$TMP/source.tar.gz" "$archive_url"; then
         echo "   Falling back to git clone..."
         if ! command -v git &>/dev/null; then
             echo "   [ERROR] git is not available and archive download failed."
+            echo "   For private repos, set GITHUB_TOKEN env var."
             return 1
         fi
-        git clone --depth 1 "https://github.com/$REPO.git" "$TMP/src"
+        local clone_url="https://github.com/$REPO.git"
+        if [ -n "$GH_TOKEN" ]; then
+            clone_url="https://${GH_TOKEN}@github.com/$REPO.git"
+        fi
+        git clone --depth 1 "$clone_url" "$TMP/src"
         mv "$TMP/src"/* "$TMP/src"/.[!.]* "$TMP/" 2>/dev/null || true
     else
         tar -xzf "$TMP/source.tar.gz" -C "$TMP"
