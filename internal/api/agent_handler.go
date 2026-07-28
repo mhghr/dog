@@ -6,6 +6,7 @@ import (
 	"encoding/pem"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -13,6 +14,7 @@ import (
 
 	"monitoring-platform/internal/agents"
 	"monitoring-platform/internal/auth"
+	"monitoring-platform/internal/geoip"
 )
 
 func (h *Handler) createEnrollmentToken(w http.ResponseWriter, r *http.Request) {
@@ -33,6 +35,7 @@ func (h *Handler) createEnrollmentToken(w http.ResponseWriter, r *http.Request) 
 	}
 
 	rawToken := uuid.NewString() + "-" + uuid.NewString()
+	tokenLabel := rawToken[:8] + "..."
 
 	userID, ok := auth.UserIDFromContext(r.Context())
 	if !ok {
@@ -57,6 +60,7 @@ func (h *Handler) createEnrollmentToken(w http.ResponseWriter, r *http.Request) 
 
 	token, err := h.deps.AgentRepo.CreateEnrollmentToken(r.Context(), agents.CreateTokenParams{
 		Token:      rawToken,
+		TokenLabel: tokenLabel,
 		LocationID: locID,
 		ExpiresAt:  time.Now().Add(time.Duration(req.TTLMinutes) * time.Minute),
 		CreatedBy:  uuid.MustParse(userID),
@@ -79,6 +83,36 @@ func (h *Handler) createEnrollmentToken(w http.ResponseWriter, r *http.Request) 
 		"location_id": locationID,
 		"expires_at":  time.Now().Add(time.Duration(req.TTLMinutes) * time.Minute).Format(time.RFC3339),
 	})
+}
+
+func (h *Handler) listEnrollmentTokens(w http.ResponseWriter, r *http.Request) {
+	tokens, err := h.deps.AgentRepo.ListUnusedTokens(r.Context())
+	if err != nil {
+		h.deps.Logger.Error("list tokens failed", "error", err)
+		writeError(w, r, http.StatusInternalServerError, "internal_error", "Failed to list tokens", nil)
+		return
+	}
+
+	if tokens == nil {
+		tokens = []agents.UnusedTokenInfo{}
+	}
+
+	items := make([]map[string]any, len(tokens))
+	for i, t := range tokens {
+		locID := ""
+		if t.RequestedLocationID != nil {
+			locID = t.RequestedLocationID.String()
+		}
+		items[i] = map[string]any{
+			"id":              t.ID.String(),
+			"token_label":     t.TokenLabel,
+			"location_id":     locID,
+			"expires_at":      t.ExpiresAt.Format(time.RFC3339),
+			"created_at":      t.CreatedAt.Format(time.RFC3339),
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
 func (h *Handler) listAgents(w http.ResponseWriter, r *http.Request) {
@@ -118,6 +152,10 @@ func (h *Handler) listAgents(w http.ResponseWriter, r *http.Request) {
 		Status         string   `json:"status"`
 		LastSeenAt     *string  `json:"last_seen_at,omitempty"`
 		CreatedAt      string   `json:"created_at"`
+		Latitude       *float64 `json:"latitude,omitempty"`
+		Longitude      *float64 `json:"longitude,omitempty"`
+		City           string   `json:"city"`
+		Country        string   `json:"country"`
 	}
 
 	items := make([]agentJSON, 0, len(result))
@@ -135,6 +173,10 @@ func (h *Handler) listAgents(w http.ResponseWriter, r *http.Request) {
 			MaxConcurrency: a.MaxConcurrency,
 			Status:         string(a.Status),
 			CreatedAt:      a.CreatedAt.Format(time.RFC3339),
+			Latitude:       a.Latitude,
+			Longitude:      a.Longitude,
+			City:           a.City,
+			Country:        a.Country,
 		}
 		if a.LastSeenAt != nil {
 			s := a.LastSeenAt.Format(time.RFC3339)
@@ -405,6 +447,23 @@ func (h *Handler) agentEnroll(w http.ResponseWriter, r *http.Request) {
 
 	agentSecret := uuid.NewString()
 
+	publicIP := clientIP(r)
+	h.deps.Logger.Info("agent enrolling", "public_ip", publicIP)
+
+	var lat, lng *float64
+	var city, country string
+	if publicIP != "" && !isPrivateIP(publicIP) {
+		if loc, err := geoip.Lookup(publicIP); err != nil {
+			h.deps.Logger.Warn("geoip lookup failed", "ip", publicIP, "error", err)
+		} else {
+			lat = &loc.Lat
+			lng = &loc.Lon
+			city = loc.City
+			country = loc.Country
+			h.deps.Logger.Info("geoip resolved", "ip", publicIP, "city", city, "country", country)
+		}
+	}
+
 	agent, err := h.deps.AgentRepo.CreateAgentWithToken(r.Context(), req.EnrollmentToken, agents.CreateAgentParams{
 		Name:               req.Hostname,
 		Hostname:           req.Hostname,
@@ -413,10 +472,15 @@ func (h *Handler) agentEnroll(w http.ResponseWriter, r *http.Request) {
 		Version:            req.Version,
 		OperatingSystem:    req.OperatingSystem,
 		Architecture:       req.Architecture,
+		PublicIP:           publicIP,
 		PrivateIPs:         req.PrivateIPs,
 		Capabilities:       req.Capabilities,
 		MaxConcurrency:     req.MaxConcurrency,
 		AgentSecret:        agentSecret,
+		Latitude:           lat,
+		Longitude:          lng,
+		City:               city,
+		Country:            country,
 	})
 	if err != nil {
 		if err == agents.ErrInvalidToken {
@@ -434,4 +498,29 @@ func (h *Handler) agentEnroll(w http.ResponseWriter, r *http.Request) {
 		"message":      "Agent registered successfully. Waiting for admin approval.",
 		"agent_secret": agent.AgentSecret,
 	})
+}
+
+func clientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		if idx := strings.IndexByte(xff, ','); idx > 0 {
+			return strings.TrimSpace(xff[:idx])
+		}
+		return strings.TrimSpace(xff)
+	}
+	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		return strings.TrimSpace(xri)
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+func isPrivateIP(ipStr string) bool {
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return true
+	}
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()
 }

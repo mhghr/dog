@@ -23,6 +23,10 @@ export interface ProbeAgent {
   status: AgentStatus;
   last_seen_at?: string;
   created_at: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  city?: string;
+  country?: string;
 }
 
 export interface AgentListResponse {
@@ -38,4 +42,16 @@ export interface EnrollmentToken {
 export interface CreateTokenInput {
   location_code: string;
   ttl_minutes: number;
+}
+
+export interface UnusedToken {
+  id: string;
+  token_label: string;
+  location_id: string;
+  expires_at: string;
+  created_at: string;
+}
+
+export interface TokenListResponse {
+  items: UnusedToken[];
 }

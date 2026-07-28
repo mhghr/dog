@@ -8,6 +8,7 @@ import type {
   AgentStatus,
   CreateTokenInput,
   EnrollmentToken,
+  TokenListResponse,
 } from "@/types/agent";
 
 export function useAgents(status?: AgentStatus) {
@@ -96,7 +97,17 @@ export function useCreateEnrollmentToken() {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["probe-agents"] });
+      void queryClient.invalidateQueries({ queryKey: ["probe-tokens"] });
     },
+  });
+}
+
+export function useUnusedTokens() {
+  return useQuery({
+    queryKey: ["probe-tokens"],
+    queryFn: () =>
+      apiRequest<TokenListResponse>("/api/v1/admin/probe-agent-enrollment-tokens"),
+    refetchInterval: 30_000,
   });
 }
 

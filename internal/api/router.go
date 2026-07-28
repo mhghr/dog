@@ -206,8 +206,9 @@ func NewRouter(deps Deps) http.Handler {
 					r.Post("/", handler.createNotificationChannel)
 				})
 
-			r.Get("/alerts", handler.listAlerts)
-			r.Get("/alerts/{alertID}", handler.getAlert)
+				r.Get("/alerts", handler.listAlerts)
+				r.Get("/alerts/{alertID}", handler.getAlert)
+			})
 
 			r.Route("/admin", func(r chi.Router) {
 				r.Use(requireAdmin)
@@ -223,10 +224,10 @@ func NewRouter(deps Deps) http.Handler {
 					r.Post("/{agentID}/drain", handler.drainAgent)
 				})
 
+				r.Get("/probe-agent-enrollment-tokens", handler.listEnrollmentTokens)
 				r.Post("/probe-agent-enrollment-tokens", handler.createEnrollmentToken)
 			})
 		})
-	})
 
 	})
 

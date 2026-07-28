@@ -39,11 +39,16 @@ type ProbeAgent struct {
 	MaxConcurrency     int32
 	RunningJobs        int32
 	SpoolBytes         int64
+	Latitude           *float64
+	Longitude          *float64
+	City               string
+	Country            string
 	Status             AgentStatus
 	ApprovedBy         *uuid.UUID
 	ApprovedAt         *time.Time
 	LastSeenAt         *time.Time
 	RevokedAt          *time.Time
+	EnrollmentTokenID  *uuid.UUID
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 }
