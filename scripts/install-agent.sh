@@ -21,76 +21,76 @@ echo " Install dir   : $AGENT_DIR"
 echo "==================================="
 echo ""
 
+install_go_pkg() {
+    if command -v apt-get &>/dev/null; then
+        apt-get update -qq && apt-get install -y -qq golang-go
+    elif command -v dnf &>/dev/null; then
+        dnf install -y -q golang
+    elif command -v yum &>/dev/null; then
+        yum install -y -q golang
+    elif command -v apk &>/dev/null; then
+        apk add --no-cache go
+    elif command -v pacman &>/dev/null; then
+        pacman -S --noconfirm go
+    elif command -v zypper &>/dev/null; then
+        zypper install -y go
+    else
+        return 1
+    fi
+}
+
+install_git_pkg() {
+    if command -v apt-get &>/dev/null; then
+        apt-get update -qq && apt-get install -y -qq git
+    elif command -v dnf &>/dev/null; then
+        dnf install -y -q git
+    elif command -v yum &>/dev/null; then
+        yum install -y -q git
+    elif command -v apk &>/dev/null; then
+        apk add --no-cache git
+    elif command -v pacman &>/dev/null; then
+        pacman -S --noconfirm git
+    elif command -v zypper &>/dev/null; then
+        zypper install -y git
+    else
+        return 1
+    fi
+}
+
 need_go=false
 need_git=false
-install_root=false
 
 if ! command -v go &>/dev/null; then need_go=true; fi
 if ! command -v git &>/dev/null; then need_git=true; fi
-if [ "$(id -u)" = "0" ]; then install_root=true; fi
 
-if $need_go && ! $install_root; then
-    echo "[1/5] Installing Go (user-local)..."
-    GO_ARCH="linux-amd64"
-    case "$(uname -s)" in
-        Darwin) GO_ARCH="darwin-amd64"; [ "$(uname -m)" = "arm64" ] && GO_ARCH="darwin-arm64" ;;
-        Linux)  [ "$(uname -m)" = "aarch64" ] && GO_ARCH="linux-arm64" ;;
-    esac
-
-    echo "   Fetching latest Go version..."
-    GO_LATEST=$(curl -fsSL https://go.dev/VERSION?m=text | head -1 | tr -d '\r\n')
-    if [ -z "$GO_LATEST" ]; then
-        GO_LATEST="go1.22.10"
+if $need_go; then
+    echo "[1/5] Installing Go..."
+    if install_go_pkg; then
+        echo "   Go $(go version) installed via package manager"
+    else
+        echo "   Package manager not available, downloading Go binary..."
+        GO_ARCH="linux-amd64"
+        case "$(uname -m)" in
+            aarch64|arm64) GO_ARCH="linux-arm64" ;;
+        esac
+        GO_URL="https://go.dev/dl/go1.22.10.${GO_ARCH}.tar.gz"
+        echo "   Downloading ${GO_URL}..."
+        curl -fsSL -L --retry 3 "$GO_URL" -o "/tmp/go.tar.gz"
+        mkdir -p "$HOME/.go"
+        tar -C "$HOME/.go" -xzf "/tmp/go.tar.gz"
+        rm -f "/tmp/go.tar.gz"
+        export GOROOT="$HOME/.go/go"
+        export PATH="$GOROOT/bin:$PATH"
+        echo "   Go $(go version) installed"
     fi
-    GO_TAR="${GO_LATEST}.${GO_ARCH}.tar.gz"
-    GO_URL="https://go.dev/dl/${GO_TAR}"
-
-    mkdir -p "$HOME/.go"
-    echo "   Downloading ${GO_URL}..."
-    curl -fsSL -L "$GO_URL" -o "/tmp/${GO_TAR}"
-    echo "   Extracting..."
-    tar -C "$HOME/.go" -xzf "/tmp/${GO_TAR}"
-    rm -f "/tmp/${GO_TAR}"
-    export GOROOT="$HOME/.go/go"
-    export PATH="$GOROOT/bin:$PATH"
-    echo "   Go $(go version) installed"
-elif $need_go && $install_root; then
-    echo "[1/5] Installing Go (system)..."
-    GO_ARCH="linux-amd64"
-    case "$(uname -m)" in
-        aarch64) GO_ARCH="linux-arm64" ;;
-    esac
-
-    GO_LATEST=$(curl -fsSL https://go.dev/VERSION?m=text | head -1 | tr -d '\r\n')
-    if [ -z "$GO_LATEST" ]; then
-        GO_LATEST="go1.22.10"
-    fi
-    GO_TAR="${GO_LATEST}.${GO_ARCH}.tar.gz"
-
-    curl -fsSL -L "https://go.dev/dl/${GO_TAR}" -o "/tmp/${GO_TAR}"
-    rm -rf /usr/local/go
-    tar -C /usr/local -xzf "/tmp/${GO_TAR}"
-    rm -f "/tmp/${GO_TAR}"
-    export PATH="/usr/local/go/bin:$PATH"
-    echo "   Go $(go version) installed"
 else
     echo "[1/5] Go: $(go version)"
 fi
 
 if $need_git; then
     echo "   Installing git..."
-    if command -v apt-get &>/dev/null; then
-        apt-get update -qq && apt-get install -y -qq git
-    elif command -v yum &>/dev/null; then
-        yum install -y -q git
-    elif command -v dnf &>/dev/null; then
-        dnf install -y -q git
-    elif command -v apk &>/dev/null; then
-        apk add --no-cache git
-    elif command -v brew &>/dev/null; then
-        brew install git
-    else
-        echo "   [WARN] Cannot install git automatically. Install git manually and re-run."
+    if ! install_git_pkg; then
+        echo "   [ERROR] Cannot install git. Install git manually and re-run."
         exit 1
     fi
     echo "   git installed"
