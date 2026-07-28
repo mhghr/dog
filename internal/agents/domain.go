@@ -95,17 +95,17 @@ type AuditEntry struct {
 }
 
 type EnrollRequest struct {
-	EnrollmentToken    string
-	Hostname           string
-	MachineFingerprint string
-	PublicKey          string
-	Version            string
-	OperatingSystem    string
-	Architecture       string
-	PrivateIPs         []string
-	Capabilities       []string
-	MaxConcurrency     int32
-	RequestedLocation  string
+	EnrollmentToken    string   `json:"enrollment_token"`
+	Hostname           string   `json:"hostname"`
+	MachineFingerprint string   `json:"machine_fingerprint"`
+	PublicKey          string   `json:"public_key"`
+	Version            string   `json:"version"`
+	OperatingSystem    string   `json:"operating_system"`
+	Architecture       string   `json:"architecture"`
+	PrivateIPs         []string `json:"private_ips"`
+	Capabilities       []string `json:"capabilities"`
+	MaxConcurrency     int32    `json:"max_concurrency"`
+	RequestedLocation  string   `json:"requested_location,omitempty"`
 }
 
 type EnrollResponse struct {
