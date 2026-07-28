@@ -140,7 +140,6 @@ function SidebarProvider({
           "group/sidebar-wrapper flex min-h-svh w-full has-data-[variant=inset]:bg-sidebar",
           className
         )}
-        dir="ltr"
         {...props}
       >
         {children}
@@ -217,11 +216,7 @@ function Sidebar({
       {/* This is what handles the sidebar gap on desktop */}
       <div
         data-slot="sidebar-gap"
-        className={cn(
-          "relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear",
-          "group-data-[collapsible=offcanvas]:w-0",
-          "group-data-[collapsible=icon]:w-(--sidebar-width-icon)"
-        )}
+        className="hidden"
       />
       <div
         data-slot="sidebar-container"
