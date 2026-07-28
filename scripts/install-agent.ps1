@@ -26,11 +26,19 @@ $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
 
 if ($needGo) {
     Write-Host "[1/5] Installing Go (user-local)..."
-    $goVersion = "1.23.0"
-    $goArch = "windows-amd64"
-    if ([Environment]::Is64BitOperatingSystem) { $goArch = "windows-amd64" } else { $goArch = "windows-386" }
 
-    $goZip = "go${goVersion}.${goArch}.zip"
+    $goArch = "windows-amd64"
+    if (-not [Environment]::Is64BitOperatingSystem) { $goArch = "windows-386" }
+
+    Write-Host "   Fetching latest Go version..."
+    try {
+        $goLatest = (Invoke-RestMethod -Uri "https://go.dev/VERSION?m=text" -TimeoutSec 10).Trim()
+    } catch {
+        $goLatest = "go1.22.10"
+    }
+    if (-not $goLatest) { $goLatest = "go1.22.10" }
+
+    $goZip = "${goLatest}.${goArch}.zip"
     $goUrl = "https://go.dev/dl/${goZip}"
     $goTemp = Join-Path $env:TEMP $goZip
     $goInstallDir = "$env:LOCALAPPDATA\go"

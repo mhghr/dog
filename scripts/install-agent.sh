@@ -31,19 +31,23 @@ if [ "$(id -u)" = "0" ]; then install_root=true; fi
 
 if $need_go && ! $install_root; then
     echo "[1/5] Installing Go (user-local)..."
-    GO_VERSION="1.23.0"
     GO_ARCH="linux-amd64"
     case "$(uname -s)" in
         Darwin) GO_ARCH="darwin-amd64"; [ "$(uname -m)" = "arm64" ] && GO_ARCH="darwin-arm64" ;;
         Linux)  [ "$(uname -m)" = "aarch64" ] && GO_ARCH="linux-arm64" ;;
     esac
 
-    GO_TAR="go${GO_VERSION}.${GO_ARCH}.tar.gz"
+    echo "   Fetching latest Go version..."
+    GO_LATEST=$(curl -fsSL https://go.dev/VERSION?m=text | head -1 | tr -d '\r\n')
+    if [ -z "$GO_LATEST" ]; then
+        GO_LATEST="go1.22.10"
+    fi
+    GO_TAR="${GO_LATEST}.${GO_ARCH}.tar.gz"
     GO_URL="https://go.dev/dl/${GO_TAR}"
 
     mkdir -p "$HOME/.go"
     echo "   Downloading ${GO_URL}..."
-    curl -fsSL "$GO_URL" -o "/tmp/${GO_TAR}"
+    curl -fsSL -L "$GO_URL" -o "/tmp/${GO_TAR}"
     echo "   Extracting..."
     tar -C "$HOME/.go" -xzf "/tmp/${GO_TAR}"
     rm -f "/tmp/${GO_TAR}"
@@ -52,14 +56,18 @@ if $need_go && ! $install_root; then
     echo "   Go $(go version) installed"
 elif $need_go && $install_root; then
     echo "[1/5] Installing Go (system)..."
-    GO_VERSION="1.23.0"
     GO_ARCH="linux-amd64"
     case "$(uname -m)" in
         aarch64) GO_ARCH="linux-arm64" ;;
     esac
 
-    GO_TAR="go${GO_VERSION}.${GO_ARCH}.tar.gz"
-    curl -fsSL "https://go.dev/dl/${GO_TAR}" -o "/tmp/${GO_TAR}"
+    GO_LATEST=$(curl -fsSL https://go.dev/VERSION?m=text | head -1 | tr -d '\r\n')
+    if [ -z "$GO_LATEST" ]; then
+        GO_LATEST="go1.22.10"
+    fi
+    GO_TAR="${GO_LATEST}.${GO_ARCH}.tar.gz"
+
+    curl -fsSL -L "https://go.dev/dl/${GO_TAR}" -o "/tmp/${GO_TAR}"
     rm -rf /usr/local/go
     tar -C /usr/local -xzf "/tmp/${GO_TAR}"
     rm -f "/tmp/${GO_TAR}"
