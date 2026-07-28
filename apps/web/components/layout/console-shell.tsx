@@ -32,6 +32,7 @@ import {
 import { useLogout, useMe } from "@/hooks/use-auth";
 import { useLiveResults } from "@/hooks/use-live-results";
 import { Link, usePathname, useRouter } from "@/i18n/navigation";
+import { cn } from "@/lib/utils";
 import { MonitorCheck, PanelTop } from "lucide-react";
 import type { AppIcon } from "@/lib/icons";
 import {
@@ -96,8 +97,17 @@ function SidebarNav() {
                       onClick={() => setOpenMobile(false)}
                     >
                       <Link href={item.href!}>
-                        <Icon className="size-4" aria-hidden />
-                        {t(item.labelKey)}
+                        <span
+                          className={cn(
+                            "flex size-6 items-center justify-center rounded-full transition-colors",
+                            active
+                              ? "bg-primary text-primary-foreground"
+                              : "text-muted-foreground group-hover:text-sidebar-accent-foreground",
+                          )}
+                        >
+                          <Icon className="size-3.5" aria-hidden />
+                        </span>
+                        <span className="group-data-[collapsible=icon]:hidden">{t(item.labelKey)}</span>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
