@@ -207,7 +207,7 @@ export function ConsoleShell({ children }: { children: React.ReactNode }) {
     <SidebarProvider>
       <AuthGate />
 
-      <Sidebar side={sidebarSide} collapsible="icon">
+      <Sidebar side={sidebarSide} collapsible="icon" dir={locale === "fa" ? "rtl" : "ltr"}>
         <SidebarNav />
       </Sidebar>
 

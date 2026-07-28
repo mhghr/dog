@@ -219,6 +219,7 @@ function Sidebar({
         className={cn(
           "relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear",
           "group-data-[collapsible=offcanvas]:w-0",
+          "group-data-[side=right]:rotate-180",
           "group-data-[collapsible=icon]:w-(--sidebar-width-icon)"
         )}
       />
