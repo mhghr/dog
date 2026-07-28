@@ -3,7 +3,7 @@ set -e
 
 TOKEN="${1:-$AGENT_ENROLLMENT_TOKEN}"
 CONTROL_PLANE="${2:-${AGENT_CONTROL_PLANE:-http://localhost:5000}}"
-AGENT_DIR="${AGENT_DIR:-/opt/probe-agent}"
+AGENT_DIR="${AGENT_DIR:-$HOME/probe-agent}"
 
 if [ -z "$TOKEN" ]; then
     echo "Usage:"
