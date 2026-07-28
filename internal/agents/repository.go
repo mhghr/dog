@@ -71,7 +71,7 @@ func (r *Repository) CreateAgentWithToken(ctx context.Context, rawToken string, 
 	}
 	defer tx.Rollback(ctx)
 
-	var requestedLocationID uuid.UUID
+	var requestedLocationID *uuid.UUID
 	var tokenID uuid.UUID
 	err = tx.QueryRow(ctx, `
 		UPDATE probe_agent_enrollment_tokens
