@@ -92,7 +92,16 @@ export function useAgentMutation() {
     onSuccess: invalidateAgents,
   });
 
-  return { approve, reject, disable, enable, revoke, drain, updatePublicIP };
+  const updateLocation = useMutation({
+    mutationFn: ({ agentId, city, country }: { agentId: string; city: string; country: string }) =>
+      apiRequest<{ status: string }>(
+        `/api/v1/admin/probe-agents/${agentId}/location`,
+        { method: "PUT", body: JSON.stringify({ city, country }) },
+      ),
+    onSuccess: invalidateAgents,
+  });
+
+  return { approve, reject, disable, enable, revoke, drain, updatePublicIP, updateLocation };
 }
 
 export function useCreateEnrollmentToken() {

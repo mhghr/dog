@@ -227,6 +227,7 @@ func NewRouter(deps Deps) http.Handler {
 				r.Get("/probe-agent-enrollment-tokens", handler.listEnrollmentTokens)
 				r.Post("/probe-agent-enrollment-tokens", handler.createEnrollmentToken)
 				r.Put("/probe-agents/{agentID}/public-ip", handler.updateAgentPublicIP)
+				r.Put("/probe-agents/{agentID}/location", handler.updateAgentLocation)
 			})
 		})
 

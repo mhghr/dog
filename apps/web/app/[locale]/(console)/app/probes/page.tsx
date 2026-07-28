@@ -138,6 +138,39 @@ function LocationName({ locationId }: { locationId: string }) {
   return <>{location?.name ?? locationId}</>;
 }
 
+function AgentLocation({ agent }: { agent: ProbeAgent }) {
+  const mutations = useAgentMutation();
+  const [editing, setEditing] = useState(false);
+  const [city, setCity] = useState(agent.city || "");
+  const [country, setCountry] = useState(agent.country || "");
+
+  const handleSave = () => {
+    setEditing(false);
+    const c = city.trim();
+    const ct = country.trim();
+    if ((c || ct) && (c !== (agent.city || "") || ct !== (agent.country || ""))) {
+      mutations.updateLocation.mutate({ agentId: agent.id, city: c, country: ct });
+    }
+  };
+
+  const locStr = [agent.city, agent.country].filter(Boolean).join(", ") || "—";
+
+  if (editing) {
+    return (
+      <div className="flex flex-col gap-1" dir="ltr">
+        <Input className="h-6 w-32 font-mono text-xs" placeholder="City" value={city} onChange={(e) => setCity(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") { setEditing(false); } }} autoFocus />
+        <Input className="h-6 w-32 font-mono text-xs" placeholder="Country" value={country} onChange={(e) => setCountry(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") { setEditing(false); } }} />
+      </div>
+    );
+  }
+
+  return (
+    <button type="button" className="text-xs text-muted-foreground hover:text-foreground cursor-text text-left" onClick={() => setEditing(true)} title="Click to set location">
+      {locStr}
+    </button>
+  );
+}
+
 type MergedRow =
   | { kind: "agent"; agent: ProbeAgent }
   | { kind: "token"; token: UnusedToken };
@@ -287,7 +320,7 @@ export default function ProbesPage() {
                     <TableCell>
                       <span className="text-xs text-muted-foreground">—</span>
                     </TableCell>
-                    <TableCell><LocationName locationId={row.agent.location_id} /></TableCell>
+                    <TableCell><AgentLocation agent={row.agent} /></TableCell>
                     <TableCell dir="ltr" className="font-mono text-xs">{row.agent.version || "—"}</TableCell>
                     <TableCell>
                       <Badge className={cn("pointer-events-none", STATUS_COLORS[row.agent.status] ?? "")} variant="outline">

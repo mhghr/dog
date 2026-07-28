@@ -542,6 +542,37 @@ func (h *Handler) updateAgentPublicIP(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 }
 
+func (h *Handler) updateAgentLocation(w http.ResponseWriter, r *http.Request) {
+	agentID, err := uuid.Parse(chi.URLParam(r, "agentID"))
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_id", "Invalid agent ID", nil)
+		return
+	}
+
+	var req struct {
+		Latitude  *float64 `json:"latitude"`
+		Longitude *float64 `json:"longitude"`
+		City      string   `json:"city"`
+		Country   string   `json:"country"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "Invalid request body", nil)
+		return
+	}
+
+	if err := h.deps.AgentRepo.UpdateAgentLocation(r.Context(), agentID, req.Latitude, req.Longitude, req.City, req.Country); err != nil {
+		if err == agents.ErrAgentNotFound {
+			writeError(w, r, http.StatusNotFound, "not_found", "Agent not found", nil)
+			return
+		}
+		h.deps.Logger.Error("update agent location failed", "error", err)
+		writeError(w, r, http.StatusInternalServerError, "internal_error", "Failed to update location", nil)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
+}
+
 func clientIP(r *http.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		if idx := strings.IndexByte(xff, ','); idx > 0 {

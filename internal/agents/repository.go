@@ -349,6 +349,21 @@ func (r *Repository) UpdateAgentPublicIP(ctx context.Context, id uuid.UUID, publ
 	return nil
 }
 
+func (r *Repository) UpdateAgentLocation(ctx context.Context, id uuid.UUID, lat, lng *float64, city, country string) error {
+	tag, err := r.pool.Exec(ctx, `
+		UPDATE probe_agents
+		SET latitude = $2, longitude = $3, city = $4, country = $5, updated_at = NOW()
+		WHERE id = $1
+	`, id, lat, lng, city, country)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrAgentNotFound
+	}
+	return nil
+}
+
 type CreateTokenParams struct {
 	Token      string
 	TokenLabel string
