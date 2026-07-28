@@ -3,7 +3,7 @@ import createNextIntlPlugin from "next-intl/plugin";
 
 const withNextIntl = createNextIntlPlugin();
 
-const apiUrl = process.env.API_INTERNAL_URL ?? "http://localhost:8080";
+const apiUrl = process.env.API_INTERNAL_URL ?? "http://localhost:5000";
 
 const nextConfig: NextConfig = {
   output: "standalone",

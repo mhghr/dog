@@ -53,7 +53,7 @@ const AUTO_ID = "user-auto";
 
 function buildProbes(
   locations: { id: string; name: string; code: string }[],
-  agents: { id: string; location_id: string; name: string; status: string; hostname: string }[],
+  agents: { id: string; location_id: string; name: string; status: string; hostname: string; latitude?: number | null; longitude?: number | null; city?: string; country?: string }[],
 ): Probe[] {
   if (locations.length === 0 && agents.length === 0) return [];
 
@@ -62,12 +62,31 @@ function buildProbes(
   if (agents.length > 0) {
     return agents.map((agent) => {
       const loc = locMap.get(agent.location_id);
-      const coords = loc ? resolveCoords(loc.name, loc.code) : CENTER_COORDS;
+
+      let coords: { lat: number; lng: number };
+      let city: string;
+      let country: string;
+
+      if (agent.latitude != null && agent.longitude != null) {
+        coords = { lat: agent.latitude, lng: agent.longitude };
+        city = agent.city || agent.hostname;
+        country = agent.country || "";
+      } else if (loc) {
+        const resolved = resolveCoords(loc.name, loc.code);
+        coords = { lat: resolved.lat, lng: resolved.lng };
+        city = loc.name;
+        country = resolved.country;
+      } else {
+        coords = CENTER_COORDS;
+        city = agent.hostname;
+        country = "";
+      }
+
       return {
         id: agent.id,
         name: agent.name,
-        country: coords.country,
-        city: loc?.name ?? agent.hostname,
+        country,
+        city,
         latitude: coords.lat,
         longitude: coords.lng,
         status: agentStatusToProbeStatus(agent.status),
