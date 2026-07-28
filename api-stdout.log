@@ -1,2 +1,0 @@
-{"time":"2026-07-28T16:33:47.1172108+03:30","level":"WARN","msg":"no CA configured, generated self-signed CA","service":"api","fingerprint":"c6c934380adf4f70ada853b604a5e2535697b25404fb78ba85ac385c27bb01d1"}
-{"time":"2026-07-28T16:33:47.124249+03:30","level":"INFO","msg":"http server listening","service":"api","address":":5000"}
