@@ -3,7 +3,6 @@
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { API_BASE_URL } from "@/lib/api-client";
 import type { LiveProbeEvent } from "@/types/result";
 
 const INVALIDATE_THROTTLE_MS = 3000;
@@ -24,7 +23,7 @@ export function useLiveResults(enabled = true) {
     let source: EventSource | null = null;
 
     try {
-      source = new EventSource(`${API_BASE_URL}/events/v1/stream`, {
+      source = new EventSource("/events/v1/stream", {
         withCredentials: true,
       });
     } catch {

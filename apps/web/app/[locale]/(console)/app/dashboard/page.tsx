@@ -1,312 +1,139 @@
 "use client";
 
-import { useLocale, useTranslations } from "next-intl";
-
-import { ErrorState } from "@/components/common/error-state";
-import { RelativeTime } from "@/components/common/relative-time";
-import { MonitorStatusBadge } from "@/components/monitors/monitor-status-badge";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { useTranslations } from "next-intl";
+import { Activity, Radio, Zap, Gauge as GaugeIcon } from "lucide-react";
+import { WorldMonitoringMap } from "@/components/monitoring/world-monitoring-map";
+import { useMonitoring } from "@/hooks/use-monitoring";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useDashboardSummary } from "@/hooks/use-dashboard-summary";
-import { Link } from "@/i18n/navigation";
-import { formatDuration, formatNumber, formatPercent } from "@/lib/formatters";
-import { STATUS_STYLES } from "@/lib/monitor-meta";
 import { cn } from "@/lib/utils";
-import type { AppIcon } from "@/lib/icons";
-import {
-  CalendarCheck,
-  EnvelopeSimple,
-  Pulse,
-  ShieldWarning,
-  Timer,
-  Warning,
-} from "@/lib/icons";
-import type { MonitorStatus } from "@/types/monitor";
+import type { Probe } from "@/types/monitoring";
+
+const STATUS_DOT: Record<string, string> = {
+  online: "bg-success shadow-[0_0_6px_var(--success)]",
+  warning: "bg-warning shadow-[0_0_6px_var(--warning)]",
+  offline: "bg-destructive shadow-[0_0_6px_var(--destructive)]",
+};
+
+const STATUS_BADGE: Record<string, string> = {
+  online: "bg-success/15 text-success border-success/30",
+  warning: "bg-warning/15 text-warning border-warning/30",
+  offline: "bg-destructive/15 text-destructive border-destructive/30",
+};
 
 function StatCard({
+  icon: Icon,
   label,
   value,
-  status,
-  size = "sm",
+  color,
 }: {
+  icon: React.ElementType;
   label: string;
-  value: string;
-  status?: MonitorStatus;
-  size?: "lg" | "sm";
+  value: string | number;
+  color: string;
 }) {
   return (
-    <div className="stat-card">
-      <span className="flex items-center gap-2 text-sm text-muted-foreground">
-        {status ? (
-          <span
-            className={cn("size-2 rounded-full", STATUS_STYLES[status].dot)}
-            aria-hidden
-          />
-        ) : null}
-        {label}
+    <div className="flex items-center gap-3 rounded-xl border border-border/70 bg-card/60 px-4 py-3">
+      <span className={cn("grid size-9 place-items-center rounded-lg", color)}>
+        <Icon className="size-4" aria-hidden />
       </span>
-      <span
-        className={cn(
-          "font-semibold tabular-nums tracking-tight",
-          size === "lg" ? "text-3xl" : "text-xl",
-        )}
-        dir="ltr"
-      >
-        {value}
-      </span>
+      <div>
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <p className="text-lg font-semibold tabular-nums">{value}</p>
+      </div>
     </div>
   );
 }
 
-function AttentionCard({
-  icon: Icon,
-  label,
-  count,
-}: {
-  icon: AppIcon;
-  label: string;
-  count: number;
-}) {
-  const hasAttention = count > 0;
+function ProbeListItem({ probe }: { probe: Probe }) {
   return (
-    <div
-      className={cn(
-        "flex items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors",
-        hasAttention
-          ? "border-warning/30 bg-warning/5"
-          : "border-border/60 bg-muted/30",
-      )}
-    >
-      <Icon
-        className={cn(
-          "size-4 shrink-0",
-          hasAttention ? "text-warning" : "text-muted-foreground/50",
-        )}
-        aria-hidden
-      />
-      <span className="flex-1 text-sm">{label}</span>
-      <span
-        className={cn(
-          "text-sm font-semibold tabular-nums",
-          hasAttention ? "text-warning" : "text-muted-foreground",
-        )}
-      >
-        {count}
-      </span>
+    <div className="flex items-center gap-3 rounded-lg border border-border/50 bg-card/40 px-3 py-2.5 transition-colors hover:bg-accent/30">
+      <span className={cn("size-2 shrink-0 rounded-full", STATUS_DOT[probe.status] ?? STATUS_DOT.offline)} />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">{probe.name}</p>
+        <p className="text-xs text-muted-foreground">
+          {probe.city}, {probe.country}
+        </p>
+      </div>
+      <Badge variant="outline" className={cn("pointer-events-none", STATUS_BADGE[probe.status] ?? STATUS_BADGE.offline)}>
+        {probe.status}
+      </Badge>
+    </div>
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="-mx-1">
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-[72px] rounded-xl" />
+        ))}
+      </div>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_280px]">
+        <Skeleton className="aspect-[2/1] w-full rounded-xl" />
+        <Skeleton className="h-[400px] rounded-xl" />
+      </div>
     </div>
   );
 }
 
 export default function DashboardPage() {
-  const t = useTranslations("dashboard");
-  const tTypes = useTranslations("types");
-  const tStatus = useTranslations("status");
-  const locale = useLocale();
+  const t = useTranslations("monitoring");
+  const { probes, stats, loading } = useMonitoring();
 
-  const summaryQuery = useDashboardSummary();
-
-  if (summaryQuery.isPending) {
-    return (
-      <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <Skeleton key={index} className="h-[104px] rounded-xl" />
-          ))}
-        </div>
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <Skeleton key={index} className="h-[88px] rounded-xl" />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (summaryQuery.isError) {
-    return <ErrorState onRetry={() => void summaryQuery.refetch()} />;
-  }
-
-  const summary = summaryQuery.data;
+  if (loading) return <DashboardSkeleton />;
 
   return (
-    <div className="space-y-4">
-      {/* Primary KPI row */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <div className="-mx-1">
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
-          size="lg"
-          label={t("totalMonitors")}
-          value={formatNumber(summary.total_monitors, locale)}
+          icon={Radio}
+          label={t("totalProbes")}
+          value={stats.totalProbes}
+          color="bg-primary/10 text-primary"
         />
         <StatCard
-          size="lg"
-          label={t("availability24h")}
-          value={formatPercent(summary.availability_24h, locale)}
+          icon={Activity}
+          label={t("onlineProbes")}
+          value={stats.onlineProbes}
+          color="bg-success/10 text-success"
         />
         <StatCard
-          size="lg"
-          label={tStatus("up")}
-          status="up"
-          value={formatNumber(summary.status_counts.up, locale)}
+          icon={GaugeIcon}
+          label={t("avgLatency")}
+          value={`${stats.avgLatency}ms`}
+          color="bg-info/10 text-info"
         />
         <StatCard
-          size="lg"
-          label={tStatus("down")}
-          status="down"
-          value={formatNumber(summary.status_counts.down, locale)}
-        />
-      </div>
-
-      {/* Secondary KPI row */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard
-          label={tStatus("paused")}
-          status="paused"
-          value={formatNumber(summary.status_counts.paused, locale)}
-        />
-        <StatCard
-          label={tStatus("unknown")}
-          status="unknown"
-          value={formatNumber(summary.status_counts.unknown, locale)}
-        />
-        <StatCard
-          label={t("successful")}
-          value={formatNumber(summary.checks_24h.successful, locale)}
-        />
-        <StatCard
-          label={t("failed")}
-          value={formatNumber(summary.checks_24h.failed, locale)}
+          icon={Zap}
+          label={t("activeConnections")}
+          value={stats.activeConnections}
+          color="bg-warning/10 text-warning"
         />
       </div>
 
-      {/* Detail panels */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {/* Recent failures */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <span className="grid size-7 place-items-center rounded-lg bg-destructive/10 text-destructive">
-                <Warning className="size-3.5" aria-hidden />
-              </span>
-              {t("recentFailures")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {summary.recent_failures.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">
-                {t("noFailures")}
-              </p>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_280px]">
+        <WorldMonitoringMap />
+
+        <div className="rounded-xl border border-border bg-card">
+          <div className="border-b border-border/70 px-4 py-3">
+            <h3 className="text-sm font-semibold">{t("probes")}</h3>
+          </div>
+          <ScrollArea className="h-[400px]">
+            {probes.length === 0 ? (
+              <div className="flex items-center justify-center py-12">
+                <p className="text-sm text-muted-foreground">{t("noProbes")}</p>
+              </div>
             ) : (
-              <ul className="-mx-(--card-spacing) flex flex-col divide-y divide-border">
-                {summary.recent_failures.map((failure, index) => (
-                  <li
-                    key={`${failure.monitor_id}-${index}`}
-                    className="flex items-center gap-3 px-(--card-spacing) py-3 transition-colors hover:bg-muted/40"
-                  >
-                    <MonitorStatusBadge status="down" />
-                    <div className="min-w-0 flex-1">
-                      <Link
-                        href={`/app/monitors/${failure.monitor_id}`}
-                        className="block truncate text-sm font-medium hover:text-primary hover:underline"
-                      >
-                        {failure.monitor_name}
-                      </Link>
-                      <p
-                        dir="ltr"
-                        className="truncate text-start font-mono text-xs text-muted-foreground"
-                      >
-                        {failure.error_code ?? "—"}
-                      </p>
-                    </div>
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      <RelativeTime value={failure.started_at} />
-                    </span>
-                  </li>
+              <div className="flex flex-col gap-1.5 p-2">
+                {probes.map((probe) => (
+                  <ProbeListItem key={probe.id} probe={probe} />
                 ))}
-              </ul>
+              </div>
             )}
-          </CardContent>
-        </Card>
-
-        <div className="flex flex-col gap-4">
-          {/* Slowest monitors */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <span className="grid size-7 place-items-center rounded-lg bg-warning/10 text-warning">
-                  <Timer className="size-3.5" aria-hidden />
-                </span>
-                {t("slowestMonitors")}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {summary.slowest_monitors.length === 0 ? (
-                <p className="py-8 text-center text-sm text-muted-foreground">
-                  {t("noSlowMonitors")}
-                </p>
-              ) : (
-                <ul className="-mx-(--card-spacing) flex flex-col divide-y divide-border">
-                  {summary.slowest_monitors.map((slow) => (
-                    <li key={slow.monitor_id} className="flex items-center gap-3 px-(--card-spacing) py-3 transition-colors hover:bg-muted/40">
-                      <Pulse className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-                      <div className="min-w-0 flex-1">
-                        <Link
-                          href={`/app/monitors/${slow.monitor_id}`}
-                          className="block truncate text-sm font-medium hover:text-primary hover:underline"
-                        >
-                          {slow.monitor_name}
-                        </Link>
-                        <p className="text-xs text-muted-foreground">
-                          {tTypes(slow.monitor_type as Parameters<typeof tTypes>[0])}
-                        </p>
-                      </div>
-                      <span className="shrink-0 text-sm font-medium tabular-nums" dir="ltr">
-                        {formatDuration(slow.duration_millis, locale)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Attention required */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <span className="grid size-7 place-items-center rounded-lg bg-info/10 text-info">
-                  <ShieldWarning className="size-3.5" aria-hidden />
-                </span>
-                {t("attentionTitle")}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <AttentionCard
-                icon={ShieldWarning}
-                label={t("certificatesExpiring")}
-                count={summary.attention_required.certificates_expiring_30d}
-              />
-              <AttentionCard
-                icon={CalendarCheck}
-                label={t("domainsExpiring")}
-                count={summary.attention_required.domains_expiring_45d}
-              />
-              <AttentionCard
-                icon={EnvelopeSimple}
-                label={t("smtpFailures")}
-                count={summary.attention_required.smtp_starttls_failures}
-              />
-              <AttentionCard
-                icon={Timer}
-                label={t("ntpHighOffset")}
-                count={summary.attention_required.ntp_high_offset}
-              />
-            </CardContent>
-          </Card>
+          </ScrollArea>
         </div>
       </div>
     </div>

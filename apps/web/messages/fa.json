@@ -32,8 +32,7 @@
     "myNodes": "نودهای من",
     "statusPages": "صفحات وضعیت",
     "alerts": "هشدارها",
-    "locations": "لوکیشن‌های Probe",
-    "probeAgents": "Agentهای Probe",
+    "probes": "پراب",
     "system": "سلامت سیستم",
     "settings": "تنظیمات",
     "createMonitor": "ایجاد نود",
@@ -634,6 +633,24 @@
     "disabled": "Agent غیرفعال شد",
     "enabled": "Agent فعال شد",
     "revoked": "Agent ابطال شد",
-    "draining": "Agent در حال تخلیه"
+    "draining": "Agent در حال تخلیه",
+    "agents": "Agentها",
+    "locationsTab": "لوکیشن‌ها",
+    "tokens": "توکن‌ها",
+    "empty": "هنوز Agentای نیست",
+    "emptyDesc": "اول یک توکن ثبت‌نام بسازید، سپس probe-agent را روی سرور نصب کنید",
+    "selectLocation": "انتخاب لوکیشن",
+    "tokenHint": "این توکن را در config.yaml یا متغیر AGENT_ENROLLMENT_TOKEN قرار دهید"
+  },
+  "monitoring": {
+    "totalProbes": "کل پراب‌ها",
+    "onlineProbes": "آنلاین",
+    "avgLatency": "میانگین تأخیر",
+    "activeConnections": "اتصالات فعال",
+    "probes": "پراب‌ها",
+    "online": "آنلاین",
+    "warning": "هشدار",
+    "offline": "آفلاین",
+    "noProbes": "هنوز پرابی اضافه نشده"
   }
 }

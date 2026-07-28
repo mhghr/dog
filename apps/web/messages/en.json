@@ -32,8 +32,7 @@
     "myNodes": "My nodes",
     "statusPages": "Status Pages",
     "alerts": "Alerts",
-    "locations": "Probe Locations",
-    "probeAgents": "Probe Agents",
+    "probes": "Probes",
     "system": "System Health",
     "settings": "Settings",
     "createMonitor": "Create Node",
@@ -634,6 +633,24 @@
     "disabled": "Agent disabled",
     "enabled": "Agent enabled",
     "revoked": "Agent revoked",
-    "draining": "Agent draining"
+    "draining": "Agent draining",
+    "agents": "Agents",
+    "locationsTab": "Locations",
+    "tokens": "Tokens",
+    "empty": "No agents yet",
+    "emptyDesc": "Create an enrollment token first, then install probe-agent on your server",
+    "selectLocation": "Select location",
+    "tokenHint": "Use this token in config.yaml or AGENT_ENROLLMENT_TOKEN env var"
+  },
+  "monitoring": {
+    "totalProbes": "Total Probes",
+    "onlineProbes": "Online",
+    "avgLatency": "Avg Latency",
+    "activeConnections": "Active Connections",
+    "probes": "Probes",
+    "online": "Online",
+    "warning": "Warning",
+    "offline": "Offline",
+    "noProbes": "No probes added yet"
   }
 }

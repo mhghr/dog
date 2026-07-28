@@ -24,21 +24,11 @@ func (h *Handler) createEnrollmentToken(w http.ResponseWriter, r *http.Request) 
 		writeError(w, r, http.StatusBadRequest, "invalid_body", "Invalid request body", nil)
 		return
 	}
-	if req.LocationCode == "" {
-		writeError(w, r, http.StatusBadRequest, "missing_location", "location_code is required", nil)
-		return
-	}
 	if req.TTLMinutes <= 0 {
 		req.TTLMinutes = 60
 	}
 	if req.TTLMinutes > 1440 {
 		writeError(w, r, http.StatusBadRequest, "ttl_too_large", "ttl_minutes must be at most 1440", nil)
-		return
-	}
-
-	loc, err := h.deps.Locations.GetByCode(r.Context(), req.LocationCode)
-	if err != nil {
-		writeDomainError(w, r, err)
 		return
 	}
 
@@ -50,10 +40,19 @@ func (h *Handler) createEnrollmentToken(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	locID, err := uuid.Parse(loc.ID)
-	if err != nil {
-		writeError(w, r, http.StatusInternalServerError, "internal_error", "Invalid location ID", nil)
-		return
+	var locID *uuid.UUID
+	if req.LocationCode != "" {
+		loc, err := h.deps.Locations.GetByCode(r.Context(), req.LocationCode)
+		if err != nil {
+			writeDomainError(w, r, err)
+			return
+		}
+		id, parseErr := uuid.Parse(loc.ID)
+		if parseErr != nil {
+			writeError(w, r, http.StatusInternalServerError, "internal_error", "Invalid location ID", nil)
+			return
+		}
+		locID = &id
 	}
 
 	token, err := h.deps.AgentRepo.CreateEnrollmentToken(r.Context(), agents.CreateTokenParams{
@@ -70,9 +69,14 @@ func (h *Handler) createEnrollmentToken(w http.ResponseWriter, r *http.Request) 
 
 	_ = token
 
+	locationID := ""
+	if locID != nil {
+		locationID = locID.String()
+	}
+
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"token":       rawToken,
-		"location_id": loc.ID,
+		"location_id": locationID,
 		"expires_at":  time.Now().Add(time.Duration(req.TTLMinutes) * time.Minute).Format(time.RFC3339),
 	})
 }

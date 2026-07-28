@@ -5,7 +5,6 @@ import { useLocale, useTranslations } from "next-intl";
 
 import { BrandMark } from "@/components/layout/brand-mark";
 import { ConsoleBreadcrumbs } from "@/components/layout/console-breadcrumbs";
-import { ProjectSwitcher } from "@/components/layout/project-switcher";
 import { LanguageSwitcher } from "@/components/layout/language-switcher";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -30,7 +29,6 @@ import {
   GearSix,
   List,
   MapPin,
-  PlugsConnected,
   SignOut,
   SquaresFour,
   UserCircle,
@@ -39,7 +37,7 @@ import {
 
 interface NavigationItem {
   href: string;
-  labelKey: "dashboard" | "monitors" | "alerts" | "statusPages" | "locations" | "probeAgents" | "system" | "settings";
+  labelKey: "dashboard" | "monitors" | "alerts" | "statusPages" | "probes" | "system" | "settings";
   icon: AppIcon;
 }
 
@@ -48,8 +46,7 @@ const NAVIGATION: NavigationItem[] = [
   { href: "/app/nodes", labelKey: "monitors", icon: MonitorCheck },
   { href: "/app/status-pages", labelKey: "statusPages", icon: PanelTop },
   { href: "/app/alerts", labelKey: "alerts", icon: Warning },
-  { href: "/app/locations", labelKey: "locations", icon: MapPin },
-  { href: "/app/probe-agents", labelKey: "probeAgents", icon: PlugsConnected },
+  { href: "/app/probes", labelKey: "probes", icon: MapPin },
   { href: "/app/system", labelKey: "system", icon: Gauge },
   { href: "/app/settings", labelKey: "settings", icon: GearSix },
 ];
@@ -225,8 +222,6 @@ export function ConsoleShell({ children }: { children: React.ReactNode }) {
           </Sheet>
 
           <ConsoleBreadcrumbs />
-
-          <ProjectSwitcher />
 
           <div className="flex-1" />
 

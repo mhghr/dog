@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, Grid2X2, List, MonitorCheck, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Grid2X2, List, MonitorCheck } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 
@@ -18,7 +18,7 @@ import {
 import { MonitorGrid, MonitorGridSkeleton } from "@/components/monitors/monitor-grid";
 import { NodeCreateFlow } from "@/components/monitors/node-create-flow";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { useMonitors } from "@/hooks/use-monitors";
 import { useCreateMonitor } from "@/hooks/use-monitor-mutations";
 import { ApiError } from "@/lib/api-client";
@@ -29,7 +29,6 @@ const PAGE_SIZE = 20;
 
 export default function NodesPage() {
   const t = useTranslations("monitors");
-  const tNav = useTranslations("navigation");
   const tValidation = useTranslations("validation");
   const locale = useLocale();
 
@@ -86,15 +85,9 @@ export default function NodesPage() {
 
   return (
     <Tabs value={view} onValueChange={(v) => setView(v as "list" | "add")}>
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-border/65 pb-4">
-        <TabsList>
-          <TabsTrigger value="list">{tNav("myNodes")}</TabsTrigger>
-          <TabsTrigger value="add">{tNav("addNode")}</TabsTrigger>
-        </TabsList>
-
+      <div className="mb-5 flex flex-wrap items-center justify-end gap-3 border-b border-border/65 pb-4">
         {view === "list" ? (
           <Button onClick={() => setView("add")}>
-            <Plus className="size-4" aria-hidden />
             {t("newMonitor")}
           </Button>
         ) : null}
