@@ -36,9 +36,11 @@ import { cn } from "@/lib/utils";
 import { MonitorCheck, PanelTop } from "lucide-react";
 import type { AppIcon } from "@/lib/icons";
 import {
+  Browser,
   Gauge,
   GearSix,
   MapPin,
+  Monitor,
   SignOut,
   SquaresFour,
   UserCircle,
@@ -99,13 +101,13 @@ function SidebarNav() {
                       <Link href={item.href!}>
                         <span
                           className={cn(
-                            "flex size-6 items-center justify-center rounded-full transition-colors",
+                            "flex size-5 items-center justify-center rounded-full transition-colors",
                             active
                               ? "bg-primary text-primary-foreground"
                               : "bg-muted text-muted-foreground",
                           )}
                         >
-                          <Icon className="size-3.5" aria-hidden />
+                          <Icon className="size-3" aria-hidden />
                         </span>
                         <span className="group-data-[collapsible=icon]:hidden">{t(item.labelKey)}</span>
                       </Link>

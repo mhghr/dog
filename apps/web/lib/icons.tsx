@@ -11,6 +11,7 @@ import {
   List as ListBase,
   MagnifyingGlass as MagnifyingGlassBase,
   MapPin as MapPinBase,
+  Monitor as MonitorBase,
   Moon as MoonBase,
   PlugsConnected as PlugsConnectedBase,
   Pulse as PulseBase,
@@ -47,6 +48,7 @@ export const Globe = filled(GlobeBase);
 export const List = filled(ListBase);
 export const MagnifyingGlass = filled(MagnifyingGlassBase);
 export const MapPin = filled(MapPinBase);
+export const Monitor = filled(MonitorBase);
 export const Moon = filled(MoonBase);
 export const PlugsConnected = filled(PlugsConnectedBase);
 export const Pulse = filled(PulseBase);
