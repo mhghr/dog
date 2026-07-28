@@ -99,7 +99,7 @@ func (r *Repository) CreateAgentWithToken(ctx context.Context, rawToken string, 
 		RETURNING id, COALESCE(location_id, '00000000-0000-0000-0000-000000000000'), name, hostname, machine_fingerprint,
 			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_gateway_cert, ''), agent_secret,
 			version, operating_system,
-			architecture, COALESCE(public_ip::text, ''), private_ips, capabilities,
+			architecture, COALESCE(public_ip::text, ''), COALESCE(private_ips, '{}')::text[], capabilities,
 			max_concurrency, status, approved_by, approved_at,
 			last_seen_at, revoked_at, enrollment_token_id, created_at, updated_at,
 			latitude, longitude, city, country
@@ -140,7 +140,7 @@ func (r *Repository) CreateAgent(ctx context.Context, params CreateAgentParams) 
 		RETURNING id, location_id, name, hostname, machine_fingerprint,
 			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_gateway_cert, ''), agent_secret,
 			version, operating_system,
-			architecture, COALESCE(public_ip::text, ''), private_ips, capabilities,
+			architecture, COALESCE(public_ip::text, ''), COALESCE(private_ips, '{}')::text[], capabilities,
 			max_concurrency, status, approved_by, approved_at,
 			last_seen_at, revoked_at, enrollment_token_id, created_at, updated_at,
 			latitude, longitude, city, country
@@ -170,7 +170,7 @@ func (r *Repository) GetAgent(ctx context.Context, id uuid.UUID) (*ProbeAgent, e
 		SELECT id, location_id, name, hostname, machine_fingerprint,
 			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_gateway_cert, ''), COALESCE(agent_secret, ''),
 			version, operating_system,
-			architecture, COALESCE(public_ip::text, ''), private_ips, capabilities,
+			architecture, COALESCE(public_ip::text, ''), COALESCE(private_ips, '{}')::text[], capabilities,
 			max_concurrency, status, approved_by, approved_at,
 			last_seen_at, revoked_at, enrollment_token_id, created_at, updated_at,
 			latitude, longitude, city, country
@@ -199,7 +199,7 @@ func (r *Repository) GetAgentByIDAndSecret(ctx context.Context, id uuid.UUID, se
 		SELECT id, location_id, name, hostname, machine_fingerprint,
 			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_gateway_cert, ''), COALESCE(agent_secret, ''),
 			version, operating_system,
-			architecture, COALESCE(public_ip::text, ''), private_ips, capabilities,
+			architecture, COALESCE(public_ip::text, ''), COALESCE(private_ips, '{}')::text[], capabilities,
 			max_concurrency, status, approved_by, approved_at,
 			last_seen_at, revoked_at, enrollment_token_id, created_at, updated_at,
 			latitude, longitude, city, country
@@ -227,7 +227,7 @@ func (r *Repository) ListAgents(ctx context.Context, params ListAgentsParams) ([
 		SELECT id, location_id, name, hostname, machine_fingerprint,
 			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_gateway_cert, ''), COALESCE(agent_secret, ''),
 			version, operating_system,
-			architecture, COALESCE(public_ip::text, ''), private_ips, capabilities,
+			architecture, COALESCE(public_ip::text, ''), COALESCE(private_ips, '{}')::text[], capabilities,
 			max_concurrency, status, approved_by, approved_at,
 			last_seen_at, revoked_at, enrollment_token_id, created_at, updated_at,
 			latitude, longitude, city, country
@@ -390,7 +390,7 @@ func (r *Repository) GetActiveAgentsForLocation(ctx context.Context, locationID 
 		SELECT id, location_id, name, hostname, machine_fingerprint,
 			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_gateway_cert, ''), COALESCE(agent_secret, ''),
 			version, operating_system,
-			architecture, COALESCE(public_ip::text, ''), private_ips, capabilities,
+			architecture, COALESCE(public_ip::text, ''), COALESCE(private_ips, '{}')::text[], capabilities,
 			max_concurrency, COALESCE(running_jobs, 0), COALESCE(spool_bytes, 0),
 			status, approved_by, approved_at,
 			last_seen_at, revoked_at, enrollment_token_id, created_at, updated_at,
