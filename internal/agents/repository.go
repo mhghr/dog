@@ -96,7 +96,7 @@ func (r *Repository) CreateAgentWithToken(ctx context.Context, rawToken string, 
 			capabilities, max_concurrency, status, agent_secret, enrollment_token_id,
 			latitude, longitude, city, country
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending', $13, $14, $15, $16, $17, $18)
-		RETURNING id, location_id, name, hostname, machine_fingerprint,
+		RETURNING id, COALESCE(location_id, '00000000-0000-0000-0000-000000000000'), name, hostname, machine_fingerprint,
 			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_gateway_cert, ''), agent_secret,
 			version, operating_system,
 			architecture, COALESCE(public_ip::text, ''), private_ips, capabilities,
