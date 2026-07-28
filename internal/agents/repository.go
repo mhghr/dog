@@ -137,7 +137,7 @@ func (r *Repository) CreateAgent(ctx context.Context, params CreateAgentParams) 
 			capabilities, max_concurrency, status, agent_secret,
 			latitude, longitude, city, country
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending', $13, $14, $15, $16, $17)
-		RETURNING id, location_id, name, hostname, machine_fingerprint,
+		RETURNING id, COALESCE(location_id, '00000000-0000-0000-0000-000000000000'), name, hostname, machine_fingerprint,
 			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_gateway_cert, ''), agent_secret,
 			version, operating_system,
 			architecture, COALESCE(public_ip::text, ''), COALESCE(private_ips, '{}')::text[], capabilities,
@@ -167,7 +167,7 @@ func (r *Repository) CreateAgent(ctx context.Context, params CreateAgentParams) 
 func (r *Repository) GetAgent(ctx context.Context, id uuid.UUID) (*ProbeAgent, error) {
 	var agent ProbeAgent
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, location_id, name, hostname, machine_fingerprint,
+		SELECT id, COALESCE(location_id, '00000000-0000-0000-0000-000000000000'), name, hostname, machine_fingerprint,
 			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_gateway_cert, ''), COALESCE(agent_secret, ''),
 			version, operating_system,
 			architecture, COALESCE(public_ip::text, ''), COALESCE(private_ips, '{}')::text[], capabilities,
@@ -196,7 +196,7 @@ func (r *Repository) GetAgent(ctx context.Context, id uuid.UUID) (*ProbeAgent, e
 func (r *Repository) GetAgentByIDAndSecret(ctx context.Context, id uuid.UUID, secret string) (*ProbeAgent, error) {
 	var agent ProbeAgent
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, location_id, name, hostname, machine_fingerprint,
+		SELECT id, COALESCE(location_id, '00000000-0000-0000-0000-000000000000'), name, hostname, machine_fingerprint,
 			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_gateway_cert, ''), COALESCE(agent_secret, ''),
 			version, operating_system,
 			architecture, COALESCE(public_ip::text, ''), COALESCE(private_ips, '{}')::text[], capabilities,
@@ -224,7 +224,7 @@ func (r *Repository) GetAgentByIDAndSecret(ctx context.Context, id uuid.UUID, se
 
 func (r *Repository) ListAgents(ctx context.Context, params ListAgentsParams) ([]ProbeAgent, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, location_id, name, hostname, machine_fingerprint,
+		SELECT id, COALESCE(location_id, '00000000-0000-0000-0000-000000000000'), name, hostname, machine_fingerprint,
 			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_gateway_cert, ''), COALESCE(agent_secret, ''),
 			version, operating_system,
 			architecture, COALESCE(public_ip::text, ''), COALESCE(private_ips, '{}')::text[], capabilities,
@@ -402,7 +402,7 @@ func (r *Repository) UpdateCapacity(ctx context.Context, agentID uuid.UUID, runn
 
 func (r *Repository) GetActiveAgentsForLocation(ctx context.Context, locationID uuid.UUID) ([]ProbeAgent, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, location_id, name, hostname, machine_fingerprint,
+		SELECT id, COALESCE(location_id, '00000000-0000-0000-0000-000000000000'), name, hostname, machine_fingerprint,
 			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_gateway_cert, ''), COALESCE(agent_secret, ''),
 			version, operating_system,
 			architecture, COALESCE(public_ip::text, ''), COALESCE(private_ips, '{}')::text[], capabilities,
