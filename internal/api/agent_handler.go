@@ -500,6 +500,48 @@ func (h *Handler) agentEnroll(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *Handler) updateAgentPublicIP(w http.ResponseWriter, r *http.Request) {
+	agentID, err := uuid.Parse(chi.URLParam(r, "agentID"))
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_id", "Invalid agent ID", nil)
+		return
+	}
+
+	var req struct {
+		PublicIP string `json:"public_ip"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_body", "Invalid request body", nil)
+		return
+	}
+	if req.PublicIP == "" {
+		writeError(w, r, http.StatusBadRequest, "missing_ip", "public_ip is required", nil)
+		return
+	}
+
+	if err := h.deps.AgentRepo.UpdateAgentPublicIP(r.Context(), agentID, req.PublicIP); err != nil {
+		if err == agents.ErrAgentNotFound {
+			writeError(w, r, http.StatusNotFound, "not_found", "Agent not found", nil)
+			return
+		}
+		h.deps.Logger.Error("update agent public ip failed", "error", err)
+		writeError(w, r, http.StatusInternalServerError, "internal_error", "Failed to update IP", nil)
+		return
+	}
+
+	if !isPrivateIP(req.PublicIP) {
+		if loc, geoErr := geoip.Lookup(req.PublicIP); geoErr == nil {
+			_, _ = h.deps.Pool.Exec(r.Context(), `
+				UPDATE probe_agents
+				SET latitude = $2, longitude = $3, city = $4, country = $5, updated_at = NOW()
+				WHERE id = $1
+			`, agentID, loc.Lat, loc.Lon, loc.City, loc.Country)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
+}
+
 func clientIP(r *http.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		if idx := strings.IndexByte(xff, ','); idx > 0 {

@@ -83,7 +83,16 @@ export function useAgentMutation() {
     onSuccess: invalidateAgents,
   });
 
-  return { approve, reject, disable, enable, revoke, drain };
+  const updatePublicIP = useMutation({
+    mutationFn: ({ agentId, publicIP }: { agentId: string; publicIP: string }) =>
+      apiRequest<{ status: string }>(
+        `/api/v1/admin/probe-agents/${agentId}/public-ip`,
+        { method: "PUT", body: JSON.stringify({ public_ip: publicIP }) },
+      ),
+    onSuccess: invalidateAgents,
+  });
+
+  return { approve, reject, disable, enable, revoke, drain, updatePublicIP };
 }
 
 export function useCreateEnrollmentToken() {

@@ -22,6 +22,7 @@ import { ApiError } from "@/lib/api-client";
 import type { AgentStatus, ProbeAgent, UnusedToken } from "@/types/agent";
 import { RelativeTime } from "@/components/common/relative-time";
 import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
 
 const STATUS_COLORS: Record<AgentStatus, string> = {
   pending: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
@@ -38,6 +39,47 @@ const STATUS_COLORS: Record<AgentStatus, string> = {
 function maskToken(token: string): string {
   if (token.length <= 16) return token;
   return token.slice(0, 8) + "..." + token.slice(-8);
+}
+
+function PublicIPCell({ agentId, publicIP }: { agentId: string; publicIP: string }) {
+  const mutations = useAgentMutation();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(publicIP || "");
+
+  const handleSave = () => {
+    setEditing(false);
+    const trimmed = value.trim();
+    if (trimmed && trimmed !== (publicIP || "")) {
+      mutations.updatePublicIP.mutate({ agentId, publicIP: trimmed });
+    }
+    if (!trimmed) setValue(publicIP || "");
+  };
+
+  if (editing) {
+    return (
+      <Input
+        dir="ltr"
+        className="h-7 w-36 font-mono text-xs"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={handleSave}
+        onKeyDown={(e) => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") { setEditing(false); setValue(publicIP || ""); } }}
+        autoFocus
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      dir="ltr"
+      className="font-mono text-xs text-muted-foreground hover:text-foreground cursor-text text-left"
+      onClick={() => setEditing(true)}
+      title="Click to edit public IP"
+    >
+      {publicIP || "—"}
+    </button>
+  );
 }
 
 function AgentActions({ agentId, status }: { agentId: string; status: AgentStatus }) {
@@ -202,6 +244,7 @@ export default function ProbesPage() {
               <TableRow>
                 <TableHead>{t("name")}</TableHead>
                 <TableHead>{t("hostname")}</TableHead>
+                <TableHead>آیپی</TableHead>
                 <TableHead>توکن</TableHead>
                 <TableHead>{t("location")}</TableHead>
                 <TableHead>{t("version")}</TableHead>
@@ -214,6 +257,7 @@ export default function ProbesPage() {
               {mergedRows.map((row, idx) =>
                 row.kind === "token" ? (
                   <TableRow key={`token-${row.token.id}`} className="bg-amber-50/50 dark:bg-amber-950/10">
+                    <TableCell className="text-muted-foreground">—</TableCell>
                     <TableCell className="text-muted-foreground">—</TableCell>
                     <TableCell className="text-muted-foreground">—</TableCell>
                     <TableCell>
@@ -237,6 +281,9 @@ export default function ProbesPage() {
                   <TableRow key={`agent-${row.agent.id}`}>
                     <TableCell className="max-w-[180px] truncate font-medium">{row.agent.name}</TableCell>
                     <TableCell dir="ltr" className="font-mono text-xs">{row.agent.hostname}</TableCell>
+                    <TableCell>
+                      <PublicIPCell agentId={row.agent.id} publicIP={row.agent.public_ip || ""} />
+                    </TableCell>
                     <TableCell>
                       <span className="text-xs text-muted-foreground">—</span>
                     </TableCell>

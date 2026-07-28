@@ -334,6 +334,21 @@ func (r *Repository) AuditLog(ctx context.Context, entry AuditEntry) error {
 	return err
 }
 
+func (r *Repository) UpdateAgentPublicIP(ctx context.Context, id uuid.UUID, publicIP string) error {
+	tag, err := r.pool.Exec(ctx, `
+		UPDATE probe_agents
+		SET public_ip = $2::inet, updated_at = NOW()
+		WHERE id = $1
+	`, id, publicIP)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrAgentNotFound
+	}
+	return nil
+}
+
 type CreateTokenParams struct {
 	Token      string
 	TokenLabel string
