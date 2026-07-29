@@ -30,6 +30,7 @@ export function useParameterRules(monitorId: string) {
       ),
     enabled: Boolean(monitorId),
     refetchInterval: 15_000,
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -42,6 +43,7 @@ export function useParameterHealthStates(monitorId: string) {
       ),
     enabled: Boolean(monitorId),
     refetchInterval: 15_000,
+    placeholderData: (previous) => previous,
   });
 }
 

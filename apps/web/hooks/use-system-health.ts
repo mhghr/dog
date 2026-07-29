@@ -10,5 +10,6 @@ export function useSystemHealth() {
     queryKey: ["system", "health"],
     queryFn: () => apiRequest<SystemHealth>("/api/v1/system/health"),
     refetchInterval: 10_000,
+    placeholderData: (previous) => previous,
   });
 }

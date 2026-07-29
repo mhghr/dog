@@ -10,6 +10,7 @@ export function useStatusPages() {
     queryKey: ["status-pages"],
     queryFn: () => apiRequest<{ items: StatusPage[] }>("/api/v1/status-pages"),
     refetchInterval: 30_000,
+    placeholderData: (previous) => previous,
   });
 }
 

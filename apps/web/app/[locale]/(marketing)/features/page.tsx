@@ -480,7 +480,7 @@ export default async function FeaturesPage({
           </h2>
           <div className="flex flex-wrap items-center justify-center gap-3">
             <Button asChild size="lg" className="gap-2 px-5">
-              <Link href="/app/monitors/new">
+              <Link href="/app/nodes/new">
                 {t("features.cta")}
               </Link>
             </Button>

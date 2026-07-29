@@ -10,5 +10,6 @@ export function useDashboardSummary() {
     queryKey: ["dashboard", "summary"],
     queryFn: () => apiRequest<DashboardSummary>("/api/v1/dashboard/summary"),
     refetchInterval: 15_000,
+    placeholderData: (previous) => previous,
   });
 }

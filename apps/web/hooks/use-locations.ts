@@ -10,5 +10,6 @@ export function useLocations() {
     queryKey: ["probe-locations"],
     queryFn: () => apiRequest<LocationListResponse>("/api/v1/probe-locations"),
     refetchInterval: 30_000,
+    placeholderData: (previous) => previous,
   });
 }

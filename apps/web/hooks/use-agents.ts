@@ -19,6 +19,7 @@ export function useAgents(status?: AgentStatus) {
     queryFn: () =>
       apiRequest<AgentListResponse>(`/api/v1/admin/probe-agents${params}`),
     refetchInterval: 15_000,
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -126,6 +127,7 @@ export function useUnusedTokens() {
     queryFn: () =>
       apiRequest<TokenListResponse>("/api/v1/admin/probe-agent-enrollment-tokens"),
     refetchInterval: 30_000,
+    placeholderData: (previous) => previous,
   });
 }
 

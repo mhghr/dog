@@ -23,6 +23,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import type { AuthUser } from "@/types/auth";
 import { useLogout, useMe } from "@/hooks/use-auth";
 import { useLiveResults } from "@/hooks/use-live-results";
 import { Link, usePathname, useRouter } from "@/i18n/navigation";
@@ -91,22 +92,20 @@ function ToggleIcon({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-function AuthGate() {
-  const meQuery = useMe();
+function AuthGate({ isSuccess, isError }: { isSuccess: boolean; isError: boolean }) {
   const router = useRouter();
-  useLiveResults(meQuery.isSuccess);
+  useLiveResults(isSuccess);
   useEffect(() => {
-    if (meQuery.isError) router.replace("/login");
-  }, [meQuery.isError, router]);
+    if (isError) router.replace("/login");
+  }, [isError, router]);
   return null;
 }
 
-function UserMenuComp() {
+function UserMenuComp({ user: userProp }: { user: AuthUser | undefined }) {
   const tAuth = useTranslations("auth");
   const router = useRouter();
-  const meQuery = useMe();
   const logoutMutation = useLogout();
-  const user = meQuery.data?.user;
+  const user = userProp;
   const displayName = user?.name || user?.email || user?.phone || "";
 
   return (
@@ -242,6 +241,7 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
   const isRtl = locale === "fa";
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const meQuery = useMe();
 
   const toggle = useCallback(() => setCollapsed((c) => !c), []);
   const sidebarCtx = useMemo(
@@ -256,7 +256,7 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
         dir={isRtl ? "rtl" : "ltr"}
         style={{ scrollbarGutter: "auto" }}
       >
-        <AuthGate />
+        <AuthGate isSuccess={meQuery.isSuccess} isError={meQuery.isError} />
 
         <aside
           style={{ fontFamily: "var(--font-bakh), var(--font-estedad), ui-sans-serif, system-ui, sans-serif", fontWeight: 500 }}
@@ -335,7 +335,7 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
               <span className="mx-1 h-5 w-px bg-border/70" aria-hidden />
               <ThemeToggle />
               <span className="mx-1 h-5 w-px bg-border/70" aria-hidden />
-              <UserMenuComp />
+              <UserMenuComp user={meQuery.data?.user} />
             </div>
           </header>
 

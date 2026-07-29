@@ -104,7 +104,7 @@ export function MonitorActions({
             )}
           </DropdownMenuItem>
           <DropdownMenuItem
-            onSelect={() => router.push(`/app/monitors/${monitor.id}/edit`)}
+            onSelect={() => router.push(`/app/nodes/${monitor.id}/edit`)}
           >
             <Pencil className="size-4" aria-hidden /> {tCommon("edit")}
           </DropdownMenuItem>

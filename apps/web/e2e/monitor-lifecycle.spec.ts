@@ -6,7 +6,7 @@ test.describe("monitor lifecycle", () => {
   const monitorName = `E2E HTTP ${Date.now()}`;
 
   test("create, observe, pause, resume and delete a monitor", async ({ page }) => {
-    await page.goto("/fa/app/monitors/new");
+    await page.goto("/fa/app/nodes/new");
 
     await page.getByLabel("نام").fill(monitorName);
     await page.getByLabel("هدف").fill("https://example.com");

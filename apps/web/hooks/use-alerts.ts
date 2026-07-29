@@ -17,6 +17,7 @@ export function useAlertPolicies() {
     queryFn: () =>
       apiRequest<AlertPolicyListResponse>("/api/v1/alerting/policies"),
     refetchInterval: 30_000,
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -26,6 +27,7 @@ export function useAlerts() {
     queryFn: () =>
       apiRequest<AlertListResponse>("/api/v1/alerting/alerts"),
     refetchInterval: 10_000,
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -52,6 +54,7 @@ export function useNotificationChannels() {
         "/api/v1/alerting/channels",
       ),
     refetchInterval: 30_000,
+    placeholderData: (previous) => previous,
   });
 }
 

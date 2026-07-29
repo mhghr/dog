@@ -13,6 +13,7 @@ export function useProjects() {
     queryFn: () =>
       apiRequest<{ items: Project[] }>("/api/v1/organizations/projects"),
     select: (data) => data.items,
+    placeholderData: (previous) => previous,
   });
 }
 

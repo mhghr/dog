@@ -95,7 +95,7 @@ export default async function PricingPage({
                     variant={i === 1 ? "default" : "outline"}
                     className="w-full"
                   >
-                    <Link href="/app/monitors/new">
+                    <Link href="/app/nodes/new">
                       {t("pricing.ctaFree")}
                     </Link>
                   </Button>

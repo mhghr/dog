@@ -2,8 +2,11 @@
 
 import { useTranslations } from "next-intl";
 import { Activity, Radio, Zap, Gauge as GaugeIcon } from "lucide-react";
-import { WorldMonitoringMap } from "@/components/monitoring/world-monitoring-map";
+import dynamic from "next/dynamic";
+
 import { useMonitoring } from "@/hooks/use-monitoring";
+
+const WorldMonitoringMap = dynamic(() => import("@/components/monitoring/world-monitoring-map"), { ssr: false });
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 

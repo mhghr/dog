@@ -71,7 +71,7 @@ export default function CTASection() {
           className="mt-2 flex flex-wrap items-center justify-center gap-3"
         >
           <Button asChild size="lg" className="h-11 px-6 text-base">
-            <Link href="/app/monitors/new">{t("ctaPrimary")}</Link>
+            <Link href="/app/nodes/new">{t("ctaPrimary")}</Link>
           </Button>
           <Button asChild size="lg" variant="outline" className="h-11 px-6 text-base">
             <Link href="/app/dashboard">{t("ctaSecondary")}</Link>

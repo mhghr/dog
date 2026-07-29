@@ -114,7 +114,7 @@ export default function HeroSection() {
                     size="lg"
                     className="rounded-xl px-5 text-base"
                   >
-                    <Link href="/app/monitors/new">
+                    <Link href="/app/nodes/new">
                       <span className="text-nowrap">{t("ctaPrimary")}</span>
                     </Link>
                   </Button>

@@ -32,7 +32,7 @@ export function NodeMonitorTabs({ currentMonitor }: { currentMonitor: Monitor })
           return (
             <Link
               key={monitor.id}
-              href={`/app/monitors/${monitor.id}`}
+              href={`/app/nodes/${monitor.id}`}
               aria-current={active ? "page" : undefined}
               title={monitor.name}
               className={cn(

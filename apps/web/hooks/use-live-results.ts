@@ -45,7 +45,7 @@ export function useLiveResults(enabled = true) {
       lastInvalidatedAt.current = now;
 
       void queryClient.invalidateQueries({
-        queryKey: ["monitors"],
+        queryKey: ["monitors", "list"],
         refetchType: "active",
       });
       void queryClient.invalidateQueries({

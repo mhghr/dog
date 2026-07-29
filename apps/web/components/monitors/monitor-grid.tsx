@@ -90,7 +90,7 @@ export function MonitorGrid({ monitors }: { monitors: Monitor[] }) {
           className="min-w-0 overflow-hidden rounded-xl border border-border/70 bg-card/70 shadow-sm shadow-foreground/[0.02]"
         >
           <Link
-            href={`/app/monitors/${node.monitors[0].id}`}
+            href={`/app/nodes/${node.monitors[0].id}`}
             className="block min-w-0 px-4 py-3.5 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           >
             <h2 className="truncate text-[15px] font-semibold tracking-tight">
@@ -110,7 +110,7 @@ export function MonitorGrid({ monitors }: { monitors: Monitor[] }) {
                 return (
                   <Link
                     key={monitor.id}
-                    href={`/app/monitors/${monitor.id}`}
+                    href={`/app/nodes/${monitor.id}`}
                     title={monitor.name}
                     className={cn(
                       "inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-md border px-2 text-xs font-medium outline-none transition-[filter,transform] hover:brightness-110 active:translate-y-px focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",

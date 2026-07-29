@@ -5,58 +5,75 @@ TOKEN="${1:-$AGENT_ENROLLMENT_TOKEN}"
 CONTROL_PLANE="${2:-${AGENT_CONTROL_PLANE:-http://localhost:5000}}"
 AGENT_DIR="${AGENT_DIR:-$HOME/probe-agent}"
 REPO="mhghr/dog"
-GH_TOKEN="${GITHUB_TOKEN:-}"
-
-SERVICE_FILE="/etc/systemd/system/probe-agent.service"
-USE_SYSTEMD=false
-if [ -d /run/systemd/system ]; then
-    USE_SYSTEMD=true
-fi
+BIN="$AGENT_DIR/probe-agent"
 
 if [ -z "$TOKEN" ]; then
     echo "Usage:"
-    echo "  ./install-agent.sh <ENROLLMENT_TOKEN> [CONTROL_PLANE_URL]"
-    echo "  AGENT_ENROLLMENT_TOKEN=xxx ./install-agent.sh"
+    echo "  curl -fsSL https://raw.githubusercontent.com/$REPO/main/scripts/install-agent.sh | bash -s -- <TOKEN> [CONTROL_PLANE]"
+    echo "  AGENT_ENROLLMENT_TOKEN=xxx bash install-agent.sh"
     exit 1
 fi
-
-case "$(uname -m)" in
-    x86_64|amd64) ARCH="linux-amd64" ;;
-    aarch64|arm64) ARCH="linux-arm64" ;;
-    *) echo "[ERROR] Unsupported arch: $(uname -m)"; exit 1 ;;
-esac
 
 echo "==================================="
 echo " probe-agent installer"
 echo "==================================="
 echo " Control plane : $CONTROL_PLANE"
-echo " Arch          : $ARCH"
-echo " Install method: $([ "$USE_SYSTEMD" = true ] && echo 'systemd (persistent)' || echo 'background process')"
+echo " Install dir   : $AGENT_DIR"
 echo "==================================="
 
-# Download binary
-BIN_URL="https://github.com/$REPO/releases/latest/download/probe-agent-${ARCH}"
-AUTH_ARGS=()
-if [ -n "$GH_TOKEN" ]; then
-    AUTH_ARGS=(-H "Authorization: Bearer $GH_TOKEN")
+# --- Install Go if missing ---
+install_go() {
+    echo "[1/3] Installing Go..."
+    case "$(uname -m)" in
+        x86_64|amd64) GOARCH="amd64" ;;
+        aarch64|arm64) GOARCH="arm64" ;;
+        *) echo "Unsupported arch: $(uname -m)"; exit 1 ;;
+    esac
+    local GO_VER=$(curl -fsSL https://go.dev/VERSION?m=text | head -1)
+    [ -z "$GO_VER" ] && GO_VER="go1.24.0"
+    local TAR="${GO_VER}.linux-${GOARCH}.tar.gz"
+    curl -fsSL -o /tmp/$TAR "https://go.dev/dl/$TAR"
+    sudo rm -rf /usr/local/go
+    sudo tar -C /usr/local -xzf /tmp/$TAR
+    rm /tmp/$TAR
+    export PATH="/usr/local/go/bin:$PATH"
+    echo "   Go $(go version) installed"
+}
+
+if ! command -v go &> /dev/null; then
+    install_go
+else
+    echo "[1/3] Go: $(go version)"
 fi
 
-echo "Downloading $BIN_URL ..."
+# --- Build probe-agent ---
+echo "[2/3] Building probe-agent..."
 mkdir -p "$AGENT_DIR/state" "$AGENT_DIR/spool"
 
-if ! curl -fsSL -L --retry 3 \
-    "${AUTH_ARGS[@]}" \
-    -H "Accept: application/octet-stream" \
-    -o "$AGENT_DIR/probe-agent" \
-    "$BIN_URL"; then
-    echo "[ERROR] Download failed."
-    exit 1
+# If run from inside the repo, build locally
+SCRIPT_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd || echo "")"
+if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/../../cmd/probe-agent/main.go" ]; then
+    cd "$SCRIPT_DIR/../.."
+    go build -ldflags="-s -w" -o "$BIN" ./cmd/probe-agent
+elif [ -f "./cmd/probe-agent/main.go" ]; then
+    go build -ldflags="-s -w" -o "$BIN" ./cmd/probe-agent
+else
+    TMP_DIR=$(mktemp -d)
+    echo "   Cloning $REPO..."
+    git clone --depth 1 "https://github.com/$REPO.git" "$TMP_DIR" 2>/dev/null || {
+        echo "   Git not available, downloading source tarball..."
+        curl -fsSL -o /tmp/repo.tar.gz "https://github.com/$REPO/archive/refs/heads/main.tar.gz"
+        tar -xzf /tmp/repo.tar.gz -C "$TMP_DIR" --strip-components=1
+        rm /tmp/repo.tar.gz
+    }
+    cd "$TMP_DIR"
+    go build -ldflags="-s -w" -o "$BIN" ./cmd/probe-agent
+    rm -rf "$TMP_DIR"
 fi
+echo "   Binary: $BIN ($(du -h "$BIN" | cut -f1))"
 
-chmod +x "$AGENT_DIR/probe-agent"
-echo "Binary: $AGENT_DIR/probe-agent ($(du -h "$AGENT_DIR/probe-agent" | cut -f1))"
-
-echo "Writing config..."
+# --- Write config ---
+echo "[3/3] Writing config..."
 cat > "$AGENT_DIR/config.yaml" <<YAML
 control_plane: "$CONTROL_PLANE"
 agent_gateway: "${AGENT_GATEWAY:-localhost:8443}"
@@ -68,9 +85,10 @@ log_level: "info"
 log_format: "json"
 YAML
 
-if [ "$USE_SYSTEMD" = true ] && [ "$(id -u)" = "0" ]; then
-    echo "Installing systemd service..."
-    cat > "$SERVICE_FILE" <<UNIT
+# --- Install as systemd service (if root) or run in background ---
+if [ -d /run/systemd/system ] && [ "$(id -u)" = "0" ]; then
+    echo "   Installing systemd service..."
+    cat > /etc/systemd/system/probe-agent.service <<UNIT
 [Unit]
 Description=Probe Agent
 After=network-online.target
@@ -79,7 +97,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=root
-ExecStart=$AGENT_DIR/probe-agent run
+ExecStart=$BIN run
 Restart=always
 RestartSec=5
 LimitNOFILE=65536
@@ -91,33 +109,22 @@ AmbientCapabilities=CAP_NET_RAW
 [Install]
 WantedBy=multi-user.target
 UNIT
-
     systemctl daemon-reload
     systemctl enable probe-agent
     systemctl restart probe-agent
-    echo "   systemd service installed and started."
-    echo "   It will auto-start on boot and restart on failure."
-    echo "   Manage with: systemctl [start|stop|status] probe-agent"
-elif [ "$USE_SYSTEMD" = true ] && [ "$(id -u)" != "0" ]; then
-    echo "   Not running as root, skipping systemd install."
-    echo "   Starting in background instead..."
-    export AGENT_CONFIG_PATH="$AGENT_DIR/config.yaml"
-    nohup "$AGENT_DIR/probe-agent" run > "$AGENT_DIR/agent.log" 2>&1 &
-    PID=$!
-    echo "   Agent started in background (PID: $PID)."
-    echo "   Logs: $AGENT_DIR/agent.log"
-    echo ""
-    echo "   To install as systemd service run:"
-    echo "     sudo ./install-agent.sh $TOKEN $CONTROL_PLANE"
-    echo "   or manually:"
-    echo "     sudo cp deployments/probe-agent.service $SERVICE_FILE"
-    echo "     sudo systemctl enable --now probe-agent"
+    echo "   Service installed and started (auto-start on boot, auto-restart on failure)."
+    echo "   Manage: systemctl [start|stop|status] probe-agent"
 else
-    echo "Starting in background..."
+    echo "   Starting in background (not root or no systemd)..."
     export AGENT_CONFIG_PATH="$AGENT_DIR/config.yaml"
-    nohup "$AGENT_DIR/probe-agent" run > "$AGENT_DIR/agent.log" 2>&1 &
-    PID=$!
-    echo "   Agent started in background (PID: $PID)."
+    nohup "$BIN" run > "$AGENT_DIR/agent.log" 2>&1 &
+    echo "   PID: $!"
     echo "   Logs: $AGENT_DIR/agent.log"
-    echo "   To stop: kill $PID"
+    echo "   To stop: kill $!"
 fi
+
+echo "==================================="
+echo " Done. Agent will auto-enroll on first run and connect to gateway."
+echo " Check status: journalctl -u probe-agent -f  (systemd)"
+echo "           or: tail -f $AGENT_DIR/agent.log  (background)"
+echo "==================================="

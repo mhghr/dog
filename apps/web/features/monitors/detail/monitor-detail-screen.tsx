@@ -4,8 +4,11 @@ import { useState } from "react";
 import { Pencil } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 
-import { LatencyChart } from "@/components/charts/latency-chart";
+import dynamic from "next/dynamic";
+
 import { ErrorState } from "@/components/common/error-state";
+
+const MultiLocationChart = dynamic(() => import("@/components/charts/multi-location-chart"), { ssr: false });
 import { MonitorActions } from "@/components/monitors/monitor-actions";
 import { MonitorStatusBadge } from "@/components/monitors/monitor-status-badge";
 import { Button } from "@/components/ui/button";
@@ -59,6 +62,7 @@ export function MonitorDetailScreen({ monitorId }: { monitorId: string }) {
   const Configuration = definition.Configuration ?? GenericMonitorConfiguration;
   const recentResults = recentResultsQuery.data?.items ?? [];
   const latestResult = recentResults[0] ?? null;
+  const probeLocations = locationsQuery.data?.items ?? [];
   const rangeLabel = t(`range${range}` as "range24h");
 
   return (
@@ -69,7 +73,7 @@ export function MonitorDetailScreen({ monitorId }: { monitorId: string }) {
             <h1 className="max-w-full truncate text-xl font-semibold tracking-tight sm:text-2xl">{monitor.name}</h1>
             <MonitorStatusBadge status={monitor.last_status} />
             <Button variant="outline" size="icon-sm" asChild>
-              <Link href={`/app/monitors/${monitor.id}/edit`}>
+              <Link href={`/app/nodes/${monitor.id}/edit`}>
                 <Pencil aria-hidden />
                 <span className="sr-only">{tMonitors("editMonitor")}</span>
               </Link>
@@ -96,7 +100,7 @@ export function MonitorDetailScreen({ monitorId }: { monitorId: string }) {
             metrics={metricsQuery.data}
             latestResult={latestResult}
             recentResults={recentResults}
-            probeLocations={locationsQuery.data?.items ?? []}
+            probeLocations={probeLocations}
             locale={locale}
             rangeLabel={rangeLabel}
           />
@@ -113,7 +117,14 @@ export function MonitorDetailScreen({ monitorId }: { monitorId: string }) {
               </Tabs>
             </CardHeader>
             <CardContent className="px-4 py-4">
-              {metricsQuery.isPending ? <Skeleton className="h-72 w-full rounded-lg" /> : metricsQuery.isError ? <ErrorState onRetry={() => void metricsQuery.refetch()} /> : <LatencyChart data={metricsQuery.data.series.latency} />}
+              {metricsQuery.isPending ? <Skeleton className="h-72 w-full rounded-lg" /> : metricsQuery.isError ? <ErrorState onRetry={() => void metricsQuery.refetch()} /> : (
+                <MultiLocationChart
+                  series={probeLocations.map((loc) => ({
+                    location: loc,
+                    results: recentResults.filter((r) => (r.probe_location_id || "default") === loc.id),
+                  }))}
+                />
+              )}
             </CardContent>
           </Card>
 
@@ -121,7 +132,7 @@ export function MonitorDetailScreen({ monitorId }: { monitorId: string }) {
             monitor={monitor}
             latestResult={latestResult}
             recentResults={recentResults}
-            probeLocations={locationsQuery.data?.items ?? []}
+            probeLocations={probeLocations}
             locale={locale}
           />
         </TabsContent>
