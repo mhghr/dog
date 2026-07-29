@@ -4,10 +4,14 @@ import { useState } from "react";
 import { Pencil } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 
+import dynamic from "next/dynamic";
+
+const MultiLocationChart = dynamic(() => import("@/components/charts/multi-location-chart").then((m) => m.MultiLocationChart), { ssr: false });
 import { ErrorState } from "@/components/common/error-state";
 import { MonitorActions } from "@/components/monitors/monitor-actions";
 import { MonitorStatusBadge } from "@/components/monitors/monitor-status-badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { GenericMonitorSummary } from "@/features/monitors/detail/generic-summary";
 import { NodeMonitorTabs } from "@/features/monitors/detail/node-monitor-tabs";
@@ -77,6 +81,37 @@ export function MonitorDetailScreen({ monitorId }: { monitorId: string }) {
         locale={locale}
         rangeLabel=""
       />
+
+      <div className="mt-4 grid min-w-0 gap-4 xl:grid-cols-[1fr_360px]">
+        <Card className="overflow-hidden border-border/65 py-0 shadow-none">
+          <CardContent className="px-4 py-3">
+            {metricsQuery.isPending ? <Skeleton className="h-52 w-full rounded-lg" /> : metricsQuery.isError ? <ErrorState onRetry={() => void metricsQuery.refetch()} /> : (
+              <MultiLocationChart
+                series={probeLocations.map((loc) => ({
+                  location: loc,
+                  results: recentResults.filter((r) => (r.probe_location_id || "default") === loc.id),
+                }))}
+              />
+            )}
+          </CardContent>
+        </Card>
+
+        <div className="flex flex-col gap-2 rounded-xl border border-border/65 bg-card/50 px-4 py-3">
+          <p className="text-xs font-medium text-muted-foreground">بازه زمانی</p>
+          <div className="flex gap-1">
+            {(["24h", "7d", "30d"] as const).map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setRange(r)}
+                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${range === r ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

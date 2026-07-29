@@ -80,13 +80,18 @@ func run() {
 			os.Exit(1)
 		}
 
-		logger.Info("identity saved, waiting for admin approval")
-		logger.Info("re-run 'probe-agent run' after approval to connect to gateway")
-		<-ctx.Done()
-		return
-	}
+		if result.Certificate == "" {
+			logger.Info("identity saved, waiting for admin approval")
+			logger.Info("re-run 'probe-agent run' after approval to connect to gateway")
+			<-ctx.Done()
+			return
+		}
 
-	logger.Info("identity loaded, connecting to gateway", "agent_id", agentID)
+		logger.Info("certificate received, connecting to gateway")
+		agentID = result.AgentID
+	} else {
+		logger.Info("identity loaded, connecting to gateway", "agent_id", agentID)
+	}
 
 	if err := identity.ClearEnrollmentToken(cfg); err != nil {
 		logger.Warn("failed to clear enrollment token from config", "error", err)
