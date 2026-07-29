@@ -15,6 +15,7 @@
     "close": "Close",
     "viewAll": "View all",
     "errorTitle": "Failed to load data.",
+    "errorBody": "An unexpected error occurred. Please try again.",
     "yes": "Yes",
     "no": "No",
     "copy": "Copy",

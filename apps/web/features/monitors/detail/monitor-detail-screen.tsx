@@ -8,7 +8,7 @@ import dynamic from "next/dynamic";
 
 import { ErrorState } from "@/components/common/error-state";
 
-const MultiLocationChart = dynamic(() => import("@/components/charts/multi-location-chart"), { ssr: false });
+const MultiLocationChart = dynamic(() => import("@/components/charts/multi-location-chart").then((m) => m.MultiLocationChart), { ssr: false });
 import { MonitorActions } from "@/components/monitors/monitor-actions";
 import { MonitorStatusBadge } from "@/components/monitors/monitor-status-badge";
 import { Button } from "@/components/ui/button";
