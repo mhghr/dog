@@ -87,22 +87,36 @@ export function MonitorGrid({ monitors }: { monitors: Monitor[] }) {
       {nodes.map((node) => (
         <article
           key={node.key}
-          className="min-w-0 overflow-hidden rounded-xl border border-border/70 bg-card/70 shadow-sm shadow-foreground/[0.02]"
+          className="group relative min-w-0 overflow-hidden rounded-xl border border-border/70 bg-gradient-to-br from-card to-card/50 shadow-sm shadow-foreground/[0.02] transition-all duration-200 hover:shadow-md hover:shadow-foreground/5 hover:border-primary/20"
         >
+          <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-primary/20 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+
           <Link
-            href={`/app/nodes/${node.monitors[0].id}`}
+            href={`/app/nodes/${(node.monitors.find((m) => m.enabled) ?? node.monitors[0]).id}`}
             className="block min-w-0 px-4 py-3.5 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           >
-            <h2 className="truncate text-[15px] font-semibold tracking-tight">
-              {node.name}
-            </h2>
-            <p dir="ltr" className="mt-1 truncate text-start font-mono text-xs text-muted-foreground">
-              {node.target}
-            </p>
+            <div className="flex items-center gap-2">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                  <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                  <line x1="6" y1="6" x2="6.01" y2="6" />
+                  <line x1="6" y1="18" x2="6.01" y2="18" />
+                </svg>
+              </span>
+              <div className="min-w-0">
+                <h2 className="truncate text-[15px] font-semibold tracking-tight text-foreground">
+                  {node.name}
+                </h2>
+                <p dir="ltr" className="truncate text-start font-mono text-[11px] text-muted-foreground/70">
+                  {node.target}
+                </p>
+              </div>
+            </div>
           </Link>
 
-          <div className="border-t border-border/60 px-4 py-3">
-            <div className="flex min-w-0 flex-wrap gap-2">
+          <div className="border-t border-border/50 px-4 py-2.5">
+            <div className="flex min-w-0 flex-wrap gap-1.5">
               {node.monitors.map((monitor) => {
                 const definition = getMonitorDefinition(monitor.type);
                 const Icon = definition.icon;
@@ -113,11 +127,11 @@ export function MonitorGrid({ monitors }: { monitors: Monitor[] }) {
                     href={`/app/nodes/${monitor.id}`}
                     title={monitor.name}
                     className={cn(
-                      "inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-md border px-2 text-xs font-medium outline-none transition-[filter,transform] hover:brightness-110 active:translate-y-px focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+                      "inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-md border px-2 text-[11px] font-medium outline-none transition-all hover:brightness-110 active:translate-y-px focus-visible:ring-2 focus-visible:ring-ring",
                       monitorBadgeTone(monitor),
                     )}
                   >
-                    <Icon className="size-3.5" aria-hidden />
+                    <Icon className="size-3" aria-hidden />
                     <span>{tTypes(monitor.type)}</span>
                   </Link>
                 );

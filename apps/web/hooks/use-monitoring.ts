@@ -60,7 +60,7 @@ function buildProbes(
   const locMap = new Map(locations.map((l) => [l.id, l]));
 
   if (agents.length > 0) {
-    return agents.map((agent) => {
+    return agents.filter((a) => a.status === "active").map((agent) => {
       const loc = locMap.get(agent.location_id);
 
       let coords: { lat: number; lng: number };
