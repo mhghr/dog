@@ -222,6 +222,7 @@ func NewRouter(deps Deps) http.Handler {
 					r.Post("/{agentID}/enable", handler.enableAgent)
 					r.Post("/{agentID}/revoke", handler.revokeAgent)
 					r.Post("/{agentID}/drain", handler.drainAgent)
+					r.Delete("/{agentID}", handler.deleteAgent)
 				})
 
 				r.Get("/probe-agent-enrollment-tokens", handler.listEnrollmentTokens)

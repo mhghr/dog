@@ -330,6 +330,22 @@ func (h *Handler) drainAgent(w http.ResponseWriter, r *http.Request) {
 	h.updateAgentStatus(w, r, agents.AgentDraining, "drain")
 }
 
+func (h *Handler) deleteAgent(w http.ResponseWriter, r *http.Request) {
+	agentID := chi.URLParam(r, "agentID")
+	id, err := uuid.Parse(agentID)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_id", "Invalid agent ID", nil)
+		return
+	}
+
+	if err := h.deps.AgentRepo.DeleteAgent(r.Context(), id); err != nil {
+		writeDomainError(w, r, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
 func (h *Handler) updateAgentStatus(w http.ResponseWriter, r *http.Request, status agents.AgentStatus, action string) {
 	agentID := chi.URLParam(r, "agentID")
 	id, err := uuid.Parse(agentID)

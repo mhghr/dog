@@ -263,10 +263,10 @@ func (r *Repository) ListAgents(ctx context.Context, params ListAgentsParams) ([
 func (r *Repository) UpdateAgentStatus(ctx context.Context, id uuid.UUID, status AgentStatus, opts StatusUpdateOpts) error {
 	tag, err := r.pool.Exec(ctx, `
 		UPDATE probe_agents
-		SET status = $2,
+		SET status = $2::probe_agent_status,
 		    approved_by = COALESCE($3, approved_by),
 		    approved_at = COALESCE($4, approved_at),
-		    revoked_at = CASE WHEN $2 = 'revoked' THEN NOW() ELSE revoked_at END,
+		    revoked_at = CASE WHEN $2::text = 'revoked' THEN NOW() ELSE revoked_at END,
 		    updated_at = NOW()
 		WHERE id = $1
 	`, id, status, opts.ApprovedBy, opts.ApprovedAt)
@@ -466,6 +466,17 @@ type UnusedTokenInfo struct {
 	RequestedLocationID *uuid.UUID
 	ExpiresAt           time.Time
 	CreatedAt           time.Time
+}
+
+func (r *Repository) DeleteAgent(ctx context.Context, id uuid.UUID) error {
+	tag, err := r.pool.Exec(ctx, `DELETE FROM probe_agents WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrAgentNotFound
+	}
+	return nil
 }
 
 func (r *Repository) ListUnusedTokens(ctx context.Context) ([]UnusedTokenInfo, error) {

@@ -102,7 +102,16 @@ export function useAgentMutation() {
     onSuccess: invalidateAgents,
   });
 
-  return { approve, reject, disable, enable, revoke, drain, updatePublicIP, updateLocation };
+  const deleteAgent = useMutation({
+    mutationFn: (agentId: string) =>
+      apiRequest<{ status: string }>(
+        `/api/v1/admin/probe-agents/${agentId}`,
+        { method: "DELETE" },
+      ),
+    onSuccess: invalidateAgents,
+  });
+
+  return { approve, reject, disable, enable, revoke, drain, deleteAgent, updatePublicIP, updateLocation };
 }
 
 export function useCreateEnrollmentToken() {
