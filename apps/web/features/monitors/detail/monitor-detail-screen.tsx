@@ -16,11 +16,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { GenericMonitorSummary } from "@/features/monitors/detail/generic-summary";
 import { NodeMonitorTabs } from "@/features/monitors/detail/node-monitor-tabs";
 import { getMonitorDefinition } from "@/features/monitors/core/registry";
+import { useAgents } from "@/hooks/use-agents";
 import { useMonitor } from "@/hooks/use-monitor";
 import { useMonitorMetrics, type MetricsRange } from "@/hooks/use-monitor-metrics";
 import { useMonitorResults } from "@/hooks/use-monitor-results";
 import { useLocations } from "@/hooks/use-locations";
 import { Link } from "@/i18n/navigation";
+import type { ProbeLocation } from "@/types/monitor";
 
 export function MonitorDetailScreen({ monitorId }: { monitorId: string }) {
   const t = useTranslations("monitorDetail");
@@ -32,6 +34,7 @@ export function MonitorDetailScreen({ monitorId }: { monitorId: string }) {
   const metricsQuery = useMonitorMetrics(monitorId, range);
   const recentResultsQuery = useMonitorResults(monitorId, 50, 1);
   const locationsQuery = useLocations();
+  const agentsQuery = useAgents();
 
   if (monitorQuery.isPending) {
     return (
@@ -48,6 +51,18 @@ export function MonitorDetailScreen({ monitorId }: { monitorId: string }) {
   const Summary = (getMonitorDefinition(monitor.type).Summary ?? GenericMonitorSummary);
   const recentResults = recentResultsQuery.data?.items ?? [];
   const probeLocations = locationsQuery.data?.items ?? [];
+
+  // Show active agents by name in the probe list instead of location names
+  const activeAgents = agentsQuery.data?.items?.filter((a) => a.status === "active" || a.status === "approved") ?? [];
+  const enrichedLocations: ProbeLocation[] = activeAgents.length > 0
+    ? activeAgents.map((a) => ({
+        id: a.location_id || a.id,
+        name: a.name,
+        code: "",
+        enabled: true,
+        created_at: "",
+      }))
+    : probeLocations;
 
   return (
     <div className="flex min-w-0 flex-col">
@@ -77,7 +92,7 @@ export function MonitorDetailScreen({ monitorId }: { monitorId: string }) {
         metrics={metricsQuery.data}
         latestResult={recentResults[0] ?? null}
         recentResults={recentResults}
-        probeLocations={probeLocations}
+        probeLocations={enrichedLocations}
         locale={locale}
         rangeLabel=""
       />
@@ -87,7 +102,7 @@ export function MonitorDetailScreen({ monitorId }: { monitorId: string }) {
           <CardContent className="px-4 py-3">
             {metricsQuery.isPending ? <Skeleton className="h-52 w-full rounded-lg" /> : metricsQuery.isError ? <ErrorState onRetry={() => void metricsQuery.refetch()} /> : (
               <MultiLocationChart
-                series={probeLocations.map((loc) => ({
+                series={enrichedLocations.map((loc) => ({
                   location: loc,
                   results: recentResults.filter((r) => (r.probe_location_id || "default") === loc.id),
                 }))}
