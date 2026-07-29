@@ -241,6 +241,7 @@ func NewRouter(deps Deps) http.Handler {
 	router.Route("/internal/v1", func(r chi.Router) {
 		r.Use(handler.workerAuth)
 		r.Post("/results", handler.ingestResult)
+		r.Post("/results/batch", handler.ingestResultBatch)
 	})
 
 	return router

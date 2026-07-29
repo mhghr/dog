@@ -85,26 +85,8 @@ export default function NodesPage() {
 
   return (
     <Tabs value={view} onValueChange={(v) => setView(v as "list" | "add")}>
-      <div className="mb-5 flex flex-wrap items-center justify-end gap-3 border-b border-border/65 pb-4">
-        {view === "list" ? (
-          <Button onClick={() => setView("add")}>
-            {t("newMonitor")}
-          </Button>
-        ) : null}
-      </div>
-
       <TabsContent value="list">
-        <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <MonitorFilters
-            value={filters}
-            className="mb-0"
-            onChange={(next) => {
-              setFilters(next);
-              if (next.type !== filters.type || next.status !== filters.status) {
-                setPage(1);
-              }
-            }}
-          />
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div className="inline-flex w-fit items-center rounded-lg border border-border/70 bg-muted/25 p-1" role="group" aria-label={t("viewMode")}>
             <Button
               type="button"
@@ -127,7 +109,26 @@ export default function NodesPage() {
               <List className="size-4" />
             </Button>
           </div>
+
+          <MonitorFilters
+            value={filters}
+            className="mb-0"
+            onChange={(next) => {
+              setFilters(next);
+              if (next.type !== filters.type || next.status !== filters.status) {
+                setPage(1);
+              }
+            }}
+          />
+
+          {view === "list" ? (
+            <Button onClick={() => setView("add")}>
+              {t("newMonitor")}
+            </Button>
+          ) : null}
         </div>
+
+        <div className="mb-5 border-b border-border/65" />
 
         {monitorsQuery.isPending ? (
           layout === "grid" ? <MonitorGridSkeleton /> : <MonitorTableSkeleton />

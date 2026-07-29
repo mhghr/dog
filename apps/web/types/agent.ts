@@ -20,6 +20,7 @@ export interface ProbeAgent {
   public_ip: string;
   capabilities: string[];
   max_concurrency: number;
+  running_jobs: number;
   status: AgentStatus;
   last_seen_at?: string;
   created_at: string;

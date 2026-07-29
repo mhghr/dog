@@ -87,13 +87,13 @@ export function MonitorGrid({ monitors }: { monitors: Monitor[] }) {
       {nodes.map((node) => (
         <article
           key={node.key}
-          className="group min-w-0 overflow-hidden rounded-xl border border-border/70 bg-card/70 shadow-sm shadow-foreground/[0.02] transition-[border-color,background-color,transform] duration-150 hover:-translate-y-0.5 hover:border-primary/30 hover:bg-card"
+          className="min-w-0 overflow-hidden rounded-xl border border-border/70 bg-card/70 shadow-sm shadow-foreground/[0.02]"
         >
           <Link
             href={`/app/monitors/${node.monitors[0].id}`}
             className="block min-w-0 px-4 py-3.5 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           >
-            <h2 className="truncate text-[15px] font-semibold tracking-tight transition-colors group-hover:text-primary">
+            <h2 className="truncate text-[15px] font-semibold tracking-tight">
               {node.name}
             </h2>
             <p dir="ltr" className="mt-1 truncate text-start font-mono text-xs text-muted-foreground">

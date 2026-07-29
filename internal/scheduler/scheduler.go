@@ -159,6 +159,10 @@ func (s *Scheduler) publishToLocation(ctx context.Context, monitor domain.Monito
 		ScheduledAt:     time.Now().UTC(),
 	}
 
+	if err := s.queue.Publish(ctx, job); err != nil {
+		return err
+	}
+
 	payload, err := json.Marshal(job)
 	if err != nil {
 		return err

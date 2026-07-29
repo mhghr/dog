@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"monitoring-platform/internal/agent"
 	"monitoring-platform/internal/agent/enrollment"
@@ -93,37 +92,22 @@ func run() {
 		logger.Warn("failed to clear enrollment token from config", "error", err)
 	}
 
-	go runHealthServer(ctx, cfg, logger)
-	go runGatewayHeartbeat(ctx, cfg, agentID, logger)
+	grpcAgent, err := agent.NewGRPCAgent(cfg, agentID, logger)
+	if err != nil {
+		logger.Error("failed to create gRPC agent", "error", err)
+		os.Exit(1)
+	}
+	defer grpcAgent.Close()
 
-	logger.Info("probe-agent running, waiting for jobs from gateway")
+	logger.Info("probe-agent running, connected to gateway")
 	logger.Info("gateway address", "address", cfg.Gateway)
 
-	<-ctx.Done()
-	logger.Info("probe-agent stopped")
-}
-
-func runGatewayHeartbeat(ctx context.Context, cfg agent.AgentConfig, agentID string, logger interface{}) {
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			// Heartbeat: the agent connects to the gateway periodically
-			// In production this would be a persistent gRPC stream.
-			// For now, log the heartbeat as a placeholder.
-			_ = agentID
-			_ = cfg
-		}
+	if err := grpcAgent.Run(ctx); err != nil && ctx.Err() == nil {
+		logger.Error("agent stopped with error", "error", err)
+		os.Exit(1)
 	}
-}
 
-func runHealthServer(ctx context.Context, cfg agent.AgentConfig, logger interface{}) {
-	_ = cfg
-	_ = logger
+	logger.Info("probe-agent stopped")
 }
 
 func enrollCmd() {

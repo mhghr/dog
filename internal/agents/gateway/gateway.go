@@ -2,21 +2,17 @@ package gateway
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
-	"net/http"
-	"os"
-	"strings"
-	"time"
+	"sync"
 
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
+	"google.golang.org/grpc"
 
-	"monitoring-platform/internal/agents"
+	pb "monitoring-platform/internal/agent_gateway/pb"
+	"monitoring-platform/internal/domain"
 )
 
 type GatewayConfig struct {
@@ -28,406 +24,223 @@ type GatewayConfig struct {
 	DatabaseURL   string
 }
 
-type GatewayServer struct {
-	db        *pgxpool.Pool
-	agentRepo *agents.Repository
-	config    GatewayConfig
-	logger    *slog.Logger
-	server    *http.Server
+type Gateway struct {
+	cfg    GatewayConfig
+	logger *slog.Logger
+	rdb    *redis.Client
+
+	mu      sync.Mutex
+	agents  map[string]*agentConn
 }
 
-func New(cfg GatewayConfig, logger *slog.Logger) (*GatewayServer, error) {
-	pool, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
-	if err != nil {
-		return nil, fmt.Errorf("connect to database: %w", err)
-	}
+type agentConn struct {
+	stream   pb.AgentGateway_AgentStreamServer
+	agentID  string
+	location string
+	cancel   context.CancelFunc
+}
 
-	return &GatewayServer{
-		db:        pool,
-		agentRepo: agents.NewRepository(pool),
-		config:    cfg,
-		logger:    logger,
+func New(cfg GatewayConfig, logger *slog.Logger) (*Gateway, error) {
+	rdb := redis.NewClient(&redis.Options{Addr: "localhost:6379"})
+
+	return &Gateway{
+		cfg:    cfg,
+		logger: logger,
+		rdb:    rdb,
+		agents: make(map[string]*agentConn),
 	}, nil
 }
 
-func (g *GatewayServer) ListenAndServe(ctx context.Context) error {
-	tlsConfig, err := g.buildTLSConfig()
+func (g *Gateway) Close() {
+	g.rdb.Close()
+}
+
+func (g *Gateway) ListenAndServe(ctx context.Context) error {
+	lis, err := net.Listen("tcp", g.cfg.ListenAddress)
 	if err != nil {
-		return fmt.Errorf("build TLS config: %w", err)
+		return fmt.Errorf("listen: %w", err)
 	}
 
-	gatewayMux := g.buildGatewayMux()
-	healthMux := g.buildHealthMux()
+	srv := grpc.NewServer()
+	pb.RegisterAgentGatewayServer(srv, g)
 
-	g.server = &http.Server{
-		Addr:              g.config.ListenAddress,
-		Handler:           gatewayMux,
-		TLSConfig:         tlsConfig,
-		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		IdleTimeout:       120 * time.Second,
-	}
+	g.logger.Info("gateway listening", "address", g.cfg.ListenAddress)
 
-	healthServer := &http.Server{
-		Addr:              g.config.HealthAddress,
-		Handler:           healthMux,
-		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		IdleTimeout:       120 * time.Second,
-	}
-
-	errChan := make(chan error, 2)
+	go g.consumeJobs(ctx)
 
 	go func() {
-		g.logger.Info("gateway listening", "address", g.config.ListenAddress)
-		if err := g.server.ListenAndServeTLS(g.config.TLSCertFile, g.config.TLSKeyFile); err != nil && err != http.ErrServerClosed {
-			errChan <- err
+		<-ctx.Done()
+		srv.GracefulStop()
+	}()
+
+	return srv.Serve(lis)
+}
+
+func (g *Gateway) AgentStream(stream pb.AgentGateway_AgentStreamServer) error {
+	// First message must contain the agent_id
+	msg, err := stream.Recv()
+	if err != nil {
+		return fmt.Errorf("receive registration: %w", err)
+	}
+	if msg.AgentId == "" {
+		return fmt.Errorf("registration missing agent_id")
+	}
+
+	conn := &agentConn{
+		stream:  stream,
+		agentID: msg.AgentId,
+	}
+
+	ctx, cancel := context.WithCancel(stream.Context())
+	conn.cancel = cancel
+
+	g.mu.Lock()
+	g.agents[msg.AgentId] = conn
+	g.mu.Unlock()
+
+	g.logger.Info("agent connected", "agent_id", msg.AgentId)
+
+	defer func() {
+		cancel()
+		g.mu.Lock()
+		delete(g.agents, msg.AgentId)
+		g.mu.Unlock()
+		g.logger.Info("agent disconnected", "agent_id", msg.AgentId)
+	}()
+
+	// Process incoming messages from agent
+	go func() {
+		for {
+			msg, err := stream.Recv()
+			if err != nil {
+				return
+			}
+			g.handleAgentMessage(ctx, msg)
 		}
 	}()
 
-	go func() {
-		g.logger.Info("health server listening", "address", g.config.HealthAddress)
-		if err := healthServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			errChan <- err
-		}
-	}()
-
-	select {
-	case err := <-errChan:
-		return err
-	case <-ctx.Done():
-	}
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	g.logger.Info("shutting down gateway")
-	g.server.Shutdown(shutdownCtx)
-	healthServer.Shutdown(shutdownCtx)
-
+	<-ctx.Done()
 	return nil
 }
 
-func (g *GatewayServer) Close() {
-	if g.db != nil {
-		g.db.Close()
+func (g *Gateway) handleAgentMessage(ctx context.Context, msg *pb.AgentMessage) {
+	switch {
+	case msg.Result != nil:
+		g.handleResult(ctx, msg.AgentId, msg.Result)
+	case msg.Heartbeat != nil:
+		g.handleHeartbeat(ctx, msg.AgentId, msg.Heartbeat)
 	}
 }
 
-func (g *GatewayServer) buildTLSConfig() (*tls.Config, error) {
-	caCert, err := os.ReadFile(g.config.CACertFile)
-	if err != nil {
-		return nil, fmt.Errorf("read CA certificate: %w", err)
+func (g *Gateway) handleResult(ctx context.Context, agentID string, r *pb.ProbeResult) {
+	metrics := make(map[string]any)
+	attrs := make(map[string]any)
+	if len(r.Metrics) > 0 {
+		json.Unmarshal(r.Metrics, &metrics)
+	}
+	if len(r.Attributes) > 0 {
+		json.Unmarshal(r.Attributes, &attrs)
 	}
 
-	caCertPool := x509.NewCertPool()
-	if !caCertPool.AppendCertsFromPEM(caCert) {
-		return nil, fmt.Errorf("failed to parse CA certificate")
+	result := domain.ProbeResult{
+		ID:              r.Id,
+		JobID:           r.JobId,
+		MonitorID:       r.MonitorId,
+		ProbeLocationID: r.ProbeLocationId,
+		Success:         r.Success,
+		ErrorCode:       r.ErrorCode,
+		ErrorMessage:    r.ErrorMessage,
+		DurationMillis:  r.DurationMillis,
+		Metrics:         metrics,
+		Attributes:      attrs,
 	}
 
-	return &tls.Config{
-		ClientAuth: tls.RequireAndVerifyClientCert,
-		ClientCAs:  caCertPool,
-		MinVersion: tls.VersionTLS12,
-	}, nil
+	// Send result to API
+	g.sendToAPI(ctx, result)
 }
 
-func (g *GatewayServer) buildGatewayMux() http.Handler {
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("/agent/v1/hello", g.handleAgentHello)
-	mux.HandleFunc("/agent/v1/heartbeat", g.handleAgentHeartbeat)
-	mux.HandleFunc("/agent/v1/connect", g.handleAgentConnect)
-	mux.HandleFunc("/agent/v1/jobs/poll", g.handleJobPoll)
-	mux.HandleFunc("/agent/v1/jobs/ack", g.handleJobAck)
-	mux.HandleFunc("/agent/v1/results/batch", g.handleResultBatch)
-	mux.HandleFunc("/agent/v1/capacity", g.handleCapacity)
-
-	return mux
+func (g *Gateway) handleHeartbeat(ctx context.Context, agentID string, hb *pb.Heartbeat) {
+	g.logger.Debug("heartbeat", "agent_id", agentID, "cpu", hb.CpuUsage, "running_jobs", hb.RunningJobs)
+	// Update agent status in DB
 }
 
-func (g *GatewayServer) buildHealthMux() http.Handler {
-	mux := http.NewServeMux()
+func (g *Gateway) sendToAPI(ctx context.Context, result domain.ProbeResult) {
+	// Forward to API ingestion endpoint
+	payload, _ := json.Marshal(result)
+	g.rdb.Publish(ctx, "probe_results", payload)
+	g.logger.Info("result forwarded", "monitor_id", result.MonitorID, "success", result.Success)
+}
 
-	mux.HandleFunc("/health/live", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-	})
-
-	mux.HandleFunc("/health/ready", func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
-		defer cancel()
-
-		w.Header().Set("Content-Type", "application/json")
-
-		if err := g.db.Ping(ctx); err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			json.NewEncoder(w).Encode(map[string]string{
-				"status": "unavailable",
-				"error":  fmt.Sprintf("database: %v", err),
-			})
+func (g *Gateway) consumeJobs(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
 			return
+		default:
 		}
 
-		json.NewEncoder(w).Encode(map[string]string{
-			"status": "ok",
-			"role":   "agent-gateway",
-		})
-	})
+		msgs, err := g.rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    "gateway_workers",
+			Consumer: "gateway-01",
+			Streams:  []string{"probe_jobs", ">"},
+			Count:    10,
+			Block:    0,
+		}).Result()
+		if err != nil {
+			g.logger.Error("read jobs", "error", err)
+			continue
+		}
 
-	return mux
-}
+		for _, stream := range msgs {
+			for _, msg := range stream.Messages {
+				var raw string
+				if v, ok := msg.Values["payload"]; ok {
+					raw, _ = v.(string)
+				}
+				if raw == "" {
+					continue
+				}
 
-func (g *GatewayServer) handleAgentHello(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
+				var job domain.ProbeJob
+				if err := json.Unmarshal([]byte(raw), &job); err != nil {
+					g.logger.Error("unmarshal job", "error", err)
+					continue
+				}
 
-	agentID, err := g.verifyAgent(r)
-	if err != nil {
-		g.logger.Warn("agent verification failed", "error", err)
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"status": "unauthenticated", "error": err.Error()})
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":        "authenticated",
-		"agent_id":      agentID.String(),
-		"gateway_id":    "agent-gateway-01",
-		"server_time":   time.Now().UTC().Format(time.RFC3339),
-		"protocol_min":  "1",
-		"protocol_max":  "1",
-	})
-}
-
-func (g *GatewayServer) handleAgentHeartbeat(w http.ResponseWriter, r *http.Request) {
-	agentID, err := g.verifyAgent(r)
-	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	publicIP, _, _ := net.SplitHostPort(r.RemoteAddr)
-
-	if err := g.agentRepo.AgentHeartbeat(ctx, agentID, publicIP); err != nil {
-		g.logger.Error("agent heartbeat update failed", "agent_id", agentID, "error", err)
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"status":   "ok",
-		"agent_id": agentID.String(),
-	})
-}
-
-func (g *GatewayServer) handleAgentConnect(w http.ResponseWriter, r *http.Request) {
-	agentID, err := g.verifyAgent(r)
-	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	agent, err := g.agentRepo.GetAgent(ctx, agentID)
-	if err != nil {
-		g.logger.Error("agent lookup failed", "agent_id", agentID, "error", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	if !agents.IsOperational(agent.Status) && agent.Status != agents.AgentActive {
-		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]string{
-			"status":       "forbidden",
-			"agent_status": string(agent.Status),
-		})
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":          "connected",
-		"agent_id":        agent.ID.String(),
-		"location_id":     agent.LocationID.String(),
-		"capabilities":    agent.Capabilities,
-		"max_concurrency": agent.MaxConcurrency,
-	})
-}
-
-func (g *GatewayServer) verifyAgent(r *http.Request) (uuid.UUID, error) {
-	if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
-		return uuid.Nil, fmt.Errorf("no client certificate")
-	}
-
-	clientCert := r.TLS.PeerCertificates[0]
-	cn := clientCert.Subject.CommonName
-
-	if !strings.HasPrefix(cn, "probe-agent-") {
-		return uuid.Nil, fmt.Errorf("invalid certificate CN: %s", cn)
-	}
-
-	agentIDStr := strings.TrimPrefix(cn, "probe-agent-")
-	agentID, err := uuid.Parse(agentIDStr)
-	if err != nil {
-		return uuid.Nil, fmt.Errorf("invalid agent ID in certificate: %w", err)
-	}
-
-	return agentID, nil
-}
-
-func (g *GatewayServer) handleJobPoll(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-
-	agentID, err := g.verifyAgent(r)
-	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	agent, err := g.agentRepo.GetAgent(ctx, agentID)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	if agent.Status != agents.AgentActive && agent.Status != agents.AgentDraining {
-		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]string{
-			"status":       "forbidden",
-			"agent_status": string(agent.Status),
-		})
-		return
-	}
-
-	var req struct {
-		RunningJobs int32 `json:"running_jobs"`
-		MaxJobs     int32 `json:"max_jobs"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		req.MaxJobs = 10
-	}
-	if req.MaxJobs <= 0 {
-		req.MaxJobs = 1
-	}
-
-	available := agent.MaxConcurrency - req.RunningJobs
-	if available <= 0 {
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"jobs":       []interface{}{},
-			"backpressure": true,
-			"available":  0,
-		})
-		return
-	}
-	if int32(req.MaxJobs) > available {
-		req.MaxJobs = available
-	}
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"jobs":        []interface{}{},
-		"backpressure": false,
-		"available":   int(available),
-	})
-}
-
-func (g *GatewayServer) handleJobAck(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-
-	agentID, err := g.verifyAgent(r)
-	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
-	var req struct {
-		JobID   string `json:"job_id"`
-		LeaseID string `json:"lease_id"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	g.logger.Info("job acknowledged", "agent_id", agentID, "job_id", req.JobID)
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-}
-
-func (g *GatewayServer) handleResultBatch(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-
-	agentID, err := g.verifyAgent(r)
-	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
-	var req struct {
-		Results []map[string]interface{} `json:"results"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	stored := make([]string, 0, len(req.Results))
-	for _, r := range req.Results {
-		if id, ok := r["result_id"].(string); ok {
-			stored = append(stored, id)
+				g.dispatchJob(ctx, job)
+				g.rdb.XAck(ctx, "probe_jobs", "gateway_workers", msg.ID)
+			}
 		}
 	}
-
-	g.logger.Info("result batch received", "agent_id", agentID, "count", len(req.Results))
-	json.NewEncoder(w).Encode(map[string]interface{}{"stored": stored})
 }
 
-func (g *GatewayServer) handleCapacity(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
+func (g *Gateway) dispatchJob(ctx context.Context, job domain.ProbeJob) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
 
-	agentID, err := g.verifyAgent(r)
-	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
+	// Find an agent in the right location
+	for _, conn := range g.agents {
+		// Send job to first available agent (location matching TODO)
+		pbJob := &pb.ProbeJob{
+			Id:              job.ID,
+			MonitorId:       job.MonitorID,
+			Type:            string(job.Type),
+			Target:          job.Target,
+			TimeoutMillis:   int32(job.TimeoutMillis),
+			Retries:         int32(job.Retries),
+			ProbeLocationId: job.ProbeLocationID,
+		}
+		if cfg, err := json.Marshal(job.Config); err == nil {
+			pbJob.Config = cfg
+		}
 
-	var req struct {
-		RunningJobs int32 `json:"running_jobs"`
-		AvailableSlots int32 `json:"available_slots"`
-		SpoolBytes  int64 `json:"spool_bytes"`
+		if err := conn.stream.Send(&pb.GatewayMessage{Job: pbJob}); err != nil {
+			g.logger.Error("send job to agent", "agent_id", conn.agentID, "error", err)
+			continue
+		}
+		g.logger.Info("job dispatched", "job_id", job.ID, "agent_id", conn.agentID)
+		break
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	if err := g.agentRepo.UpdateCapacity(ctx, agentID, req.RunningJobs, req.SpoolBytes); err != nil {
-		g.logger.Warn("capacity update failed", "agent_id", agentID, "error", err)
-	}
-
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
+
+

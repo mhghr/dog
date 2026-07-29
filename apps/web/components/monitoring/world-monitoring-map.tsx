@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import DottedMap from "dotted-map";
 import { useTheme } from "next-themes";
 import { useMonitoring } from "@/hooks/use-monitoring";
@@ -22,6 +22,12 @@ function projectPoint(lat: number, lng: number) {
 export function WorldMonitoringMap({ className }: { className?: string }) {
   const { probes, userNodes, connections } = useMonitoring();
   const { theme } = useTheme();
+  const [bgColor, setBgColor] = useState("#ffffff");
+
+  useEffect(() => {
+    const color = getComputedStyle(document.documentElement).getPropertyValue("--background").trim();
+    if (color) setBgColor(color);
+  }, [theme]);
 
   const map = useMemo(
     () => new DottedMap({ height: 100, grid: "diagonal" }),
@@ -34,22 +40,22 @@ export function WorldMonitoringMap({ className }: { className?: string }) {
         radius: 0.22,
         color: theme === "dark" ? "#FFFFFF40" : "#00000040",
         shape: "circle",
-        backgroundColor: theme === "dark" ? "#0a0a0a" : "#ffffff",
+        backgroundColor: bgColor,
       }),
-    [map, theme],
+    [map, theme, bgColor],
   );
 
   return (
     <div
       className={cn(
-        "relative aspect-[2/1] w-full overflow-hidden rounded-xl border border-border bg-background",
+        "relative w-full overflow-hidden rounded-xl bg-background",
         className,
       )}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={`data:image/svg+xml;utf8,${encodeURIComponent(svgMap)}`}
-        className="pointer-events-none h-full w-full select-none [mask-image:linear-gradient(to_bottom,transparent,white_10%,white_90%,transparent)]"
+        className="pointer-events-none h-full w-full select-none object-cover [mask-image:linear-gradient(to_bottom,transparent,white_10%,white_90%,transparent)]"
         alt="world map"
         draggable={false}
       />

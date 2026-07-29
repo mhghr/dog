@@ -26,6 +26,16 @@ export function ProbeMarker({ probe, x, y }: ProbeMarkerProps) {
       onMouseLeave={() => setHovered(false)}
       style={{ cursor: "pointer" }}
     >
+      {/* Label */}
+      <text
+        x={x}
+        y={y - 9}
+        textAnchor="middle"
+        fill="var(--foreground)"
+        className="text-[8px] font-display font-medium"
+      >
+        {probe.city}
+      </text>
       <circle cx={x} cy={y} r="3" fill={color} />
       <circle cx={x} cy={y} r="3" fill={color} opacity="0.4">
         <animate

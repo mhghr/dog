@@ -149,6 +149,7 @@ func (h *Handler) listAgents(w http.ResponseWriter, r *http.Request) {
 		PublicIP       string   `json:"public_ip"`
 		Capabilities   []string `json:"capabilities"`
 		MaxConcurrency int32    `json:"max_concurrency"`
+		RunningJobs    int32    `json:"running_jobs"`
 		Status         string   `json:"status"`
 		LastSeenAt     *string  `json:"last_seen_at,omitempty"`
 		CreatedAt      string   `json:"created_at"`
@@ -171,6 +172,7 @@ func (h *Handler) listAgents(w http.ResponseWriter, r *http.Request) {
 			PublicIP:       a.PublicIP,
 			Capabilities:   a.Capabilities,
 			MaxConcurrency: a.MaxConcurrency,
+			RunningJobs:    a.RunningJobs,
 			Status:         string(a.Status),
 			CreatedAt:      a.CreatedAt.Format(time.RFC3339),
 			Latitude:       a.Latitude,

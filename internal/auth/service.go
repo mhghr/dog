@@ -384,7 +384,8 @@ func (s *Service) ensureOrganization(ctx context.Context, user *domain.User) err
 	if len(errs) > 0 {
 		org = domain.Organization{Name: "My Workspace", Slug: "my-workspace"}
 	}
-	if err := s.orgs.Create(ctx, &org); err != nil {
+
+	if err := s.createOrgWithRetry(ctx, &org); err != nil {
 		return fmt.Errorf("auto-create organization: %w", err)
 	}
 
@@ -395,6 +396,29 @@ func (s *Service) ensureOrganization(ctx context.Context, user *domain.User) err
 	user.OrganizationID = org.ID
 
 	s.logger.Info("auto-created organization", "user_id", user.ID, "org_id", org.ID, "org_name", org.Name)
+	return nil
+}
+
+func (s *Service) createOrgWithRetry(ctx context.Context, org *domain.Organization) error {
+	baseSlug := org.Slug
+	for i := 0; i < 5; i++ {
+		err := s.orgs.Create(ctx, org)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, domain.ErrDuplicate) {
+			return err
+		}
+		if i == 4 {
+			return fmt.Errorf("slug %q still conflicts after retries", org.Slug)
+		}
+		var buf [3]byte
+		if _, rerr := rand.Read(buf[:]); rerr != nil {
+			return rerr
+		}
+		suffix := hex.EncodeToString(buf[:])
+		org.Slug = baseSlug + "-" + suffix
+	}
 	return nil
 }
 

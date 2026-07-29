@@ -7,9 +7,16 @@ AGENT_DIR="${AGENT_DIR:-$HOME/probe-agent}"
 REPO="mhghr/dog"
 GH_TOKEN="${GITHUB_TOKEN:-}"
 
+SERVICE_FILE="/etc/systemd/system/probe-agent.service"
+USE_SYSTEMD=false
+if [ -d /run/systemd/system ]; then
+    USE_SYSTEMD=true
+fi
+
 if [ -z "$TOKEN" ]; then
     echo "Usage:"
     echo "  ./install-agent.sh <ENROLLMENT_TOKEN> [CONTROL_PLANE_URL]"
+    echo "  AGENT_ENROLLMENT_TOKEN=xxx ./install-agent.sh"
     exit 1
 fi
 
@@ -24,8 +31,10 @@ echo " probe-agent installer"
 echo "==================================="
 echo " Control plane : $CONTROL_PLANE"
 echo " Arch          : $ARCH"
+echo " Install method: $([ "$USE_SYSTEMD" = true ] && echo 'systemd (persistent)' || echo 'background process')"
 echo "==================================="
 
+# Download binary
 BIN_URL="https://github.com/$REPO/releases/latest/download/probe-agent-${ARCH}"
 AUTH_ARGS=()
 if [ -n "$GH_TOKEN" ]; then
@@ -59,6 +68,56 @@ log_level: "info"
 log_format: "json"
 YAML
 
-echo "Starting probe-agent..."
-export AGENT_CONFIG_PATH="$AGENT_DIR/config.yaml"
-exec "$AGENT_DIR/probe-agent" run
+if [ "$USE_SYSTEMD" = true ] && [ "$(id -u)" = "0" ]; then
+    echo "Installing systemd service..."
+    cat > "$SERVICE_FILE" <<UNIT
+[Unit]
+Description=Probe Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=$AGENT_DIR/probe-agent run
+Restart=always
+RestartSec=5
+LimitNOFILE=65536
+WorkingDirectory=$AGENT_DIR
+Environment=AGENT_CONFIG_PATH=$AGENT_DIR/config.yaml
+CapabilityBoundingSet=CAP_NET_RAW
+AmbientCapabilities=CAP_NET_RAW
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+    systemctl daemon-reload
+    systemctl enable probe-agent
+    systemctl restart probe-agent
+    echo "   systemd service installed and started."
+    echo "   It will auto-start on boot and restart on failure."
+    echo "   Manage with: systemctl [start|stop|status] probe-agent"
+elif [ "$USE_SYSTEMD" = true ] && [ "$(id -u)" != "0" ]; then
+    echo "   Not running as root, skipping systemd install."
+    echo "   Starting in background instead..."
+    export AGENT_CONFIG_PATH="$AGENT_DIR/config.yaml"
+    nohup "$AGENT_DIR/probe-agent" run > "$AGENT_DIR/agent.log" 2>&1 &
+    PID=$!
+    echo "   Agent started in background (PID: $PID)."
+    echo "   Logs: $AGENT_DIR/agent.log"
+    echo ""
+    echo "   To install as systemd service run:"
+    echo "     sudo ./install-agent.sh $TOKEN $CONTROL_PLANE"
+    echo "   or manually:"
+    echo "     sudo cp deployments/probe-agent.service $SERVICE_FILE"
+    echo "     sudo systemctl enable --now probe-agent"
+else
+    echo "Starting in background..."
+    export AGENT_CONFIG_PATH="$AGENT_DIR/config.yaml"
+    nohup "$AGENT_DIR/probe-agent" run > "$AGENT_DIR/agent.log" 2>&1 &
+    PID=$!
+    echo "   Agent started in background (PID: $PID)."
+    echo "   Logs: $AGENT_DIR/agent.log"
+    echo "   To stop: kill $PID"
+fi

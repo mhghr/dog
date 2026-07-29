@@ -59,6 +59,34 @@ func (h *Handler) ingestResult(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"status": "accepted"})
 }
 
+func (h *Handler) ingestResultBatch(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Results []*domain.ProbeResult `json:"results"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_json", "Request body is not valid JSON", nil)
+		return
+	}
+
+	stored := make([]string, 0, len(req.Results))
+	for _, result := range req.Results {
+		inserted, err := h.deps.Ingestion.Ingest(r.Context(), result)
+		if err != nil {
+			h.deps.Logger.Error("batch ingest result failed", "job_id", result.JobID, "error", err)
+			continue
+		}
+		if inserted {
+			events := h.deps.AlertEngine.Evaluate(r.Context(), *result)
+			for _, evt := range events {
+				h.deps.Notifier.Dispatch(r.Context(), evt, evt.ChannelIDs)
+			}
+			stored = append(stored, result.ID)
+		}
+	}
+
+	writeJSON(w, http.StatusCreated, map[string]any{"stored": stored})
+}
+
 func isValidationError(err error, target **ingestion.ValidationError) bool {
 	validationErr, ok := err.(*ingestion.ValidationError)
 	if ok {
