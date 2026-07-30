@@ -5,14 +5,22 @@ import (
 	"monitoring-platform/internal/domain"
 )
 
+// MonitoringAgentRepository persists monitoring agent records.
 type MonitoringAgentRepository interface {
+	// Create persists a new monitoring agent.
 	Create(ctx context.Context, agent *domain.MonitoringAgent) error
-	GetByAgentID(ctx context.Context, agentID string) (*domain.MonitoringAgent, error)
-	GetByID(ctx context.Context, id string) (*domain.MonitoringAgent, error)
-	ListByTenant(ctx context.Context, tenantID string) ([]domain.MonitoringAgent, error)
+	// GetByAgentID retrieves an agent by its public agent identifier.
+	GetByAgentID(ctx context.Context, agentID string) (domain.MonitoringAgent, error)
+	// GetByID retrieves an agent by its internal ID.
+	GetByID(ctx context.Context, id string) (domain.MonitoringAgent, error)
+	// ListByTenant returns a paginated list of agents for a tenant along with the total count.
+	ListByTenant(ctx context.Context, tenantID string, limit, offset int) ([]domain.MonitoringAgent, int, error)
+	// UpdateStatus updates the lifecycle status of an agent.
 	UpdateStatus(ctx context.Context, agentID string, status domain.MonitoringAgentStatus) error
-	UpdateLastSeen(ctx context.Context, agentID string, publicIP string) error
-	UpdateHeartbeat(ctx context.Context, agentID string, cpu, memory, disk float64, uptime int64, publicIP string) error
+	// UpdateHeartbeat records a heartbeat report from an agent.
+	UpdateHeartbeat(ctx context.Context, agentID string, hb domain.AgentHeartbeat) error
+	// Delete removes an agent by its public agent identifier.
 	Delete(ctx context.Context, agentID string) error
+	// CountByTenant returns the total number of agents for a tenant.
 	CountByTenant(ctx context.Context, tenantID string) (int, error)
 }
