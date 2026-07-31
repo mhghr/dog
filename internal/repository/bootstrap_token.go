@@ -9,7 +9,7 @@ import (
 type BootstrapTokenRepository interface {
 	// Create persists a new bootstrap token.
 	Create(ctx context.Context, token *domain.BootstrapToken) error
-	// GetByTokenHash retrieves a token by its bcrypt hash.
+	// GetByTokenHash retrieves a token by its SHA-256 hex hash.
 	GetByTokenHash(ctx context.Context, hash string) (domain.BootstrapToken, error)
 	// MarkUsed marks a token as consumed during registration.
 	MarkUsed(ctx context.Context, tokenID string) error

@@ -8,7 +8,7 @@ type BootstrapToken struct {
 	ID string
 	// TenantID is the tenant that owns this token.
 	TenantID string
-	// TokenHash is the bcrypt hash of the raw token value.
+	// TokenHash is the SHA-256 (hex-encoded) hash of the raw bootstrap token.
 	TokenHash string
 	// Description is a human-readable label for this token.
 	Description string
