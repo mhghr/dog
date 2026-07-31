@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -49,7 +50,14 @@ func (s *otlpServer) Export(ctx context.Context, req *v1.ExportMetricsServiceReq
 
 	if err := s.publisher.PublishBatch(ctx, batch); err != nil {
 		s.logger.Error("publish batch failed", "error", err)
-		return nil, status.Error(codes.Unauthenticated, err.Error())
+
+		var authErr *pipeline.AuthError
+		switch {
+		case errors.As(err, &authErr):
+			return nil, status.Error(codes.Unauthenticated, "invalid agent credentials")
+		default:
+			return nil, status.Error(codes.Internal, "failed to ingest metrics")
+		}
 	}
 
 	return &v1.ExportMetricsServiceResponse{}, nil
