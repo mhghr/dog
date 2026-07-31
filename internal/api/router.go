@@ -113,6 +113,9 @@ func NewRouter(deps Deps) http.Handler {
 		// Monitoring agent config distribution (public; signed headers added later)
 		r.Get("/monitoring/agents/{agentID}/config", handler.getAgentConfig)
 
+		// Monitoring agent heartbeat reporting (public; agent ID lookup only)
+		r.Post("/monitoring/agents/{agentID}/heartbeat", handler.postAgentHeartbeat)
+
 		// Public auth
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/google/exchange", handler.googleExchange)
