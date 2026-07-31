@@ -23,6 +23,7 @@ type Supervisor struct {
 	mu     sync.Mutex
 	cmd    *exec.Cmd
 	cancel context.CancelFunc
+	done   chan struct{}
 }
 
 // NewSupervisor creates a collector supervisor rooted at configDir.
@@ -51,6 +52,7 @@ func (s *Supervisor) Start(ctx context.Context) error {
 
 	runCtx, cancel := context.WithCancel(ctx)
 	s.cancel = cancel
+	done := make(chan struct{})
 
 	cmd := exec.CommandContext(runCtx, s.binaryPath, "--config", s.configPath)
 	cmd.Stdout = os.Stdout
@@ -62,12 +64,15 @@ func (s *Supervisor) Start(ctx context.Context) error {
 	}
 
 	s.cmd = cmd
+	s.done = done
 	s.logger.Info("collector started", "binary", s.binaryPath, "config", s.configPath)
 
 	go func() {
 		err := cmd.Wait()
+		close(done)
 		s.mu.Lock()
 		s.cmd = nil
+		s.done = nil
 		s.mu.Unlock()
 
 		if err != nil && runCtx.Err() == nil {
@@ -113,16 +118,7 @@ func (s *Supervisor) Stop() error {
 
 	if s.cmd != nil && s.cmd.Process != nil {
 		_ = s.cmd.Process.Signal(syscall.SIGTERM)
-		done := make(chan struct{})
-		go func() {
-			s.cmd.Wait()
-			close(done)
-		}()
-		select {
-		case <-done:
-		case <-time.After(10 * time.Second):
-			_ = s.cmd.Process.Kill()
-		}
+		s.waitProcessLocked()
 	}
 	if s.cancel != nil {
 		s.cancel()
@@ -154,7 +150,7 @@ func (s *Supervisor) WatchRestarts(ctx context.Context) {
 func (s *Supervisor) restartLocked() error {
 	if s.cmd != nil && s.cmd.Process != nil {
 		_ = s.cmd.Process.Kill()
-		_ = s.cmd.Wait()
+		s.waitProcessLocked()
 	}
 	if s.cancel != nil {
 		s.cancel()
@@ -162,6 +158,7 @@ func (s *Supervisor) restartLocked() error {
 
 	runCtx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
+	done := make(chan struct{})
 
 	cmd := exec.CommandContext(runCtx, s.binaryPath, "--config", s.configPath)
 	cmd.Stdout = os.Stdout
@@ -172,6 +169,43 @@ func (s *Supervisor) restartLocked() error {
 		return fmt.Errorf("restart collector: %w", err)
 	}
 	s.cmd = cmd
+	s.done = done
 	s.logger.Info("collector restarted")
+
+	go func() {
+		err := cmd.Wait()
+		close(done)
+		s.mu.Lock()
+		s.cmd = nil
+		s.done = nil
+		s.mu.Unlock()
+
+		if err != nil && runCtx.Err() == nil {
+			s.logger.Error("collector exited unexpectedly", "error", err)
+			select {
+			case s.restartCh <- struct{}{}:
+			default:
+			}
+		}
+	}()
+
 	return nil
+}
+
+// waitProcessLocked waits for the running process to exit, killing it after a
+// 10s timeout. Caller must hold s.mu. The process exit is observed through the
+// done channel closed by the Start/restart goroutine, so exec.Cmd.Wait is never
+// called concurrently.
+func (s *Supervisor) waitProcessLocked() {
+	if s.done == nil {
+		return
+	}
+	select {
+	case <-s.done:
+	case <-time.After(10 * time.Second):
+		if s.cmd != nil && s.cmd.Process != nil {
+			_ = s.cmd.Process.Kill()
+		}
+		<-s.done
+	}
 }
