@@ -59,6 +59,9 @@ func NewWorkerPool(cfg WorkerConfig, logger *slog.Logger) (*WorkerPool, error) {
 	if cfg.Queue == "" {
 		cfg.Queue = "metric-processors"
 	}
+	if cfg.Durable == "" {
+		cfg.Durable = "metric-processor"
+	}
 
 	return &WorkerPool{
 		cfg:    cfg,
@@ -77,11 +80,6 @@ func (wp *WorkerPool) Start(ctx context.Context) error {
 		return fmt.Errorf("worker pool already started")
 	}
 	wp.started = true
-
-	durable := wp.cfg.Durable
-	if durable == "" {
-		durable = "metric-processor"
-	}
 
 	for i := 0; i < wp.cfg.Workers; i++ {
 		workerID := i
