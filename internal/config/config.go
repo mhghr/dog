@@ -72,6 +72,9 @@ type Config struct {
 	AgentSpoolDir        string
 
 	AgentSecretEncryptionKey string
+
+	OTELIngestAddress string
+	NATSURL           string
 }
 
 func Load() *Config {
@@ -141,6 +144,9 @@ func Load() *Config {
 		AgentSpoolDir:        getString("AGENT_SPOOL_DIR", "/var/lib/probe-agent/spool"),
 
 		AgentSecretEncryptionKey: getString("AGENT_SECRET_ENCRYPTION_KEY", ""),
+
+		OTELIngestAddress: getString("OTEL_INGEST_ADDRESS", ":4318"),
+		NATSURL:           getString("NATS_URL", "nats://localhost:4222"),
 	}
 }
 
@@ -179,6 +185,18 @@ func (c *Config) Require(keys ...string) error {
 			}
 		case "AGENT_GATEWAY":
 			if c.AgentGateway == "" {
+				missing = append(missing, key)
+			}
+		case "OTEL_INGEST_ADDRESS":
+			if c.OTELIngestAddress == "" {
+				missing = append(missing, key)
+			}
+		case "NATS_URL":
+			if c.NATSURL == "" {
+				missing = append(missing, key)
+			}
+		case "AGENT_SECRET_ENCRYPTION_KEY":
+			if c.AgentSecretEncryptionKey == "" {
 				missing = append(missing, key)
 			}
 		}
