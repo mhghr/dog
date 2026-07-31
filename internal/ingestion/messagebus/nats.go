@@ -133,11 +133,36 @@ func (b *NATSBus) Subscribe(ctx context.Context, opts SubscribeOptions, handler 
 		subOpts = append(subOpts, nats.DeliverAll())
 	}
 
+	var sub *nats.Subscription
+	var err error
+
 	if opts.Queue != "" {
 		subOpts = append(subOpts, nats.BindStream("METRICS"))
+		sub, err = b.js.QueueSubscribe(opts.Subject, opts.Queue, b.makeHandler(ctx, handler), subOpts...)
+	} else {
+		sub, err = b.js.Subscribe(opts.Subject, b.makeHandler(ctx, handler), subOpts...)
 	}
 
-	sub, err := b.js.QueueSubscribe(opts.Subject, opts.Queue, func(msg *nats.Msg) {
+	if err != nil {
+		return fmt.Errorf("subscribe to %s: %w", opts.Subject, err)
+	}
+
+	b.mu.Lock()
+	b.subs = append(b.subs, sub)
+	b.mu.Unlock()
+
+	b.logger.Info("subscribed",
+		"subject", opts.Subject,
+		"queue", opts.Queue,
+		"durable", opts.Durable,
+	)
+
+	return nil
+}
+
+// makeHandler wraps a MessageHandler into a NATS message handler.
+func (b *NATSBus) makeHandler(ctx context.Context, handler MessageHandler) nats.MsgHandler {
+	return func(msg *nats.Msg) {
 		busMsg := Message{
 			ID:        uuid.NewString(),
 			Subject:   msg.Subject,
@@ -158,22 +183,7 @@ func (b *NATSBus) Subscribe(ctx context.Context, opts SubscribeOptions, handler 
 			return
 		}
 		msg.Ack()
-	}, subOpts...)
-	if err != nil {
-		return fmt.Errorf("subscribe to %s: %w", opts.Subject, err)
 	}
-
-	b.mu.Lock()
-	b.subs = append(b.subs, sub)
-	b.mu.Unlock()
-
-	b.logger.Info("subscribed",
-		"subject", opts.Subject,
-		"queue", opts.Queue,
-		"durable", opts.Durable,
-	)
-
-	return nil
 }
 
 // Ack acknowledges a message (NATS handles this via msg.Ack() in Subscribe, so this is a no-op).
