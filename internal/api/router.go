@@ -25,31 +25,35 @@ import (
 )
 
 type Deps struct {
-	Config         *config.Config
-	Logger         *slog.Logger
-	Monitors       repository.MonitorRepository
-	Results        repository.ResultRepository
-	Locations      repository.LocationRepository
-	StatusPages    repository.StatusPageRepository
-	Orgs           repository.OrganizationRepository
-	Projects       repository.ProjectRepository
-	AlertRepo      *postgres.AlertRepository
-	ChannelRepo    *postgres.ChannelRepository
-	AlertEngine    *alerting.Engine
-	Notifier       *alerting.Notifier
-	HealthRepo     *postgres.HealthRepository
-	HealthNotifier *health.NotificationEngine
-	Ingestion      *ingestion.Service
-	Auth           *auth.Service
-	Issuer         *auth.TokenIssuer
-	Bus            *events.Bus
-	Queue          *queue.RedisQueue
-	Pool           *pgxpool.Pool
-	Redis          *redis.Client
-	Victoria       *metrics.VictoriaClient
-	Prom           http.Handler
-	AgentRepo      *agents.Repository
-	CA             *agents.CertAuthority
+	Config           *config.Config
+	Logger           *slog.Logger
+	Monitors         repository.MonitorRepository
+	Results          repository.ResultRepository
+	Locations        repository.LocationRepository
+	StatusPages      repository.StatusPageRepository
+	Orgs             repository.OrganizationRepository
+	Projects         repository.ProjectRepository
+	AlertRepo        *postgres.AlertRepository
+	ChannelRepo      *postgres.ChannelRepository
+	AlertEngine      *alerting.Engine
+	Notifier         *alerting.Notifier
+	HealthRepo       *postgres.HealthRepository
+	HealthNotifier   *health.NotificationEngine
+	Ingestion        *ingestion.Service
+	Auth             *auth.Service
+	Issuer           *auth.TokenIssuer
+	Bus              events.Bus
+	Queue            *queue.RedisQueue
+	Pool             *pgxpool.Pool
+	Redis            *redis.Client
+	Victoria         *metrics.VictoriaClient
+	Prom             http.Handler
+	AgentRepo        *agents.Repository
+	CA               *agents.CertAuthority
+	ResourceRepo     *postgres.ResourceRepository
+	MonitoringAgents repository.MonitoringAgentRepository
+	BootstrapTokens  repository.BootstrapTokenRepository
+	AgentConfigs     repository.AgentConfigRepository
 }
 
 func NewRouter(deps Deps) http.Handler {
@@ -102,6 +106,10 @@ func NewRouter(deps Deps) http.Handler {
 		// Agent status polling (public, agent ID lookup only)
 		r.Get("/agent/v1/status/{agentID}", handler.agentStatus)
 
+		// Monitoring agent bootstrap (public, one-time token authenticated)
+		r.Post("/monitoring/bootstrap", handler.bootstrapAgent)
+		r.Post("/monitoring/agents/{agentID}/complete", handler.completeAgentRegistration)
+
 		// Public auth
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/google/exchange", handler.googleExchange)
@@ -136,6 +144,7 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/system/health", handler.systemHealth)
 
 			r.Route("/monitors", func(r chi.Router) {
+				r.Use(orgScoped)
 				r.Get("/", handler.listMonitors)
 				r.Post("/", handler.createMonitor)
 
@@ -164,7 +173,46 @@ func NewRouter(deps Deps) http.Handler {
 				})
 			})
 
+			r.Get("/monitor-types", handler.listMonitorTypesAll)
 			r.Get("/monitor-types/{type}/parameters", handler.listMonitorTypeParameters)
+
+			r.Route("/resource-types", func(r chi.Router) {
+				r.Get("/", handler.listResourceTypes)
+			})
+
+			r.Route("/resources", func(r chi.Router) {
+				r.Use(orgScoped)
+				r.Get("/", handler.listResources)
+				r.Post("/", handler.createResource)
+
+				r.Route("/{resourceID}", func(r chi.Router) {
+					r.Get("/", handler.getResource)
+					r.Put("/", handler.updateResource)
+					r.Delete("/", handler.deleteResource)
+					r.Get("/tags", handler.listResourceTags)
+					r.Post("/tags", handler.attachResourceTag)
+					r.Delete("/tags/{tagID}", handler.removeResourceTag)
+				})
+			})
+
+			r.Route("/workspaces", func(r chi.Router) {
+				r.Use(orgScoped)
+				r.Get("/", handler.listWorkspaces)
+				r.Post("/", handler.createWorkspace)
+			})
+
+			r.Route("/health-profiles", func(r chi.Router) {
+				r.Get("/", handler.listHealthProfiles)
+				r.Post("/", handler.createHealthProfile)
+				r.Get("/defaults", handler.getHealthProfileDefaults)
+
+				r.Route("/{profileID}", func(r chi.Router) {
+					r.Get("/", handler.getHealthProfile)
+					r.Patch("/", handler.updateHealthProfile)
+					r.Delete("/", handler.deleteHealthProfile)
+					r.Post("/clone", handler.cloneHealthProfile)
+				})
+			})
 
 			r.Route("/notification-channels", func(r chi.Router) {
 				r.Get("/", handler.listHealthNotificationChannels)

@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -13,6 +15,7 @@ import (
 	"monitoring-platform/internal/api"
 	"monitoring-platform/internal/auth"
 	"monitoring-platform/internal/config"
+	"monitoring-platform/internal/domain"
 	"monitoring-platform/internal/events"
 	"monitoring-platform/internal/health"
 	"monitoring-platform/internal/httpserver"
@@ -65,7 +68,7 @@ func main() {
 	victoria := metrics.NewVictoriaClient(cfg.VictoriaURL, logger)
 	victoria.Start(ctx)
 
-	bus := events.NewBus()
+	bus := events.NewInMemoryBus()
 
 	monitorRepo := postgres.NewMonitorRepository(pool)
 	resultRepo := postgres.NewResultRepository(pool)
@@ -85,6 +88,7 @@ func main() {
 	healthNotifier := health.NewNotificationEngine(healthRepo, logger)
 
 	agentRepo := agents.NewRepository(pool)
+	resourceRepo := postgres.NewResourceRepository(pool)
 
 	var ca *agents.CertAuthority
 	caCertPEM := os.Getenv("AGENT_CA_CERT")
@@ -166,33 +170,38 @@ func main() {
 
 	go watchQueueDepth(ctx, probeQueue, ingestionMetrics)
 	go watchOfflineAgents(ctx, agentRepo, logger)
+	go consumeGatewayResults(ctx, redisClient, ingestionService, logger)
 
 	router := api.NewRouter(api.Deps{
-		Config:         cfg,
-		Logger:         logger,
-		Monitors:       monitorRepo,
-		Results:        resultRepo,
-		Locations:      locationRepo,
-		StatusPages:    postgres.NewStatusPageRepository(pool),
-		Orgs:           postgres.NewOrganizationRepository(pool),
-		Projects:       postgres.NewProjectRepository(pool),
-		AlertRepo:      alertRepo,
-		ChannelRepo:    channelRepo,
-		AlertEngine:    alertEngine,
-		Notifier:       alertNotifier,
-		HealthRepo:     healthRepo,
-		HealthNotifier: healthNotifier,
-		Ingestion:      ingestionService,
-		Auth:           authService,
-		Issuer:         tokenIssuer,
-		Bus:            bus,
-		Queue:          probeQueue,
-		Pool:           pool,
-		Redis:          redisClient,
-		Victoria:       victoria,
-		Prom:           metrics.Handler(registry),
-		AgentRepo:      agentRepo,
-		CA:             ca,
+		Config:           cfg,
+		Logger:           logger,
+		Monitors:         monitorRepo,
+		Results:          resultRepo,
+		Locations:        locationRepo,
+		StatusPages:      postgres.NewStatusPageRepository(pool),
+		Orgs:             postgres.NewOrganizationRepository(pool),
+		Projects:         postgres.NewProjectRepository(pool),
+		AlertRepo:        alertRepo,
+		ChannelRepo:      channelRepo,
+		AlertEngine:      alertEngine,
+		Notifier:         alertNotifier,
+		HealthRepo:       healthRepo,
+		HealthNotifier:   healthNotifier,
+		Ingestion:        ingestionService,
+		Auth:             authService,
+		Issuer:           tokenIssuer,
+		Bus:              bus,
+		Queue:            probeQueue,
+		Pool:             pool,
+		Redis:            redisClient,
+		Victoria:         victoria,
+		Prom:             metrics.Handler(registry),
+		AgentRepo:        agentRepo,
+		ResourceRepo:     resourceRepo,
+		CA:               ca,
+		MonitoringAgents: postgres.NewMonitoringAgentRepository(pool),
+		BootstrapTokens:  postgres.NewBootstrapTokenRepository(pool),
+		AgentConfigs:     postgres.NewAgentConfigRepository(pool),
 	})
 
 	server := httpserver.New(cfg.HTTPAddress, router)
@@ -202,4 +211,31 @@ func main() {
 	}
 
 	logger.Info("api stopped")
+}
+
+// consumeGatewayResults subscribes to the Redis probe_results channel and
+// ingests results published by the agent gateway.
+func consumeGatewayResults(ctx context.Context, rdb *redis.Client, svc *ingestion.Service, logger *slog.Logger) {
+	pubsub := rdb.Subscribe(ctx, "probe_results")
+	defer pubsub.Close()
+
+	ch := pubsub.Channel()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case msg, ok := <-ch:
+			if !ok {
+				return
+			}
+			var result domain.ProbeResult
+			if err := json.Unmarshal([]byte(msg.Payload), &result); err != nil {
+				logger.Warn("gateway result: unmarshal failed", "error", err)
+				continue
+			}
+			if _, err := svc.Ingest(ctx, &result); err != nil {
+				logger.Error("gateway result: ingest failed", "error", err, "monitor_id", result.MonitorID)
+			}
+		}
+	}
 }

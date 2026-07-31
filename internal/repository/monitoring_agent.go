@@ -15,6 +15,8 @@ type MonitoringAgentRepository interface {
 	GetByID(ctx context.Context, id string) (domain.MonitoringAgent, error)
 	// ListByTenant returns a paginated list of agents for a tenant along with the total count.
 	ListByTenant(ctx context.Context, tenantID string, limit, offset int) ([]domain.MonitoringAgent, int, error)
+	// Update persists mutable fields (labels, private_ips, last_seen_at, status) of an agent.
+	Update(ctx context.Context, agent *domain.MonitoringAgent) error
 	// UpdateStatus updates the lifecycle status of an agent.
 	UpdateStatus(ctx context.Context, agentID string, status domain.MonitoringAgentStatus) error
 	// UpdateHeartbeat records a heartbeat report from an agent.

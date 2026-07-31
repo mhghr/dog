@@ -124,6 +124,25 @@ func (r *MonitoringAgentRepository) ListByTenant(ctx context.Context, tenantID s
 	return agents, total, rows.Err()
 }
 
+func (r *MonitoringAgentRepository) Update(ctx context.Context, agent *domain.MonitoringAgent) error {
+	labelsJSON, err := json.Marshal(agent.Labels)
+	if err != nil {
+		return fmt.Errorf("marshal agent labels: %w", err)
+	}
+
+	query := `UPDATE monitoring_agents
+	           SET labels = $1, private_ips = $2, last_seen_at = $3, status = $4
+	           WHERE agent_id = $5`
+	tag, err := r.pool.Exec(ctx, query, labelsJSON, agent.PrivateIPs, agent.LastSeenAt, string(agent.Status), agent.AgentID)
+	if err != nil {
+		return fmt.Errorf("update monitoring agent: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 func (r *MonitoringAgentRepository) UpdateStatus(ctx context.Context, agentID string, status domain.MonitoringAgentStatus) error {
 	query := `UPDATE monitoring_agents SET status = $1 WHERE agent_id = $2`
 	tag, err := r.pool.Exec(ctx, query, string(status), agentID)
@@ -181,7 +200,7 @@ func (r *MonitoringAgentRepository) CountByTenant(ctx context.Context, tenantID 
 
 func scanMonitoringAgent(row rowScanner) (domain.MonitoringAgent, error) {
 	var (
-		agent    domain.MonitoringAgent
+		agent      domain.MonitoringAgent
 		labelsJSON []byte
 	)
 
