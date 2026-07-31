@@ -34,6 +34,7 @@ type agentConfig struct {
 	OTelBinary     string
 	OTelEndpoint   string
 	ProxyAddress   string
+	CACertFile     string
 	LogLevel       string
 	LogFormat      string
 	UpdateChannel  string
@@ -48,6 +49,7 @@ func loadConfig() agentConfig {
 		OTelBinary:     getEnv("MONITORING_OTEL_BINARY", "otelcol"),
 		OTelEndpoint:   getEnv("MONITORING_OTEL_ENDPOINT", "https://monitor.example.com:4318"),
 		ProxyAddress:   getEnv("MONITORING_PROXY_ADDRESS", "127.0.0.1:4319"),
+		CACertFile:     getEnv("MONITORING_CA_CERT", ""),
 		LogLevel:       getEnv("MONITORING_LOG_LEVEL", "info"),
 		LogFormat:      getEnv("MONITORING_LOG_FORMAT", "json"),
 		UpdateChannel:  getEnv("MONITORING_UPDATE_CHANNEL", "stable"),
@@ -170,7 +172,7 @@ func main() {
 // authenticated). The returned proxy and server share a lifetime: the caller
 // must stop the server and close the proxy.
 func startSigningProxy(ctx context.Context, cfg agentConfig, credMgr *credential.Manager, logger *slog.Logger) (*grpc.Server, *signer.Proxy, error) {
-	conn, err := transport.NewGRPCConnection(ctx, transport.GRPCConfig{Endpoint: cfg.OTelEndpoint})
+	conn, err := transport.NewGRPCConnection(ctx, transport.GRPCConfig{Endpoint: cfg.OTelEndpoint, CACertFile: cfg.CACertFile})
 	if err != nil {
 		logger.Warn("failed to dial otel-ingest for signing proxy, metrics will not be authenticated", "error", err)
 		return nil, nil, nil

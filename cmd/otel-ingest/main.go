@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -13,6 +14,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 
@@ -131,13 +133,30 @@ func main() {
 		logger,
 	)
 
+	var serverOpts []grpc.ServerOption
+
+	if cfg.OTELIngestTLSCertFile != "" && cfg.OTELIngestTLSKeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(cfg.OTELIngestTLSCertFile, cfg.OTELIngestTLSKeyFile)
+		if err != nil {
+			logger.Error("failed to load TLS cert", "error", err)
+			os.Exit(1)
+		}
+		serverOpts = append(serverOpts, grpc.Creds(credentials.NewTLS(&tls.Config{
+			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS12,
+		})))
+		logger.Info("serving with TLS", "cert", cfg.OTELIngestTLSCertFile)
+	} else {
+		logger.Warn("serving WITHOUT TLS — set OTEL_INGEST_TLS_CERT/OTEL_INGEST_TLS_KEY for production")
+	}
+
 	lis, err := net.Listen("tcp", cfg.OTELIngestAddress)
 	if err != nil {
 		logger.Error("failed to listen", "address", cfg.OTELIngestAddress, "error", err)
 		os.Exit(1)
 	}
 
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(serverOpts...)
 	v1.RegisterMetricsServiceServer(grpcServer, &otlpServer{
 		publisher: publisher,
 		logger:    logger,

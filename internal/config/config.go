@@ -73,8 +73,11 @@ type Config struct {
 
 	AgentSecretEncryptionKey string
 
-	OTELIngestAddress string
-	NATSURL           string
+	OTELIngestAddress     string
+	OTELIngestTLSCertFile string
+	OTELIngestTLSKeyFile  string
+
+	NATSURL string
 }
 
 func Load() *Config {
@@ -145,8 +148,11 @@ func Load() *Config {
 
 		AgentSecretEncryptionKey: getString("AGENT_SECRET_ENCRYPTION_KEY", ""),
 
-		OTELIngestAddress: getString("OTEL_INGEST_ADDRESS", ":4318"),
-		NATSURL:           getString("NATS_URL", "nats://localhost:4222"),
+		OTELIngestAddress:     getString("OTEL_INGEST_ADDRESS", ":4318"),
+		OTELIngestTLSCertFile: getString("OTEL_INGEST_TLS_CERT", ""),
+		OTELIngestTLSKeyFile:  getString("OTEL_INGEST_TLS_KEY", ""),
+
+		NATSURL: getString("NATS_URL", "nats://localhost:4222"),
 	}
 }
 

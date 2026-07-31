@@ -2,6 +2,9 @@ package transport
 
 import (
 	"context"
+	"crypto/x509"
+	"fmt"
+	"os"
 	"time"
 
 	"google.golang.org/grpc"
@@ -11,13 +14,26 @@ import (
 
 // GRPCConfig configures the agent's gRPC client connection.
 type GRPCConfig struct {
-	Endpoint string
+	Endpoint   string
+	CACertFile string // optional: path to a CA cert used to verify the gateway
 }
 
 // NewGRPCConnection dials an OTLP gRPC endpoint over TLS.
 // The caller is responsible for closing the returned connection.
 func NewGRPCConnection(ctx context.Context, cfg GRPCConfig) (*grpc.ClientConn, error) {
-	creds := credentials.NewTLS(TLSConfig())
+	tlsConfig := TLSConfig()
+	if cfg.CACertFile != "" {
+		pem, err := os.ReadFile(cfg.CACertFile)
+		if err != nil {
+			return nil, fmt.Errorf("read CA cert: %w", err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(pem) {
+			return nil, fmt.Errorf("failed to parse CA cert %s", cfg.CACertFile)
+		}
+		tlsConfig.RootCAs = pool
+	}
+	creds := credentials.NewTLS(tlsConfig)
 
 	conn, err := grpc.DialContext(
 		ctx,
