@@ -43,6 +43,13 @@ func main() {
 		"vm_url", cfg.VictoriaURL,
 	)
 
+	dlq := processor.NewDLQConsumer(pool.Bus(), logger)
+	if err := dlq.Start(ctx); err != nil {
+		logger.Warn("failed to start DLQ consumer", "error", err)
+	} else {
+		logger.Info("dlq consumer started")
+	}
+
 	if err := pool.Start(ctx); err != nil {
 		logger.Error("failed to start worker pool", "error", err)
 		os.Exit(1)

@@ -71,6 +71,11 @@ func NewWorkerPool(cfg WorkerConfig, logger *slog.Logger) (*WorkerPool, error) {
 	}, nil
 }
 
+// Bus returns the underlying message bus connection.
+func (wp *WorkerPool) Bus() messagebus.MessageBus {
+	return wp.bus
+}
+
 // Start subscribes the worker pool to the metrics subject. One subscription is
 // created; NATS queue groups distribute messages across pool members.
 func (wp *WorkerPool) Start(ctx context.Context) error {

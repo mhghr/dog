@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -118,12 +119,16 @@ func (b *NATSBus) Publish(ctx context.Context, opts PublishOptions) error {
 	return nil
 }
 
+// maxDeliverAttempts is the maximum number of deliveries before a message is
+// routed to the dead-letter stream. It must match nats.MaxDeliver below.
+const maxDeliverAttempts = 10
+
 // Subscribe registers a JetStream push consumer with the given subscription options.
 func (b *NATSBus) Subscribe(ctx context.Context, opts SubscribeOptions, handler MessageHandler) error {
 	subOpts := []nats.SubOpt{
 		nats.Durable(opts.Durable),
 		nats.ManualAck(),
-		nats.MaxDeliver(10),
+		nats.MaxDeliver(maxDeliverAttempts),
 		nats.AckWait(60 * time.Second),
 	}
 
@@ -133,11 +138,16 @@ func (b *NATSBus) Subscribe(ctx context.Context, opts SubscribeOptions, handler 
 		subOpts = append(subOpts, nats.DeliverAll())
 	}
 
+	stream := opts.Stream
+	if stream == "" {
+		stream = "METRICS"
+	}
+
 	var sub *nats.Subscription
 	var err error
 
 	if opts.Queue != "" {
-		subOpts = append(subOpts, nats.BindStream("METRICS"))
+		subOpts = append(subOpts, nats.BindStream(stream))
 		sub, err = b.js.QueueSubscribe(opts.Subject, opts.Queue, b.makeHandler(ctx, handler), subOpts...)
 	} else {
 		sub, err = b.js.Subscribe(opts.Subject, b.makeHandler(ctx, handler), subOpts...)
@@ -179,6 +189,11 @@ func (b *NATSBus) makeHandler(ctx context.Context, handler MessageHandler) nats.
 				"subject", msg.Subject,
 				"error", err,
 			)
+
+			if isExhausted(msg) {
+				b.routeToDLQ(msg)
+				return
+			}
 			msg.Nak()
 			return
 		}
@@ -186,9 +201,68 @@ func (b *NATSBus) makeHandler(ctx context.Context, handler MessageHandler) nats.
 	}
 }
 
+// isExhausted reports whether a message has hit the maximum number of
+// redeliveries and should be dead-lettered instead of redelivered again.
+func isExhausted(msg *nats.Msg) bool {
+	md, err := msg.Metadata()
+	if err != nil {
+		return false
+	}
+	return md.NumDelivered >= maxDeliverAttempts
+}
+
+// routeToDLQ republishes an exhausted message to the dead-letter stream and
+// terminates it so JetStream stops redelivering it. The raw payload and
+// headers are preserved for later analysis/repair.
+func (b *NATSBus) routeToDLQ(msg *nats.Msg) {
+	dlqSubject := fmt.Sprintf("metrics.dlq.%s", sanitizeSubject(msg.Subject))
+	dlqMsg := &nats.Msg{
+		Subject: dlqSubject,
+		Data:    msg.Data,
+		Header:  msg.Header,
+	}
+	if dlqMsg.Header == nil {
+		dlqMsg.Header = nats.Header{}
+	}
+	dlqMsg.Header.Set("Nats-Original-Subject", msg.Subject)
+	dlqMsg.Header.Set("Nats-Original-Stream", "METRICS")
+
+	if _, err := b.js.PublishMsg(dlqMsg); err != nil {
+		b.logger.Error("failed to route message to DLQ",
+			"subject", msg.Subject,
+			"dlq_subject", dlqSubject,
+			"error", err,
+		)
+		msg.Nak()
+		return
+	}
+
+	b.logger.Warn("routed message to DLQ",
+		"subject", msg.Subject,
+		"dlq_subject", dlqSubject,
+		"deliveries", deliveriesOf(msg),
+	)
+	msg.Term()
+}
+
+func deliveriesOf(msg *nats.Msg) uint64 {
+	md, err := msg.Metadata()
+	if err != nil {
+		return 0
+	}
+	return md.NumDelivered
+}
+
 // Ack acknowledges a message (NATS handles this via msg.Ack() in Subscribe, so this is a no-op).
 func (b *NATSBus) Ack(ctx context.Context, msg Message) error {
 	return nil
+}
+
+// sanitizeSubject maps a wildcard subscription subject to a concrete dead-letter
+// subject under metrics.dlq.> so exhausted messages stay inside the DLQ stream.
+func sanitizeSubject(subject string) string {
+	replacer := strings.NewReplacer(">", "all", "*", "any", ".", "-")
+	return replacer.Replace(strings.TrimPrefix(subject, "metrics."))
 }
 
 // Nack negatively acknowledges a message (NATS handles this via msg.Nak() in Subscribe).

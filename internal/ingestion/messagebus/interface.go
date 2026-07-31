@@ -27,6 +27,9 @@ type SubscribeOptions struct {
 	Queue      string
 	Durable    string
 	DeliverNew bool
+	// Stream is the JetStream stream to bind the consumer to. Empty means
+	// "METRICS", the default for metric processing subscriptions.
+	Stream string
 }
 
 // MessageHandler processes a received message.
