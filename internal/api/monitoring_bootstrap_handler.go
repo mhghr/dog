@@ -14,6 +14,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"monitoring-platform/internal/domain"
+	"monitoring-platform/internal/security"
 )
 
 type bootstrapRequest struct {
@@ -66,20 +67,31 @@ func (h *Handler) bootstrapAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	secretEncrypted, err := security.EncryptSecret(h.deps.Config.AgentSecretEncryptionKey, agentSecret)
+	if err != nil {
+		h.deps.Logger.Error("encrypt agent secret failed", "error", err)
+		writeError(w, r, http.StatusInternalServerError, "internal_error", "Failed to register agent", nil)
+		return
+	}
+	if h.deps.Config.AgentSecretEncryptionKey == "" {
+		h.deps.Logger.Warn("AGENT_SECRET_ENCRYPTION_KEY not set; agent secrets stored with a weak encryption key")
+	}
+
 	now := time.Now()
 	agent := &domain.MonitoringAgent{
-		ID:           uuid.NewString(),
-		TenantID:     token.TenantID,
-		ExternalID:   agentID,
-		Hostname:     req.Hostname,
-		OS:           req.OS,
-		Arch:         req.Architecture,
-		Version:      req.AgentVersion,
-		AgentID:      agentID,
-		SecretHash:   string(secretHash),
-		Status:       domain.AgentStatusActive,
-		RegisteredAt: now,
-		UpdatedAt:    now,
+		ID:              uuid.NewString(),
+		TenantID:        token.TenantID,
+		ExternalID:      agentID,
+		Hostname:        req.Hostname,
+		OS:              req.OS,
+		Arch:            req.Architecture,
+		Version:         req.AgentVersion,
+		AgentID:         agentID,
+		SecretHash:      string(secretHash),
+		SecretEncrypted: secretEncrypted,
+		Status:          domain.AgentStatusActive,
+		RegisteredAt:    now,
+		UpdatedAt:       now,
 		Labels: map[string]string{
 			"hostname": req.Hostname,
 			"os":       req.OS,

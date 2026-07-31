@@ -36,7 +36,7 @@ type Config struct {
 	QueueLocationPrefix string
 	QueueStream         string
 	QueueGroup          string
-	QueueDeadLetter    string
+	QueueDeadLetter     string
 	QueueMaxLen         int64
 
 	CORSAllowedOrigins []string
@@ -58,6 +58,20 @@ type Config struct {
 	CookieSecure    bool
 	OTPDevMode      bool
 	SMSProvider     string
+
+	GatewayAddress       string
+	GatewayHealthAddress string
+	GatewayTLSCertFile   string
+	GatewayTLSKeyFile    string
+	GatewayCACertFile    string
+
+	AgentControlPlane    string
+	AgentGateway         string
+	AgentStateDir        string
+	AgentEnrollmentToken string
+	AgentSpoolDir        string
+
+	AgentSecretEncryptionKey string
 }
 
 func Load() *Config {
@@ -89,7 +103,7 @@ func Load() *Config {
 
 		QueueLocationPrefix: getString("QUEUE_LOCATION_PREFIX", "probe-jobs"),
 
-		QueueStream:    getString("QUEUE_STREAM", "probe_jobs"),
+		QueueStream:     getString("QUEUE_STREAM", "probe_jobs"),
 		QueueGroup:      getString("QUEUE_GROUP", "probe_workers"),
 		QueueDeadLetter: getString("QUEUE_DEAD_LETTER", "probe_results_dead_letter"),
 		QueueMaxLen:     int64(getInt("QUEUE_MAX_LEN", 100000)),
@@ -113,6 +127,20 @@ func Load() *Config {
 		CookieSecure:    getBool("AUTH_COOKIE_SECURE", false),
 		OTPDevMode:      getBool("OTP_DEV_MODE", strings.EqualFold(getString("APP_ENV", "development"), "development")),
 		SMSProvider:     getString("SMS_PROVIDER", "log"),
+
+		GatewayAddress:       getString("GATEWAY_ADDRESS", ":8443"),
+		GatewayHealthAddress: getString("GATEWAY_HEALTH_ADDRESS", ":8081"),
+		GatewayTLSCertFile:   getString("GATEWAY_TLS_CERT", "/etc/agent-gateway/server.crt"),
+		GatewayTLSKeyFile:    getString("GATEWAY_TLS_KEY", "/etc/agent-gateway/server.key"),
+		GatewayCACertFile:    getString("GATEWAY_CA_CERT", "/etc/agent-gateway/ca.crt"),
+
+		AgentControlPlane:    getString("AGENT_CONTROL_PLANE", "http://localhost:5000"),
+		AgentGateway:         getString("AGENT_GATEWAY", "localhost:8443"),
+		AgentStateDir:        getString("AGENT_STATE_DIR", "/var/lib/probe-agent"),
+		AgentEnrollmentToken: getString("AGENT_ENROLLMENT_TOKEN", ""),
+		AgentSpoolDir:        getString("AGENT_SPOOL_DIR", "/var/lib/probe-agent/spool"),
+
+		AgentSecretEncryptionKey: getString("AGENT_SECRET_ENCRYPTION_KEY", ""),
 	}
 }
 
@@ -139,6 +167,18 @@ func (c *Config) Require(keys ...string) error {
 			}
 		case "VICTORIA_URL":
 			if c.VictoriaURL == "" {
+				missing = append(missing, key)
+			}
+		case "GATEWAY_ADDRESS":
+			if c.GatewayAddress == "" {
+				missing = append(missing, key)
+			}
+		case "AGENT_CONTROL_PLANE":
+			if c.AgentControlPlane == "" {
+				missing = append(missing, key)
+			}
+		case "AGENT_GATEWAY":
+			if c.AgentGateway == "" {
 				missing = append(missing, key)
 			}
 		}

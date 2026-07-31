@@ -31,6 +31,7 @@ const monitoringAgentColumns = `
 	version,
 	agent_id,
 	secret_hash,
+	secret_encrypted,
 	status,
 	last_seen_at,
 	registered_at,
@@ -47,13 +48,13 @@ func (r *MonitoringAgentRepository) Create(ctx context.Context, agent *domain.Mo
 		return fmt.Errorf("marshal agent labels: %w", err)
 	}
 
-	query := `INSERT INTO monitoring_agents (tenant_id, external_id, hostname, os, arch, version, agent_id, secret_hash, status, labels, capabilities, private_ips, bootstrap_token_id)
-	           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+	query := `INSERT INTO monitoring_agents (tenant_id, external_id, hostname, os, arch, version, agent_id, secret_hash, secret_encrypted, status, labels, capabilities, private_ips, bootstrap_token_id)
+	           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 	           RETURNING ` + monitoringAgentColumns
 
 	row := r.pool.QueryRow(ctx, query,
 		agent.TenantID, agent.ExternalID, agent.Hostname, agent.OS, agent.Arch,
-		agent.Version, agent.AgentID, agent.SecretHash, string(agent.Status),
+		agent.Version, agent.AgentID, agent.SecretHash, agent.SecretEncrypted, string(agent.Status),
 		labelsJSON, agent.Capabilities, agent.PrivateIPs, agent.BootstrapTokenID,
 	)
 
@@ -207,7 +208,7 @@ func scanMonitoringAgent(row rowScanner) (domain.MonitoringAgent, error) {
 	if err := row.Scan(
 		&agent.ID, &agent.TenantID, &agent.ExternalID,
 		&agent.Hostname, &agent.OS, &agent.Arch, &agent.Version,
-		&agent.AgentID, &agent.SecretHash, &agent.Status,
+		&agent.AgentID, &agent.SecretHash, &agent.SecretEncrypted, &agent.Status,
 		&agent.LastSeenAt, &agent.RegisteredAt, &agent.UpdatedAt,
 		&labelsJSON, &agent.Capabilities, &agent.PrivateIPs,
 		&agent.BootstrapTokenID,

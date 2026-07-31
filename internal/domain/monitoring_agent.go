@@ -36,6 +36,11 @@ type MonitoringAgent struct {
 	AgentID string
 	// SecretHash is the bcrypt hash of the agent's shared secret.
 	SecretHash string
+	// SecretEncrypted is the raw agent secret encrypted at rest (AES-256-GCM).
+	// The plaintext secret is never stored; SecretHash (bcrypt) is used for
+	// one-time proof during registration and SecretEncrypted is decrypted
+	// in-memory for HMAC signature verification.
+	SecretEncrypted string
 	// Status is the current lifecycle state of the agent.
 	Status MonitoringAgentStatus
 	// LastSeenAt is the last time the agent reported a heartbeat.
