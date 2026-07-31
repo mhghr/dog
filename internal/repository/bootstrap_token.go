@@ -11,8 +11,10 @@ type BootstrapTokenRepository interface {
 	Create(ctx context.Context, token *domain.BootstrapToken) error
 	// GetByTokenHash retrieves a token by its SHA-256 hex hash.
 	GetByTokenHash(ctx context.Context, hash string) (domain.BootstrapToken, error)
-	// MarkUsed marks a token as consumed during registration.
-	MarkUsed(ctx context.Context, tokenID string) error
+	// MarkUsedIfValid atomically marks the token used ONLY if it is still
+	// unused, unexpired, and unrevoked. Returns domain.ErrNotFound if the
+	// token is invalid or already used.
+	MarkUsedIfValid(ctx context.Context, tokenID string) error
 	// MarkRevoked marks a token as manually revoked.
 	MarkRevoked(ctx context.Context, tokenID string) error
 	// ListByTenant returns a paginated list of tokens for a tenant along with the total count.

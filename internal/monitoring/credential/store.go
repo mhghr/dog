@@ -4,7 +4,6 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -83,9 +82,25 @@ func (s *Store) Exists() bool {
 	return err == nil
 }
 
-func deriveKey(material []byte) []byte {
-	sum := sha256.Sum256(material)
-	return sum[:]
+// keyFile is the name of the file holding the randomly generated 32-byte
+// encryption key for this state directory.
+const keyFile = "encryption.key"
+
+// EnsureKey returns the persisted encryption key, generating and persisting a
+// random 32-byte key (mode 0600) on first use.
+func (s *Store) EnsureKey() ([]byte, error) {
+	keyPath := filepath.Join(s.stateDir, keyFile)
+	if data, err := os.ReadFile(keyPath); err == nil && len(data) == 32 {
+		return data, nil
+	}
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		return nil, fmt.Errorf("generate encryption key: %w", err)
+	}
+	if err := os.WriteFile(keyPath, key, 0600); err != nil {
+		return nil, fmt.Errorf("persist encryption key: %w", err)
+	}
+	return key, nil
 }
 
 func encrypt(plaintext string, key []byte) (string, error) {

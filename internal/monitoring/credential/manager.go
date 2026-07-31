@@ -4,8 +4,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
-	"fmt"
-	"os"
 	"time"
 )
 
@@ -22,11 +20,10 @@ func NewManager(stateDir string) (*Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	hostname, _ := os.Hostname()
-	machineID := fmt.Sprintf("monitoring-agent-%s", hostname)
-	key := deriveKey([]byte(machineID))
-
+	key, err := store.EnsureKey()
+	if err != nil {
+		return nil, err
+	}
 	return &Manager{store: store, key: key}, nil
 }
 

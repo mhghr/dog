@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -57,6 +58,19 @@ func (h *Handler) bootstrapAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Atomically reserve the token before creating the agent so two
+	// concurrent bootstraps with the same token cannot both succeed.
+	if err := h.deps.BootstrapTokens.MarkUsedIfValid(r.Context(), token.ID); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			h.deps.Logger.Warn("bootstrap token already consumed", "token_id", token.ID)
+			writeError(w, r, http.StatusUnauthorized, "invalid_bootstrap_token", "bootstrap token is expired or already used", nil)
+			return
+		}
+		h.deps.Logger.Error("reserve bootstrap token failed", "error", err)
+		writeError(w, r, http.StatusInternalServerError, "internal_error", "Failed to register agent", nil)
+		return
+	}
+
 	agentID := generateAgentID()
 	agentSecret := generateAgentSecret()
 
@@ -72,9 +86,6 @@ func (h *Handler) bootstrapAgent(w http.ResponseWriter, r *http.Request) {
 		h.deps.Logger.Error("encrypt agent secret failed", "error", err)
 		writeError(w, r, http.StatusInternalServerError, "internal_error", "Failed to register agent", nil)
 		return
-	}
-	if h.deps.Config.AgentSecretEncryptionKey == "" {
-		h.deps.Logger.Warn("AGENT_SECRET_ENCRYPTION_KEY not set; agent secrets stored with a weak encryption key")
 	}
 
 	now := time.Now()
@@ -105,12 +116,6 @@ func (h *Handler) bootstrapAgent(w http.ResponseWriter, r *http.Request) {
 	if err := h.deps.MonitoringAgents.Create(r.Context(), agent); err != nil {
 		h.deps.Logger.Error("create monitoring agent failed", "error", err)
 		writeError(w, r, http.StatusInternalServerError, "internal_error", "Failed to register agent", nil)
-		return
-	}
-
-	if err := h.deps.BootstrapTokens.MarkUsed(r.Context(), token.ID); err != nil {
-		h.deps.Logger.Error("mark bootstrap token used failed", "error", err)
-		writeError(w, r, http.StatusInternalServerError, "internal_error", "Failed to finalize registration", nil)
 		return
 	}
 

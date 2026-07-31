@@ -52,15 +52,16 @@ func (r *BootstrapTokenRepository) GetByTokenHash(ctx context.Context, hash stri
 	return t, nil
 }
 
-func (r *BootstrapTokenRepository) MarkUsed(ctx context.Context, tokenID string) error {
-	now := time.Now()
-	query := `UPDATE monitoring_bootstrap_tokens SET used_at = $1 WHERE id = $2 AND used_at IS NULL`
-	tag, err := r.pool.Exec(ctx, query, now, tokenID)
+func (r *BootstrapTokenRepository) MarkUsedIfValid(ctx context.Context, tokenID string) error {
+	query := `UPDATE monitoring_bootstrap_tokens
+	           SET used_at = NOW()
+	           WHERE id = $1 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > NOW()`
+	tag, err := r.pool.Exec(ctx, query, tokenID)
 	if err != nil {
-		return fmt.Errorf("mark token used: %w", err)
+		return fmt.Errorf("reserve bootstrap token: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("token already used or not found")
+		return domain.ErrNotFound
 	}
 	return nil
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -110,5 +111,66 @@ func TestSecretEncryptedAtRest(t *testing.T) {
 	}
 	if strings.Contains(string(data), "topsecret") {
 		t.Error("raw secret found in credentials.json")
+	}
+}
+
+func TestKeyPersistsAcrossManagersOnSameDir(t *testing.T) {
+	dir := t.TempDir()
+	m1, err := NewManager(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m1.SaveCredentials("ag_1", "topsecret", "https://core.example.com", "/config", "/heartbeat"); err != nil {
+		t.Fatal(err)
+	}
+
+	m2, err := NewManager(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	creds, err := m2.LoadCredentials()
+	if err != nil {
+		t.Fatalf("load with a fresh manager on the same state dir failed: %v", err)
+	}
+	if creds.AgentID != "ag_1" || creds.Secret != "topsecret" {
+		t.Errorf("round trip via fresh manager mismatch: %+v", creds)
+	}
+}
+
+func TestEnsureKeyCreatesRandomPersistedKey(t *testing.T) {
+	dir := t.TempDir()
+	s, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := s.EnsureKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(key) != 32 {
+		t.Fatalf("EnsureKey returned %d bytes, want 32", len(key))
+	}
+	keyPath := filepath.Join(dir, "encryption.key")
+	info, err := os.Stat(keyPath)
+	if err != nil {
+		t.Fatalf("key file not created: %v", err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
+		t.Errorf("key file mode = %v, want 0600", info.Mode().Perm())
+	}
+	data, err := os.ReadFile(keyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != string(key) {
+		t.Error("key file contents differ from returned key")
+	}
+
+	key2, err := s.EnsureKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(key2) != string(key) {
+		t.Error("EnsureKey returned a different key on second call")
 	}
 }

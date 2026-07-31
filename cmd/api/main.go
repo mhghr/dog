@@ -33,7 +33,7 @@ func main() {
 
 	logger := logging.New(cfg.LogLevel, cfg.LogFormat, "api")
 
-	if err := cfg.Require("DATABASE_URL", "REDIS_ADDRESS", "WORKER_TOKEN"); err != nil {
+	if err := cfg.Require("DATABASE_URL", "REDIS_ADDRESS", "WORKER_TOKEN", "AGENT_SECRET_ENCRYPTION_KEY"); err != nil {
 		logger.Error("invalid configuration", "error", err)
 		os.Exit(1)
 	}

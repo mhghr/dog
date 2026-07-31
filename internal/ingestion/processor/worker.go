@@ -95,7 +95,7 @@ func (wp *WorkerPool) run(ctx context.Context, workerID int) {
 	err := wp.bus.Subscribe(ctx, messagebus.SubscribeOptions{
 		Subject:    wp.cfg.Subject,
 		Queue:      wp.cfg.Queue,
-		Durable:    fmt.Sprintf("%s-%d", wp.cfg.Durable, workerID),
+		Durable:    wp.cfg.Durable, // shared by all workers in the group
 		DeliverNew: true,
 	}, func(ctx context.Context, msg messagebus.Message) error {
 		var batch domain.MetricBatch
