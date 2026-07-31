@@ -108,13 +108,15 @@ func NewRouter(deps Deps) http.Handler {
 
 		// Monitoring agent bootstrap (public, one-time token authenticated)
 		r.Post("/monitoring/bootstrap", handler.bootstrapAgent)
-		r.Post("/monitoring/agents/{agentID}/complete", handler.completeAgentRegistration)
 
-		// Monitoring agent config distribution (public; signed headers added later)
-		r.Get("/monitoring/agents/{agentID}/config", handler.getAgentConfig)
-
-		// Monitoring agent heartbeat reporting (public; agent ID lookup only)
-		r.Post("/monitoring/agents/{agentID}/heartbeat", handler.postAgentHeartbeat)
+		// Monitoring agent config, heartbeat, and registration completion
+		// (agent HMAC authenticated).
+		r.Group(func(r chi.Router) {
+			r.Use(handler.agentHMACAuthenticate)
+			r.Get("/monitoring/agents/{agentID}/config", handler.getAgentConfig)
+			r.Post("/monitoring/agents/{agentID}/heartbeat", handler.postAgentHeartbeat)
+			r.Post("/monitoring/agents/{agentID}/complete", handler.completeAgentRegistration)
+		})
 
 		// Public auth
 		r.Route("/auth", func(r chi.Router) {

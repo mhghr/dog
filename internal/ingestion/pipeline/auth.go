@@ -34,14 +34,22 @@ func (e *AuthError) Error() string { return e.Message }
 
 // HMACAuthenticator verifies HMAC-SHA256 signed agent credentials from gRPC metadata.
 type HMACAuthenticator struct {
-	getSecret func(ctx context.Context, agentID string) (string, error)
-	window    time.Duration
+	getSecret   func(ctx context.Context, agentID string) (string, error)
+	getHostname func(ctx context.Context, agentID string) (string, error)
+	window      time.Duration
 }
 
 // NewHMACAuthenticator creates an authenticator that verifies signatures using
 // the agent's raw secret (retrieved via getSecret, e.g. decrypted from storage).
 func NewHMACAuthenticator(getSecret func(ctx context.Context, agentID string) (string, error)) *HMACAuthenticator {
 	return &HMACAuthenticator{getSecret: getSecret, window: 30 * time.Second}
+}
+
+// WithHostnameResolver attaches a hostname lookup so the enricher can stamp
+// the hostname label on metric samples.
+func (a *HMACAuthenticator) WithHostnameResolver(getHostname func(ctx context.Context, agentID string) (string, error)) *HMACAuthenticator {
+	a.getHostname = getHostname
+	return a
 }
 
 // Authenticate reads x-agent-id, x-timestamp, x-signature metadata and verifies
@@ -62,20 +70,18 @@ func (a *HMACAuthenticator) Authenticate(ctx context.Context) (*AgentIdentity, e
 
 	agentID := agentIDs[0]
 	signature := signatures[0]
-	timestamp := ""
-	if len(timestamps) > 0 {
-		timestamp = timestamps[0]
-	}
 
-	// Replay protection: timestamp must be within window.
-	if timestamp != "" {
-		ts, err := time.Parse(time.RFC3339, timestamp)
-		if err != nil {
-			return nil, &AuthError{"invalid timestamp format"}
-		}
-		if absDuration(time.Since(ts)) > a.window {
-			return nil, &AuthError{"timestamp outside acceptable window"}
-		}
+	// Replay protection: timestamp is mandatory and must be within window.
+	if len(timestamps) == 0 {
+		return nil, &AuthError{"missing timestamp"}
+	}
+	timestamp := timestamps[0]
+	ts, err := time.Parse(time.RFC3339, timestamp)
+	if err != nil {
+		return nil, &AuthError{"invalid timestamp format"}
+	}
+	if absDuration(time.Since(ts)) > a.window {
+		return nil, &AuthError{"timestamp outside acceptable window"}
 	}
 
 	secret, err := a.getSecret(ctx, agentID)
@@ -91,6 +97,12 @@ func (a *HMACAuthenticator) Authenticate(ctx context.Context) (*AgentIdentity, e
 	identity := &AgentIdentity{AgentID: agentID}
 	if p, ok := peer.FromContext(ctx); ok {
 		identity.SourceIP = p.Addr.String()
+	}
+
+	if a.getHostname != nil {
+		if hostname, err := a.getHostname(ctx, agentID); err == nil {
+			identity.Hostname = hostname
+		}
 	}
 
 	return identity, nil

@@ -106,6 +106,12 @@ func main() {
 			return "", fmt.Errorf("decrypt agent secret: %w", err)
 		}
 		return secret, nil
+	}).WithHostnameResolver(func(ctx context.Context, agentID string) (string, error) {
+		agent, err := agentsRepo.GetByAgentID(ctx, agentID)
+		if err != nil {
+			return "", err
+		}
+		return agent.Hostname, nil
 	})
 
 	tenantRes := pipeline.NewTenantResolver(func(ctx context.Context, agentID string) (string, error) {
