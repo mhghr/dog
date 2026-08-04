@@ -22,6 +22,7 @@ import (
 	"monitoring-platform/internal/ingestion"
 	"monitoring-platform/internal/logging"
 	"monitoring-platform/internal/metrics"
+	infraPostgres "monitoring-platform/internal/infrastructure/postgres"
 	"monitoring-platform/internal/postgres"
 	"monitoring-platform/internal/queue"
 )
@@ -92,7 +93,8 @@ func main() {
 
 	agentRepo := agents.NewRepository(pool)
 	resourceRepo := postgres.NewResourceRepository(pool)
-	monitorV2Repo := postgres.NewMonitorV2Repository(pool)
+	monitorV2Repo := infraPostgres.NewMonitorV2Repository(pool)
+	monitorTypeParams := postgres.NewMonitorTypeParameterRepository(pool)
 
 	var ca *agents.CertAuthority
 	caCertPEM := os.Getenv("AGENT_CA_CERT")
@@ -196,7 +198,7 @@ func main() {
 		Ingestion:        ingestionService,
 		Auth:             authService,
 		Issuer:           tokenIssuer,
-		Bus:              *bus,
+		Bus:              bus,
 		Queue:            probeQueue,
 		Pool:             pool,
 		Redis:            redisClient,
@@ -208,6 +210,7 @@ func main() {
 		MonitoringAgents: postgres.NewMonitoringAgentRepository(pool),
 		BootstrapTokens:  postgres.NewBootstrapTokenRepository(pool),
 		AgentConfigs:     postgres.NewAgentConfigRepository(pool),
+		MonitorTypeParams: monitorTypeParams,
 		MonitorV2Repo:    monitorV2Repo,
 	})
 

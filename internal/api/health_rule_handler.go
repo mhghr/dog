@@ -12,18 +12,21 @@ import (
 func (h *Handler) listMonitorTypeParameters(w http.ResponseWriter, r *http.Request) {
 	monitorType := chi.URLParam(r, "type")
 
-	if _, ok := domain.ParseMonitorType(monitorType); !ok {
-		writeError(w, r, http.StatusNotFound, "not_found", "Unknown monitor type", nil)
+	params, err := h.deps.MonitorTypeParams.ListByMonitorType(r.Context(), monitorType)
+	if err != nil {
+		h.deps.Logger.Error("list monitor type parameters failed", "error", err)
+		writeError(w, r, http.StatusInternalServerError, "internal", err.Error(), nil)
 		return
 	}
 
-	params, ok := health.AllParameters[monitorType]
-	if !ok {
-		writeJSON(w, http.StatusOK, map[string]any{"items": []any{}})
-		return
+	if params == nil {
+		params = []domain.MonitorTypeParameter{}
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"monitor_type": monitorType, "parameters": params})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"monitor_type": monitorType,
+		"parameters":   params,
+	})
 }
 
 func (h *Handler) listParameterRules(w http.ResponseWriter, r *http.Request) {

@@ -42,7 +42,7 @@ type Deps struct {
 	Ingestion        *ingestion.Service
 	Auth             *auth.Service
 	Issuer           *auth.TokenIssuer
-	Bus              events.Bus
+	Bus              *events.Bus
 	Queue            *queue.RedisQueue
 	Pool             *pgxpool.Pool
 	Redis            *redis.Client
