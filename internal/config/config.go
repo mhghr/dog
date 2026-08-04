@@ -78,6 +78,8 @@ type Config struct {
 	OTELIngestTLSKeyFile  string
 
 	NATSURL string
+
+	TelemetryPipeline TelemetryPipelineConfig
 }
 
 func Load() *Config {
@@ -127,8 +129,8 @@ func Load() *Config {
 		GoogleRedirectURI:  getString("GOOGLE_REDIRECT_URI", "http://localhost:2000/api/auth/callback/google"),
 
 		AuthJWTSecret:   getString("AUTH_JWT_SECRET", "dev-insecure-jwt-secret-change-me"),
-		AccessTokenTTL:  getDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
-		RefreshTokenTTL: getDuration("REFRESH_TOKEN_TTL", 30*24*time.Hour),
+		AccessTokenTTL:  getDuration("ACCESS_TOKEN_TTL", 24*time.Hour),
+		RefreshTokenTTL: getDuration("REFRESH_TOKEN_TTL", 7*24*time.Hour),
 		CookieDomain:    getString("AUTH_COOKIE_DOMAIN", ""),
 		CookieSecure:    getBool("AUTH_COOKIE_SECURE", false),
 		OTPDevMode:      getBool("OTP_DEV_MODE", strings.EqualFold(getString("APP_ENV", "development"), "development")),
@@ -153,6 +155,10 @@ func Load() *Config {
 		OTELIngestTLSKeyFile:  getString("OTEL_INGEST_TLS_KEY", ""),
 
 		NATSURL: getString("NATS_URL", "nats://localhost:4222"),
+
+		TelemetryPipeline: TelemetryPipelineConfig{
+			Mode: getString("TELEMETRY_PIPELINE_MODE", "legacy"),
+		},
 	}
 }
 
@@ -312,6 +318,10 @@ func getDuration(key string, fallback time.Duration) time.Duration {
 	}
 
 	return parsed
+}
+
+type TelemetryPipelineConfig struct {
+	Mode string
 }
 
 func getSlice(key string, fallback []string) []string {
