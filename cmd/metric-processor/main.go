@@ -17,6 +17,8 @@ func main() {
 	cfg := config.Load()
 	logger := logging.New(cfg.LogLevel, cfg.LogFormat, "metric-processor")
 
+	logger.Warn("DEPRECATED: cmd/metric-processor is being replaced by cmd/telemetry-ingest. Set TELEMETRY_PIPELINE_MODE=nats to use the new unified ingestion pipeline.")
+
 	if err := cfg.Require("NATS_URL", "VICTORIA_URL"); err != nil {
 		logger.Error("invalid configuration", "error", err)
 		os.Exit(1)
