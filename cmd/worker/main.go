@@ -14,6 +14,7 @@ import (
 	"monitoring-platform/internal/config"
 	"monitoring-platform/internal/heartbeat"
 	"monitoring-platform/internal/httpserver"
+	"monitoring-platform/internal/ingestion/messagebus"
 	"monitoring-platform/internal/logging"
 	"monitoring-platform/internal/metrics"
 	"monitoring-platform/internal/probe"
@@ -81,7 +82,27 @@ func main() {
 	}
 	defer resultSpool.Close()
 
-	batcher := spool.NewBatcher(resultSpool, resultClient, spool.DefaultBatcherConfig(), logger)
+	var sender spool.ResultSender = resultClient
+
+	if mode := os.Getenv("TELEMETRY_PIPELINE_MODE"); mode == "nats" {
+		natsURL := os.Getenv("NATS_URL")
+		if natsURL == "" {
+			natsURL = "nats://localhost:4222"
+		}
+		natsBus, err := messagebus.NewNATSBus(messagebus.NATSConfig{
+			URL:       natsURL,
+			Reconnect: true,
+			MaxReconn: 10,
+		}, logger)
+		if err != nil {
+			logger.Error("NATS connection failed", "error", err)
+			os.Exit(1)
+		}
+		defer natsBus.Close()
+		sender = worker.NewNATSResultSender(natsBus, logger)
+	}
+
+	batcher := spool.NewBatcher(resultSpool, sender, spool.DefaultBatcherConfig(), logger)
 	go batcher.Run(ctx)
 
 	promRegistry := metrics.NewRegistry()
