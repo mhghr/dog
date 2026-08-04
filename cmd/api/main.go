@@ -65,10 +65,13 @@ func main() {
 	registry := metrics.NewRegistry()
 	ingestionMetrics := metrics.NewIngestionMetrics(registry)
 
-	victoria := metrics.NewVictoriaClient(cfg.VictoriaURL, logger)
-	victoria.Start(ctx)
+	var victoria *metrics.VictoriaClient
+	if cfg.TelemetryPipeline.Mode != "nats" {
+		victoria = metrics.NewVictoriaClient(cfg.VictoriaURL, logger)
+		victoria.Start(ctx)
+	}
 
-	bus := events.NewInMemoryBus()
+	bus := events.NewBus()
 
 	monitorRepo := postgres.NewMonitorRepository(pool)
 	resultRepo := postgres.NewResultRepository(pool)
@@ -170,7 +173,9 @@ func main() {
 
 	go watchQueueDepth(ctx, probeQueue, ingestionMetrics)
 	go watchOfflineAgents(ctx, agentRepo, logger)
-	go consumeGatewayResults(ctx, redisClient, ingestionService, logger)
+	if cfg.TelemetryPipeline.Mode != "nats" {
+		go consumeGatewayResults(ctx, redisClient, ingestionService, logger)
+	}
 
 	router := api.NewRouter(api.Deps{
 		Config:           cfg,
@@ -190,7 +195,7 @@ func main() {
 		Ingestion:        ingestionService,
 		Auth:             authService,
 		Issuer:           tokenIssuer,
-		Bus:              bus,
+		Bus:              *bus,
 		Queue:            probeQueue,
 		Pool:             pool,
 		Redis:            redisClient,

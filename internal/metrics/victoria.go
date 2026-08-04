@@ -103,6 +103,9 @@ func (c *VictoriaClient) push(lines []string) error {
 // Enqueue converts a probe result to metric lines. It never blocks: when the
 // buffer is full, lines are dropped and a warning is logged.
 func (c *VictoriaClient) Enqueue(result *domain.ProbeResult, monitorType, locationCode string) {
+	if c == nil {
+		return
+	}
 	for _, line := range buildLines(result, monitorType, locationCode) {
 		select {
 		case c.lines <- line:
