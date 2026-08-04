@@ -54,6 +54,8 @@ type Deps struct {
 	MonitoringAgents repository.MonitoringAgentRepository
 	BootstrapTokens  repository.BootstrapTokenRepository
 	AgentConfigs     repository.AgentConfigRepository
+	MonitorTypeParams *postgres.MonitorTypeParameterRepository
+	MonitorV2Repo     repository.MonitorV2Repository
 }
 
 func NewRouter(deps Deps) http.Handler {
@@ -191,6 +193,7 @@ func NewRouter(deps Deps) http.Handler {
 			r.Route("/resources", func(r chi.Router) {
 				r.Use(orgScoped)
 				r.Get("/", handler.listResources)
+				r.Get("/overview", handler.resourceOverview)
 				r.Post("/", handler.createResource)
 
 				r.Route("/{resourceID}", func(r chi.Router) {
@@ -200,6 +203,17 @@ func NewRouter(deps Deps) http.Handler {
 					r.Get("/tags", handler.listResourceTags)
 					r.Post("/tags", handler.attachResourceTag)
 					r.Delete("/tags/{tagID}", handler.removeResourceTag)
+
+					r.Route("/monitors", func(r chi.Router) {
+						r.Get("/", handler.listResourceMonitors)
+						r.Post("/", handler.createResourceMonitor)
+						r.Route("/{monitorID}", func(r chi.Router) {
+							r.Get("/", handler.getResourceMonitor)
+							r.Put("/", handler.updateResourceMonitor)
+							r.Delete("/", handler.deleteResourceMonitor)
+							r.Get("/results", handler.listResourceMonitorResults)
+						})
+					})
 				})
 			})
 
@@ -207,19 +221,6 @@ func NewRouter(deps Deps) http.Handler {
 				r.Use(orgScoped)
 				r.Get("/", handler.listWorkspaces)
 				r.Post("/", handler.createWorkspace)
-			})
-
-			r.Route("/health-profiles", func(r chi.Router) {
-				r.Get("/", handler.listHealthProfiles)
-				r.Post("/", handler.createHealthProfile)
-				r.Get("/defaults", handler.getHealthProfileDefaults)
-
-				r.Route("/{profileID}", func(r chi.Router) {
-					r.Get("/", handler.getHealthProfile)
-					r.Patch("/", handler.updateHealthProfile)
-					r.Delete("/", handler.deleteHealthProfile)
-					r.Post("/clone", handler.cloneHealthProfile)
-				})
 			})
 
 			r.Route("/notification-channels", func(r chi.Router) {

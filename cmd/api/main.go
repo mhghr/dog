@@ -92,6 +92,7 @@ func main() {
 
 	agentRepo := agents.NewRepository(pool)
 	resourceRepo := postgres.NewResourceRepository(pool)
+	monitorV2Repo := postgres.NewMonitorV2Repository(pool)
 
 	var ca *agents.CertAuthority
 	caCertPEM := os.Getenv("AGENT_CA_CERT")
@@ -207,6 +208,7 @@ func main() {
 		MonitoringAgents: postgres.NewMonitoringAgentRepository(pool),
 		BootstrapTokens:  postgres.NewBootstrapTokenRepository(pool),
 		AgentConfigs:     postgres.NewAgentConfigRepository(pool),
+		MonitorV2Repo:    monitorV2Repo,
 	})
 
 	server := httpserver.New(cfg.HTTPAddress, router)
