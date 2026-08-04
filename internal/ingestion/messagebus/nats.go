@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -64,19 +66,44 @@ func NewNATSBus(cfg NATSConfig, logger *slog.Logger) (*NATSBus, error) {
 	return bus, nil
 }
 
+type streamDef struct {
+	name      string
+	subjects  []string
+	retention nats.RetentionPolicy
+	maxAge    time.Duration
+	maxBytes  int64
+}
+
 // ensureStreams creates the required JetStream streams if they don't exist.
 func (b *NATSBus) ensureStreams() error {
-	streams := []struct {
-		name     string
-		subjects []string
-	}{
+	streams := []streamDef{
 		{
-			name:     "METRICS",
-			subjects: []string{"metrics.>"},
+			name:      "METRICS",
+			subjects:  []string{"metrics.>"},
+			retention: nats.InterestPolicy,
+			maxAge:    72 * time.Hour,
+			maxBytes:  10 * 1024 * 1024 * 1024,
 		},
 		{
-			name:     "METRICS_DLQ",
-			subjects: []string{"metrics.dlq.>"},
+			name:      "METRICS_DLQ",
+			subjects:  []string{"metrics.dlq.>"},
+			retention: nats.InterestPolicy,
+			maxAge:    72 * time.Hour,
+			maxBytes:  10 * 1024 * 1024 * 1024,
+		},
+		{
+			name:      "TELEMETRY_EVENTS",
+			subjects:  []string{"telemetry.probe.>", "telemetry.metrics.>"},
+			retention: nats.LimitsPolicy,
+			maxAge:    24 * time.Hour,
+			maxBytes:  50 * 1024 * 1024 * 1024,
+		},
+		{
+			name:      "TELEMETRY_DLQ",
+			subjects:  []string{"telemetry.dlq.>"},
+			retention: nats.LimitsPolicy,
+			maxAge:    24 * time.Hour,
+			maxBytes:  50 * 1024 * 1024 * 1024,
 		},
 	}
 
@@ -87,9 +114,10 @@ func (b *NATSBus) ensureStreams() error {
 				Name:      s.name,
 				Subjects:  s.subjects,
 				Storage:   nats.FileStorage,
-				Retention: nats.InterestPolicy,
-				MaxAge:    72 * time.Hour,
-				MaxBytes:  10 * 1024 * 1024 * 1024,
+				Retention: s.retention,
+				MaxAge:    s.maxAge,
+				MaxBytes:  s.maxBytes,
+				Replicas:  getReplicas(),
 			})
 			if err != nil {
 				return fmt.Errorf("create stream %s: %w", s.name, err)
@@ -215,7 +243,22 @@ func isExhausted(msg *nats.Msg) bool {
 // terminates it so JetStream stops redelivering it. The raw payload and
 // headers are preserved for later analysis/repair.
 func (b *NATSBus) routeToDLQ(msg *nats.Msg) {
-	dlqSubject := fmt.Sprintf("metrics.dlq.%s", sanitizeSubject(msg.Subject))
+	var dlqSubject, originalStream string
+
+	if strings.HasPrefix(msg.Subject, "metrics.") {
+		dlqSubject = fmt.Sprintf("metrics.dlq.%s", sanitizeSubject(msg.Subject))
+		originalStream = "METRICS"
+	} else if strings.HasPrefix(msg.Subject, "telemetry.") {
+		dlqSubject = fmt.Sprintf("telemetry.dlq.%s", sanitizeTelemetrySubject(msg.Subject))
+		originalStream = "TELEMETRY_EVENTS"
+	} else {
+		b.logger.Error("unhandled subject prefix for DLQ routing",
+			"subject", msg.Subject,
+		)
+		msg.Term()
+		return
+	}
+
 	dlqMsg := &nats.Msg{
 		Subject: dlqSubject,
 		Data:    msg.Data,
@@ -225,7 +268,7 @@ func (b *NATSBus) routeToDLQ(msg *nats.Msg) {
 		dlqMsg.Header = nats.Header{}
 	}
 	dlqMsg.Header.Set("Nats-Original-Subject", msg.Subject)
-	dlqMsg.Header.Set("Nats-Original-Stream", "METRICS")
+	dlqMsg.Header.Set("Nats-Original-Stream", originalStream)
 
 	if _, err := b.js.PublishMsg(dlqMsg); err != nil {
 		b.logger.Error("failed to route message to DLQ",
@@ -263,6 +306,20 @@ func (b *NATSBus) Ack(ctx context.Context, msg Message) error {
 func sanitizeSubject(subject string) string {
 	replacer := strings.NewReplacer(">", "all", "*", "any", ".", "-")
 	return replacer.Replace(strings.TrimPrefix(subject, "metrics."))
+}
+
+func sanitizeTelemetrySubject(subject string) string {
+	replacer := strings.NewReplacer(">", "all", "*", "any", ".", "-")
+	return replacer.Replace(strings.TrimPrefix(subject, "telemetry."))
+}
+
+func getReplicas() int {
+	if r := os.Getenv("NATS_REPLICAS"); r != "" {
+		if n, err := strconv.Atoi(r); err == nil && n > 0 {
+			return n
+		}
+	}
+	return 1
 }
 
 // Nack negatively acknowledges a message (NATS handles this via msg.Nak() in Subscribe).
