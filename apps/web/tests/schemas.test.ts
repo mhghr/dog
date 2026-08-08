@@ -5,8 +5,8 @@ import {
   createMonitorFormSchema,
   defaultFormValues,
   monitorToFormValues,
-} from "@/lib/schemas";
-import type { Monitor } from "@/types/monitor";
+} from "@/features/monitor-management/schemas/schemas";
+import type { Monitor } from "@/entities/monitor/model/types";
 
 const t = (key: string) => key;
 const schema = createMonitorFormSchema(t);

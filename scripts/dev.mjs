@@ -50,19 +50,19 @@ const processes = [
   {
     name: "api",
     command: go,
-    args: ["run", "./cmd/api"],
+    args: ["run", "./apps/api/cmd/api"],
     env: { HTTP_ADDRESS: ":5000" },
   },
   {
     name: "scheduler",
     command: go,
-    args: ["run", "./cmd/scheduler"],
+    args: ["run", "./apps/scheduler/cmd/scheduler"],
     env: { HEALTH_ADDRESS: ":5001" },
   },
   {
     name: "worker",
     command: go,
-    args: ["run", "./cmd/worker"],
+    args: ["run", "./apps/worker/cmd/worker"],
     env: { HEALTH_ADDRESS: ":5002" },
   },
 ];

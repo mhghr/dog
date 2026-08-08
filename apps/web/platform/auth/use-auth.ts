@@ -2,12 +2,12 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiRequest } from "@/lib/api-client";
+import { apiRequest } from "@/shared/api";
 import type {
   AuthTokensResponse,
   AuthUser,
   OTPRequestResponse,
-} from "@/types/auth";
+} from "@/shared/types/auth";
 
 export function useMe() {
   return useQuery({

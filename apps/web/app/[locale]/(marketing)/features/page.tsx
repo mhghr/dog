@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
-import { Button } from "@/components/ui/button";
-import { MockCard, MockListRow, SectionHeader, StatusChip } from "@/components/common/marketing";
+import { Button } from "@/shared/ui/button";
+import { MockCard, MockListRow, SectionHeader, StatusChip } from "@/features/marketing/marketing";
 import { Link } from "@/i18n/navigation";
-import { MONITOR_TYPE_ICONS, MONITOR_TYPES } from "@/lib/monitor-meta";
-import { cn } from "@/lib/utils";
+import { MONITOR_TYPE_ICONS, MONITOR_TYPES } from "@/entities/monitor/model/monitor-meta";
+import { cn } from "@/shared/utils/cn";
 
 function FeatureRow({
   eyebrow,
@@ -480,7 +480,7 @@ export default async function FeaturesPage({
           </h2>
           <div className="flex flex-wrap items-center justify-center gap-3">
             <Button asChild size="lg" className="gap-2 px-5">
-              <Link href="/app/nodes/new">
+              <Link href="/login">
                 {t("features.cta")}
               </Link>
             </Button>

@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { Check } from "lucide-react";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@/shared/ui/button";
 import { Link } from "@/i18n/navigation";
-import { cn } from "@/lib/utils";
+import { cn } from "@/shared/utils/cn";
 
 export async function generateMetadata({
   params,
@@ -95,7 +95,7 @@ export default async function PricingPage({
                     variant={i === 1 ? "default" : "outline"}
                     className="w-full"
                   >
-                    <Link href="/app/nodes/new">
+                    <Link href="/login">
                       {t("pricing.ctaFree")}
                     </Link>
                   </Button>

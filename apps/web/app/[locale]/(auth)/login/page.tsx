@@ -5,19 +5,19 @@ import { Loader2 } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@/shared/ui/button";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-import { useRequestOtp, useVerifyOtp } from "@/hooks/use-auth";
+} from "@/shared/ui/card";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
+import { Separator } from "@/shared/ui/separator";
+import { useRequestOtp, useVerifyOtp } from "@/platform/auth/use-auth";
 import { useRouter } from "@/i18n/navigation";
-import { ApiError } from "@/lib/api-client";
+import { ApiError } from "@/shared/api";
 
 function GoogleIcon() {
   return (
@@ -117,7 +117,7 @@ export default function LoginPage() {
 
     try {
       await verifyOtp.mutateAsync({ phone: phone.trim(), code: code.trim() });
-      router.replace("/app/dashboard");
+      router.replace("/console");
     } catch {
       toast.error(t("invalidCode"));
     }

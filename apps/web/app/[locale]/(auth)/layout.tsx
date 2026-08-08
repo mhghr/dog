@@ -1,6 +1,6 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
-import { BrandMark } from "@/components/layout/brand-mark";
+import { BrandMark } from "@/shared/ui/brand-mark";
 
 export default async function AuthLayout({
   children,

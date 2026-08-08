@@ -4,6 +4,7 @@ export interface AuthUser {
   email: string;
   phone: string;
   avatar_url: string;
+  roles?: string[];
 }
 
 export interface AuthTokensResponse {

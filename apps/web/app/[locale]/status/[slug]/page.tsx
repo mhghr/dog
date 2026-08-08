@@ -2,12 +2,12 @@ import type { Metadata } from "next";
 import { SearchX } from "lucide-react";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
-import { AutoRefresh } from "@/components/common/auto-refresh";
-import { RelativeTime } from "@/components/common/relative-time";
-import { BrandMark } from "@/components/layout/brand-mark";
-import { formatPercent } from "@/lib/formatters";
-import { cn } from "@/lib/utils";
-import type { PublicStatusPage } from "@/types/status-page";
+import { AutoRefresh } from "@/shared/ui/auto-refresh";
+import { RelativeTime } from "@/shared/ui/relative-time";
+import { BrandMark } from "@/shared/ui/brand-mark";
+import { formatPercent } from "@/shared/utils/formatters";
+import { cn } from "@/shared/utils/cn";
+import type { PublicStatusPage } from "@/features/status-pages/model/types";
 
 const OVERALL_STYLES: Record<
   PublicStatusPage["status"],

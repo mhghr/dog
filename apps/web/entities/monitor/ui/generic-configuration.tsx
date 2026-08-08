@@ -2,8 +2,8 @@
 
 import { useTranslations } from "next-intl";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { MonitorConfigurationProps } from "@/features/monitors/core/definition";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import type { MonitorConfigurationProps } from "@/plugins/monitoring/core/definition";
 
 export function GenericMonitorConfiguration({ monitor }: MonitorConfigurationProps) {
   const t = useTranslations("monitorDetail");

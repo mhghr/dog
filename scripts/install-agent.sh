@@ -61,7 +61,7 @@ else
         tar -xzf /tmp/repo.tar.gz -C "$TMP_DIR" --strip-components=1
         rm /tmp/repo.tar.gz
     }
-    cd "$TMP_DIR" && go build -ldflags="-s -w" -o "$BIN" ./cmd/probe-agent
+    cd "$TMP_DIR" && go build -ldflags="-s -w" -o "$BIN" ./apps/probe-gateway/cmd/probe-gateway
     rm -rf "$TMP_DIR"
     echo "Binary: $BIN ($(du -h "$BIN" | cut -f1))"
 fi

@@ -3,9 +3,10 @@
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import type { LiveProbeEvent } from "@/types/result";
-
-const INVALIDATE_THROTTLE_MS = 3000;
+import { SseClient } from "@/platform/realtime/sse-client";
+import { REAL_TIME_EVENTS } from "@/platform/realtime/events";
+import { invalidateActive, throttleInvalidate } from "@/shared/data/realtime";
+import type { LiveProbeEvent } from "@/entities/monitor/model/result";
 
 // useLiveResults subscribes to the SSE gateway and incrementally refreshes
 // active queries without full page reloads. Invalidation is throttled so a
@@ -20,17 +21,10 @@ export function useLiveResults(enabled = true) {
       return;
     }
 
-    let source: EventSource | null = null;
+    const client = new SseClient("/events/v1/stream");
+    client.connect();
 
-    try {
-      source = new EventSource("/events/v1/stream", {
-        withCredentials: true,
-      });
-    } catch {
-      return;
-    }
-
-    const onProbeResult = (event: MessageEvent<string>) => {
+    const off = client.on(REAL_TIME_EVENTS.probeResult, (event) => {
       let payload: LiveProbeEvent;
       try {
         payload = JSON.parse(event.data) as LiveProbeEvent;
@@ -38,31 +32,23 @@ export function useLiveResults(enabled = true) {
         return;
       }
 
-      const now = Date.now();
-      if (now - lastInvalidatedAt.current < INVALIDATE_THROTTLE_MS) {
+      if (
+        !throttleInvalidate(queryClient, {
+          lastInvalidatedAt: lastInvalidatedAt.current,
+        })
+      ) {
         return;
       }
-      lastInvalidatedAt.current = now;
+      lastInvalidatedAt.current = Date.now();
 
-      void queryClient.invalidateQueries({
-        queryKey: ["monitors", "list"],
-        refetchType: "active",
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ["dashboard"],
-        refetchType: "active",
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ["monitors", payload.monitor_id],
-        refetchType: "active",
-      });
-    };
-
-    source.addEventListener("probe-result", onProbeResult as EventListener);
+      invalidateActive(queryClient, ["monitors", "list"]);
+      invalidateActive(queryClient, ["dashboard"]);
+      invalidateActive(queryClient, ["monitors", payload.monitor_id]);
+    });
 
     return () => {
-      source?.removeEventListener("probe-result", onProbeResult as EventListener);
-      source?.close();
+      off();
+      client.close();
     };
   }, [queryClient, enabled]);
 }

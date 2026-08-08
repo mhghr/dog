@@ -1,9 +1,9 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
-import { AuthButton } from "@/components/layout/auth-button";
-import { BrandMark } from "@/components/layout/brand-mark";
-import { LanguageSwitcher } from "@/components/layout/language-switcher";
-import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { AuthButton } from "@/platform/auth/auth-button";
+import { BrandMark } from "@/shared/ui/brand-mark";
+import { LanguageSwitcher } from "@/shared/ui/language-switcher";
+import { ThemeToggle } from "@/shared/ui/theme-toggle";
 import { Link } from "@/i18n/navigation";
 
 export default async function MarketingLayout({

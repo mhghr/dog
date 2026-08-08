@@ -33,7 +33,7 @@ fi
 echo "Building..."
 mkdir -p "$AGENT_DIR/state" "$AGENT_DIR/spool"
 cd "$SOURCE_DIR"
-go build -ldflags="-s -w" -o "$AGENT_DIR/probe-agent" ./cmd/probe-agent
+go build -ldflags="-s -w" -o "$AGENT_DIR/probe-agent" ./apps/probe-gateway/cmd/probe-gateway
 
 echo "Writing config..."
 cat > "$AGENT_DIR/config.yaml" <<YAML

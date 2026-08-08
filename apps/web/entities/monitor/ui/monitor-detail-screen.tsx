@@ -6,28 +6,30 @@ import { useLocale, useTranslations } from "next-intl";
 
 import dynamic from "next/dynamic";
 
-const MultiLocationChart = dynamic(() => import("@/components/charts/multi-location-chart").then((m) => m.MultiLocationChart), { ssr: false });
-import { ErrorState } from "@/components/common/error-state";
-import { MonitorActions } from "@/components/monitors/monitor-actions";
-import { MonitorStatusBadge } from "@/components/monitors/monitor-status-badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { GenericMonitorSummary } from "@/features/monitors/detail/generic-summary";
-import { NodeMonitorTabs } from "@/features/monitors/detail/node-monitor-tabs";
-import { getMonitorDefinition } from "@/features/monitors/core/registry";
-import { useAgents } from "@/hooks/use-agents";
-import { useMonitor } from "@/hooks/use-monitor";
-import { useMonitorMetrics, type MetricsRange } from "@/hooks/use-monitor-metrics";
-import { useMonitorResults } from "@/hooks/use-monitor-results";
-import { useLocations } from "@/hooks/use-locations";
+const MultiLocationChart = dynamic(() => import("@/shared/ui/charts/multi-location-chart").then((m) => m.MultiLocationChart), { ssr: false });
+import { ErrorState } from "@/design-system/patterns/error-state";
+import { MonitorActions } from "@/features/monitor-management/ui/monitor-actions";
+import { MonitorStatusBadge } from "@/features/monitor-management/ui/monitor-status-badge";
+import { Button } from "@/shared/ui/button";
+import { Card, CardContent } from "@/shared/ui/card";
+import { Skeleton } from "@/shared/ui/skeleton";
+import { GenericMonitorSummary } from "@/entities/monitor/ui/generic-summary";
+import { NodeMonitorTabs } from "@/entities/monitor/ui/node-monitor-tabs";
+import { getMonitorDefinition } from "@/plugins/monitoring/core/registry";
+import { useAgents } from "@/entities/agent/hooks/use-agent";
+import { useMonitor } from "@/entities/monitor/hooks/use-monitor";
+import { useMonitorMetrics, type MetricsRange } from "@/entities/monitor/hooks/use-monitor-metrics";
+import { useMonitorResults } from "@/entities/monitor/hooks/use-monitor-results";
+import { useLocations } from "@/entities/probe/hooks/use-location";
 import { Link } from "@/i18n/navigation";
-import type { ProbeLocation } from "@/types/monitor";
+import { useConsoleBase } from "@/widgets/console-shell/use-console-base";
+import type { ProbeLocation } from "@/entities/probe/model/types";
 
 export function MonitorDetailScreen({ monitorId }: { monitorId: string }) {
   const t = useTranslations("monitorDetail");
   const tMonitors = useTranslations("monitors");
   const locale = useLocale();
+  const base = useConsoleBase();
   const [range, setRange] = useState<MetricsRange>("24h");
 
   const monitorQuery = useMonitor(monitorId);
@@ -72,7 +74,7 @@ export function MonitorDetailScreen({ monitorId }: { monitorId: string }) {
             <h1 className="max-w-full truncate text-xl font-semibold tracking-tight sm:text-2xl">{monitor.name}</h1>
             <MonitorStatusBadge status={monitor.last_status} />
             <Button variant="outline" size="icon-sm" asChild>
-              <Link href={`/app/nodes/${monitor.id}/edit`}>
+              <Link href={`${base}/nodes/${monitor.id}/edit`}>
                 <Pencil aria-hidden />
                 <span className="sr-only">{tMonitors("editMonitor")}</span>
               </Link>
@@ -80,7 +82,7 @@ export function MonitorDetailScreen({ monitorId }: { monitorId: string }) {
           </div>
           <p dir="ltr" className="mt-1 max-w-full truncate text-start font-mono text-xs text-muted-foreground sm:text-sm">{monitor.target}</p>
         </div>
-        <MonitorActions monitor={monitor} afterDeleteHref="/app/nodes" />
+        <MonitorActions monitor={monitor} afterDeleteHref={`${base}/nodes`} />
       </header>
 
       <NodeMonitorTabs currentMonitor={monitor} />

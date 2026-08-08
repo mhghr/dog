@@ -2,8 +2,8 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-import { apiRequest } from "@/lib/api-client";
-import type { SystemHealth } from "@/types/api";
+import { apiRequest } from "@/shared/api";
+import type { SystemHealth } from "@/shared/types/api";
 
 export function useSystemHealth() {
   return useQuery({

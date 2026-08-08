@@ -5,7 +5,7 @@ import {
   formatInterval,
   formatPercent,
   formatRelativeTime,
-} from "@/lib/formatters";
+} from "@/shared/utils/formatters";
 
 describe("formatDuration", () => {
   it("formats milliseconds below one second", () => {

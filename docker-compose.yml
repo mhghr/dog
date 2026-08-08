@@ -63,29 +63,10 @@ services:
       timeout: 3s
       retries: 10
 
-  otel-ingest:
-    build:
-      context: .
-      dockerfile: deployments/Dockerfile.otel-ingest
-    environment:
-      OTEL_INGEST_ADDRESS: :4318
-      DATABASE_URL: postgres://monitoring:monitoring@postgres:5432/monitoring?sslmode=disable
-      NATS_URL: nats://nats:4222
-      AGENT_SECRET_ENCRYPTION_KEY: ${AGENT_SECRET_ENCRYPTION_KEY:-dev-insecure-agent-secret-key-change-me}
-      LOG_LEVEL: info
-      LOG_FORMAT: json
-    ports:
-      - "4318:4318"
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-      nats:
-        condition: service_healthy
-
   metric-processor:
     build:
       context: .
-      dockerfile: deployments/Dockerfile.metric-processor
+      dockerfile: infrastructure/docker/Dockerfile.metric-processor
     environment:
       NATS_URL: nats://nats:4222
       VICTORIA_URL: http://victoriametrics:8428
@@ -114,7 +95,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: deployments/Dockerfile.api
+      dockerfile: infrastructure/docker/Dockerfile.api
     environment:
       APP_ENV: development
       HTTP_ADDRESS: :8080
@@ -150,7 +131,7 @@ services:
   scheduler:
     build:
       context: .
-      dockerfile: deployments/Dockerfile.scheduler
+      dockerfile: infrastructure/docker/Dockerfile.scheduler
     environment:
       DATABASE_URL: postgres://monitoring:monitoring@postgres:5432/monitoring?sslmode=disable
       REDIS_ADDRESS: redis:6379
@@ -176,7 +157,7 @@ services:
   worker:
     build:
       context: .
-      dockerfile: deployments/Dockerfile.worker
+      dockerfile: infrastructure/docker/Dockerfile.worker
     environment:
       REDIS_ADDRESS: redis:6379
       HEALTH_ADDRESS: :8081

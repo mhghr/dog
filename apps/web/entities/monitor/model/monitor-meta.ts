@@ -1,5 +1,5 @@
-import { MONITOR_REGISTRY, MONITOR_TYPE_GROUPS, MONITOR_TYPES } from "@/features/monitors/core/registry";
-import type { MonitorStatus, MonitorType } from "@/types/monitor";
+import { MONITOR_REGISTRY, MONITOR_TYPE_GROUPS, MONITOR_TYPES } from "@/plugins/monitoring/core/registry";
+import type { MonitorStatus, MonitorType } from "@/entities/monitor/model/types";
 
 // Compatibility facade. New feature code should import the registry directly.
 export { MONITOR_TYPE_GROUPS, MONITOR_TYPES };

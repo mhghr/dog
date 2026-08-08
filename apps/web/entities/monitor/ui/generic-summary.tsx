@@ -2,9 +2,9 @@
 
 import { useTranslations } from "next-intl";
 
-import { MonitorSummaryCard } from "@/features/monitors/detail/summary-card";
-import { formatDuration, formatInterval, formatPercent } from "@/lib/formatters";
-import type { MonitorSummaryProps } from "@/features/monitors/core/definition";
+import { MonitorSummaryCard } from "@/entities/monitor/ui/summary-card";
+import { formatDuration, formatInterval, formatPercent } from "@/shared/utils/formatters";
+import type { MonitorSummaryProps } from "@/plugins/monitoring/core/definition";
 
 export function GenericMonitorSummary({ monitor, metrics, locale, rangeLabel }: MonitorSummaryProps) {
   const t = useTranslations("monitorDetail");

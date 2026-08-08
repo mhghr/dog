@@ -6,8 +6,8 @@ import {
   MONITOR_REGISTRY,
   MONITOR_TYPE_GROUPS,
   MONITOR_TYPES,
-} from "@/features/monitors/core/registry";
-import { MONITOR_TYPE_VALUES } from "@/types/monitor";
+} from "@/plugins/monitoring/core/registry";
+import { MONITOR_TYPE_VALUES } from "@/entities/monitor/model/types";
 
 describe("monitor registry", () => {
   it("registers every API monitor type exactly once", () => {

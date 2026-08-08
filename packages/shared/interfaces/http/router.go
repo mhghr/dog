@@ -1,0 +1,301 @@
+package api
+
+import (
+	"log/slog"
+	"net/http"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
+
+	"monitoring-platform/packages/shared/agents"
+	"monitoring-platform/packages/shared/alerting"
+	"monitoring-platform/packages/shared/auth"
+	"monitoring-platform/packages/shared/config"
+	"monitoring-platform/packages/shared/events"
+	"monitoring-platform/packages/shared/health"
+	"monitoring-platform/packages/shared/ingestion"
+	"monitoring-platform/packages/shared/metrics"
+	"monitoring-platform/packages/shared/infrastructure/postgres"
+	"monitoring-platform/packages/shared/queue"
+	"monitoring-platform/packages/shared/repository"
+)
+
+type Deps struct {
+	Config           *config.Config
+	Logger           *slog.Logger
+	Results          repository.ResultRepository
+	Locations        repository.LocationRepository
+	StatusPages      repository.StatusPageRepository
+	Orgs             repository.OrganizationRepository
+	AlertRepo        *postgres.AlertRepository
+	ChannelRepo      *postgres.ChannelRepository
+	AlertEngine      *alerting.Engine
+	Notifier         *alerting.Notifier
+	HealthRepo       *postgres.HealthRepository
+	HealthNotifier   *health.NotificationEngine
+	Ingestion        *ingestion.Service
+	Auth             *auth.Service
+	Issuer           *auth.TokenIssuer
+	Bus              *events.Bus
+	Queue            *queue.RedisQueue
+	Pool             *pgxpool.Pool
+	Redis            *redis.Client
+	Victoria         *metrics.VictoriaClient
+	Prom             http.Handler
+	AgentRepo        *agents.Repository
+	CA               *agents.CertAuthority
+	ResourceRepo     *postgres.ResourceRepository
+	MonitoringAgents repository.MonitoringAgentRepository
+	BootstrapTokens  repository.BootstrapTokenRepository
+	AgentConfigs     repository.AgentConfigRepository
+	MonitorTypeParams *postgres.MonitorTypeParameterRepository
+	MonitorRepo       repository.MonitorRepository
+}
+
+func NewRouter(deps Deps) http.Handler {
+	handler := &Handler{deps: deps}
+
+	router := chi.NewRouter()
+
+	router.Use(middleware.RequestID)
+	router.Use(middleware.RealIP)
+	router.Use(requestLogger(deps.Logger))
+	router.Use(middleware.Recoverer)
+
+	router.Use(cors.Handler(cors.Options{
+		AllowedOrigins: deps.Config.CORSAllowedOrigins,
+		AllowedMethods: []string{
+			http.MethodGet,
+			http.MethodPost,
+			http.MethodPut,
+			http.MethodDelete,
+			http.MethodOptions,
+		},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
+		AllowCredentials: true,
+		MaxAge:           300,
+	}))
+
+	requireAuth := auth.RequireAuth(deps.Issuer, func(w http.ResponseWriter, r *http.Request) {
+		writeError(w, r, http.StatusUnauthorized, "unauthorized", "Authentication required", nil)
+	})
+
+	orgScoped := auth.OrgScoped(deps.Issuer)
+
+	requireAdmin := auth.RequireAdmin(func(w http.ResponseWriter, r *http.Request) {
+		writeError(w, r, http.StatusForbidden, "forbidden", "Admin access required", nil)
+	})
+
+	router.Get("/health/live", handler.healthLive)
+	router.Get("/health/ready", handler.healthReady)
+	router.Method(http.MethodGet, "/metrics", deps.Prom)
+
+	router.Route("/api/v1", func(r chi.Router) {
+		r.Use(middleware.Timeout(60 * time.Second))
+
+		// Public, unauthenticated status page projection.
+		r.Get("/status-pages/public/{slug}", handler.publicStatusPage)
+
+		// Agent enrollment (public, token-authenticated)
+		r.Post("/agent/v1/enroll", handler.agentEnroll)
+
+		// Agent status polling (public, agent ID lookup only)
+		r.Get("/agent/v1/status/{agentID}", handler.agentStatus)
+
+		// Monitoring agent bootstrap (public, one-time token authenticated)
+		r.Post("/monitoring/bootstrap", handler.bootstrapAgent)
+
+		// Monitoring agent config, heartbeat, and registration completion
+		// (agent HMAC authenticated).
+		r.Group(func(r chi.Router) {
+			r.Use(handler.agentHMACAuthenticate)
+			r.Get("/monitoring/agents/{agentID}/config", handler.getAgentConfig)
+			r.Post("/monitoring/agents/{agentID}/heartbeat", handler.postAgentHeartbeat)
+			r.Post("/monitoring/agents/{agentID}/complete", handler.completeAgentRegistration)
+		})
+
+		// Public auth
+		r.Route("/auth", func(r chi.Router) {
+			r.Post("/google/exchange", handler.googleExchange)
+			r.Post("/google/mobile", handler.googleMobile)
+			r.Post("/otp/request", handler.otpRequest)
+			r.Post("/otp/verify", handler.otpVerify)
+			r.Post("/refresh", handler.authRefresh)
+			r.Post("/logout", handler.authLogout)
+
+			r.Group(func(r chi.Router) {
+				r.Use(requireAuth)
+				r.Get("/me", handler.authMe)
+			})
+		})
+
+		r.Group(func(r chi.Router) {
+			r.Use(requireAuth)
+
+			r.Route("/organizations", func(r chi.Router) {
+				r.Post("/", handler.createOrganization)
+			})
+
+			r.Get("/dashboard/summary", handler.dashboardSummary)
+			r.Get("/probe-locations", handler.listLocations)
+			r.Post("/probe-locations", handler.createLocation)
+			r.Get("/system/health", handler.systemHealth)
+
+			r.Get("/monitor-types", handler.listMonitorTypesAll)
+			r.Get("/monitor-types/{type}/parameters", handler.listMonitorTypeParameters)
+
+			r.Route("/resource-types", func(r chi.Router) {
+				r.Get("/", handler.listResourceTypes)
+			})
+
+			r.Route("/resources", func(r chi.Router) {
+				r.Use(orgScoped)
+				r.Get("/", handler.listResources)
+				r.Get("/overview", handler.resourceOverview)
+				r.Post("/", handler.createResource)
+
+				r.Route("/{resourceID}", func(r chi.Router) {
+					r.Get("/", handler.getResource)
+					r.Put("/", handler.updateResource)
+					r.Delete("/", handler.deleteResource)
+					r.Get("/tags", handler.listResourceTags)
+					r.Post("/tags", handler.attachResourceTag)
+					r.Delete("/tags/{tagID}", handler.removeResourceTag)
+
+					r.Route("/monitors", func(r chi.Router) {
+						r.Get("/", handler.listResourceMonitors)
+						r.Post("/", handler.createResourceMonitor)
+						r.Route("/{monitorID}", func(r chi.Router) {
+							r.Get("/", handler.getResourceMonitor)
+							r.Put("/", handler.updateResourceMonitor)
+							r.Delete("/", handler.deleteResourceMonitor)
+							r.Get("/results", handler.listResourceMonitorResults)
+							r.Get("/metrics", handler.resourceMonitorMetrics)
+						})
+					})
+				})
+			})
+
+			r.Route("/workspaces", func(r chi.Router) {
+				r.Use(orgScoped)
+				r.Get("/", handler.listWorkspaces)
+				r.Post("/", handler.createWorkspace)
+			})
+
+			r.Route("/notification-channels", func(r chi.Router) {
+				r.Get("/", handler.listHealthNotificationChannels)
+				r.Post("/", handler.createHealthNotificationChannel)
+
+				r.Route("/{channelId}", func(r chi.Router) {
+					r.Put("/", handler.updateHealthNotificationChannel)
+					r.Delete("/", handler.deleteHealthNotificationChannel)
+					r.Post("/test", handler.testHealthNotificationChannel)
+				})
+			})
+
+			r.Route("/notification-policies", func(r chi.Router) {
+				r.Route("/{policyId}", func(r chi.Router) {
+					r.Put("/", handler.updateNotificationPolicy)
+					r.Delete("/", handler.deleteNotificationPolicy)
+				})
+			})
+
+			r.Route("/status-pages", func(r chi.Router) {
+				r.Get("/", handler.listStatusPages)
+				r.Post("/", handler.createStatusPage)
+
+				r.Route("/{statusPageID}", func(r chi.Router) {
+					r.Get("/", handler.getStatusPage)
+					r.Put("/", handler.updateStatusPage)
+					r.Delete("/", handler.deleteStatusPage)
+				})
+			})
+
+			r.Route("/alerting", func(r chi.Router) {
+				r.Route("/policies", func(r chi.Router) {
+					r.Get("/", handler.listAlertPolicies)
+					r.Post("/", handler.createAlertPolicy)
+				})
+
+				r.Route("/channels", func(r chi.Router) {
+					r.Get("/", handler.listNotificationChannels)
+					r.Post("/", handler.createNotificationChannel)
+				})
+
+				r.Get("/alerts", handler.listAlerts)
+				r.Get("/alerts/{alertID}", handler.getAlert)
+			})
+
+			r.Route("/admin", func(r chi.Router) {
+				r.Use(requireAdmin)
+
+				r.Route("/probe-agents", func(r chi.Router) {
+					r.Get("/", handler.listAgents)
+					r.Get("/{agentID}", handler.getAgent)
+					r.Post("/{agentID}/approve", handler.approveAgent)
+					r.Post("/{agentID}/reject", handler.rejectAgent)
+					r.Post("/{agentID}/disable", handler.disableAgent)
+					r.Post("/{agentID}/enable", handler.enableAgent)
+					r.Post("/{agentID}/revoke", handler.revokeAgent)
+					r.Post("/{agentID}/drain", handler.drainAgent)
+					r.Delete("/{agentID}", handler.deleteAgent)
+				})
+
+				r.Get("/probe-agent-enrollment-tokens", handler.listEnrollmentTokens)
+				r.Post("/probe-agent-enrollment-tokens", handler.createEnrollmentToken)
+				r.Put("/probe-agents/{agentID}/public-ip", handler.updateAgentPublicIP)
+				r.Put("/probe-agents/{agentID}/location", handler.updateAgentLocation)
+			})
+		})
+
+	})
+
+	router.Group(func(r chi.Router) {
+		r.Use(requireAuth)
+		r.Get("/events/v1/stream", handler.eventStream)
+	})
+
+	router.Route("/internal/v1", func(r chi.Router) {
+		r.Use(handler.workerAuth)
+		r.Post("/results", handler.ingestResult)
+		r.Post("/results/batch", handler.ingestResultBatch)
+	})
+
+	return router
+}
+
+type Handler struct {
+	deps Deps
+}
+
+// requestLogger emits one structured log line per request without logging
+// sensitive headers or bodies.
+func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/health/live" || r.URL.Path == "/health/ready" || r.URL.Path == "/metrics" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			start := time.Now()
+			wrapped := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+
+			next.ServeHTTP(wrapped, r)
+
+			logger.Info(
+				"http request",
+				"method", r.Method,
+				"path", r.URL.Path,
+				"status", wrapped.Status(),
+				"duration_ms", time.Since(start).Milliseconds(),
+				"request_id", middleware.GetReqID(r.Context()),
+				"remote_ip", r.RemoteAddr,
+			)
+		})
+	}
+}

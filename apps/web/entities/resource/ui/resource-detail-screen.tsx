@@ -3,12 +3,12 @@
 import { useState } from "react";
 import { useLocale } from "next-intl";
 
-import { CaretLeft, Monitor as MonitorIcon } from "@/lib/icons";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CaretLeft, Monitor as MonitorIcon } from "@/shared/ui/icons";
+import { Badge } from "@/shared/ui/badge";
+import { Button } from "@/shared/ui/button";
+import { Card, CardContent } from "@/shared/ui/card";
+import { Skeleton } from "@/shared/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import {
   useDeleteResourceMonitor,
   useMonitorTypes,
@@ -16,16 +16,18 @@ import {
   useResourceMonitorResults,
   useResourceMonitors,
   type MonitorV2,
-} from "@/features/resources/hooks/use-resources";
+} from "@/entities/resource/hooks/use-resource";
 import { Link } from "@/i18n/navigation";
-import { cn } from "@/lib/utils";
-import type { MonitorTypeDef } from "@/features/resources/types/resource";
+import { useConsoleBase } from "@/widgets/console-shell/use-console-base";
+import { cn } from "@/shared/utils/cn";
+import type { MonitorTypeDef } from "@/entities/resource/model/types";
 
 import { statusTone, MonitorTypeIcon } from "./components/monitor-type-icon";
 import { MonitorConfig } from "./components/monitor-config";
 
 export function ResourceDetailScreen({ resourceId }: { resourceId: string }) {
   const locale = useLocale();
+  const base = useConsoleBase();
   const isFa = locale === "fa";
   const resourceQuery = useResource(resourceId);
   const monitorsQuery = useResourceMonitors(resourceId);
@@ -44,7 +46,7 @@ export function ResourceDetailScreen({ resourceId }: { resourceId: string }) {
       ) : (
         <div className="flex items-center gap-3 pb-4">
           <Link
-            href="/app/nodes"
+            href={`${base}/resources`}
             aria-label={isFa ? "بازگشت به منابع" : "Back to resources"}
             className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-border/60 text-muted-foreground transition-colors hover:border-border hover:text-foreground"
           >

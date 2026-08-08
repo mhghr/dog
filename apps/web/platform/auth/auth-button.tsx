@@ -2,10 +2,10 @@
 
 import { useTranslations } from "next-intl";
 
-import { Button } from "@/components/ui/button";
-import { useMe } from "@/hooks/use-auth";
+import { Button } from "@/shared/ui/button";
+import { useMe } from "@/platform/auth/use-auth";
 import { Link } from "@/i18n/navigation";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/shared/ui/skeleton";
 
 export function AuthButton() {
   const t = useTranslations("navigation");
@@ -18,7 +18,7 @@ export function AuthButton() {
   if (meQuery.isSuccess && meQuery.data) {
     return (
       <Button asChild size="sm">
-        <Link href="/app/dashboard">{t("console")}</Link>
+        <Link href="/login">{t("console")}</Link>
       </Button>
     );
   }

@@ -1,5 +1,6 @@
-import type { Monitor, ProbeLocation } from "./monitor";
-import type { ProbeResult } from "./result";
+import type { Monitor } from "@/entities/monitor/model/types";
+import type { ProbeLocation } from "@/entities/probe/model/types";
+import type { ProbeResult } from "@/entities/monitor/model/result";
 
 export interface Pagination {
   page: number;

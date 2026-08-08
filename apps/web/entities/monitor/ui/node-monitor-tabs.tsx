@@ -2,15 +2,17 @@
 
 import { useTranslations } from "next-intl";
 
-import { getMonitorDefinition } from "@/features/monitors/core/registry";
-import { belongsToSameNode, monitorHost } from "@/features/monitors/core/target";
-import { useMonitors } from "@/hooks/use-monitors";
+import { getMonitorDefinition } from "@/plugins/monitoring/core/registry";
+import { belongsToSameNode, monitorHost } from "@/plugins/monitoring/core/target";
+import { useMonitors } from "@/entities/monitor/hooks/use-monitor";
 import { Link } from "@/i18n/navigation";
-import { cn } from "@/lib/utils";
-import type { Monitor } from "@/types/monitor";
+import { useConsoleBase } from "@/widgets/console-shell/use-console-base";
+import { cn } from "@/shared/utils/cn";
+import type { Monitor } from "@/entities/monitor/model/types";
 
 export function NodeMonitorTabs({ currentMonitor }: { currentMonitor: Monitor }) {
   const tTypes = useTranslations("types");
+  const base = useConsoleBase();
   const host = monitorHost(currentMonitor.target, currentMonitor.type);
   const monitorsQuery = useMonitors({ page: 1, pageSize: 100, search: host });
 
@@ -32,7 +34,7 @@ export function NodeMonitorTabs({ currentMonitor }: { currentMonitor: Monitor })
           return (
             <Link
               key={monitor.id}
-              href={`/app/nodes/${monitor.id}`}
+              href={`${base}/nodes/${monitor.id}`}
               aria-current={active ? "page" : undefined}
               title={monitor.name}
               className={cn(

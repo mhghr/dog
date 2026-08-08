@@ -3,9 +3,9 @@ import { notFound } from "next/navigation";
 import { hasLocale, NextIntlClientProvider } from "next-intl";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
-import { AppProviders } from "@/components/providers";
+import { AppProviders } from "@/platform/providers/providers";
 import { routing } from "@/i18n/routing";
-import { bakh, estedad, inter, plasma } from "@/lib/fonts";
+import { bakh, estedad, inter, plasma } from "@/shared/ui/fonts";
 
 import "../globals.css";
 

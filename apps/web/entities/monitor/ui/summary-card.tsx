@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/shared/ui/card";
 
 export function MonitorSummaryCard({
   label,
