@@ -140,6 +140,14 @@ func buildLines(result *domain.ProbeResult, monitorType, locationCode string) []
 		`monitor_id=%q,monitor_type=%q,probe_location=%q`,
 		result.MonitorID, monitorType, locationCode,
 	)
+
+	if resourceID, ok := result.Attributes["resource_id"].(string); ok && resourceID != "" {
+		labels += fmt.Sprintf(`,resource_id=%q`, resourceID)
+	}
+	if workspaceID, ok := result.Attributes["workspace_id"].(string); ok && workspaceID != "" {
+		labels += fmt.Sprintf(`,workspace_id=%q`, workspaceID)
+	}
+
 	timestamp := result.FinishedAt.UnixMilli()
 
 	successValue := 0

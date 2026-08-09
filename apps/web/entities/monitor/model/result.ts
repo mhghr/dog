@@ -21,6 +21,15 @@ export interface MetricPoint {
   value: number;
 }
 
+export interface ProbeSeries {
+  probe_id: string;
+  probe_name: string;
+  location: string;
+  metric_key: string;
+  points: MetricPoint[];
+  values: MetricPoint[];
+}
+
 export interface MonitorMetrics {
   series: {
     latency: MetricPoint[];

@@ -153,6 +153,7 @@ type MonitorTypeDef struct {
 type Monitor struct {
 	ID              string         `json:"id"`
 	ResourceID      string         `json:"resource_id"`
+	WorkspaceID     *string        `json:"workspace_id,omitempty"`
 	MonitorTypeID   string         `json:"monitor_type_id"`
 	HealthProfileID *string        `json:"health_profile_id,omitempty"`
 	CreatedBy       *string        `json:"created_by,omitempty"`

@@ -5,6 +5,8 @@ import "time"
 type ProbeJob struct {
 	ID              string         `json:"id"`
 	MonitorID       string         `json:"monitor_id"`
+	ResourceID      string         `json:"resource_id"`
+	WorkspaceID     string         `json:"workspace_id"`
 	Type            MonitorType    `json:"type"`
 	Target          string         `json:"target"`
 	TimeoutMillis   int            `json:"timeout_millis"`

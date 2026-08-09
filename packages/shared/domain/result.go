@@ -42,6 +42,7 @@ type ProbeSeries struct {
 	ProbeID   string        `json:"probe_id"`
 	ProbeName string        `json:"probe_name"`
 	Location  string        `json:"location"`
+	MetricKey string        `json:"metric_key"`
 	Points    []MetricPoint `json:"points"`
 	Values    []MetricPoint `json:"values"`
 }

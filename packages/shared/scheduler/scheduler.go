@@ -147,9 +147,16 @@ func (s *Scheduler) publishToAllLocations(ctx context.Context, monitor domain.Mo
 }
 
 func (s *Scheduler) publishToLocation(ctx context.Context, monitor domain.Monitor, loc domain.ProbeLocation) error {
+	var wsID string
+	if monitor.WorkspaceID != nil {
+		wsID = *monitor.WorkspaceID
+	}
+
 	job := domain.ProbeJob{
 		ID:              uuid.NewString(),
 		MonitorID:       monitor.ID,
+		ResourceID:      monitor.ResourceID,
+		WorkspaceID:     wsID,
 		Type:            monitor.ProbeType,
 		Target:          monitor.ResourceTarget,
 		TimeoutMillis:   monitor.TimeoutMillis,

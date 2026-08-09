@@ -74,10 +74,10 @@ func (e *PingExecutor) Execute(ctx context.Context, job domain.ProbeJob) domain.
 	}
 
 	result.Metrics["packet_loss_percent"] = stats.PacketLoss
+	result.Metrics["rtt_ms"] = float64(stats.AvgRtt.Microseconds()) / 1000
 	result.Metrics["min_rtt_ms"] = float64(stats.MinRtt.Microseconds()) / 1000
-	result.Metrics["avg_rtt_ms"] = float64(stats.AvgRtt.Microseconds()) / 1000
 	result.Metrics["max_rtt_ms"] = float64(stats.MaxRtt.Microseconds()) / 1000
-	result.Metrics["stddev_rtt_ms"] = float64(stats.StdDevRtt.Microseconds()) / 1000
+	result.Metrics["jitter_ms"] = float64(stats.StdDevRtt.Microseconds()) / 1000
 
 	return finishSuccess(result)
 }

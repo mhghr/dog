@@ -17,8 +17,8 @@ export function PingMonitorConfiguration({ monitor, latestResult, recentResults,
   const sent = latestResult?.attributes?.packets_sent;
   const received = latestResult?.attributes?.packets_received;
   const resolvedIp = latestResult?.attributes?.resolved_ip;
-  const packetCount = monitor.config.packet_count;
-  const packetInterval = monitor.config.packet_interval_millis;
+  const packetCount = monitor.config.packet_count ?? 4;
+  const packetInterval = monitor.config.packet_interval_millis ?? 200;
 
   const configRows = [
     [t("resolvedIp"), typeof resolvedIp === "string" ? resolvedIp : "—"],

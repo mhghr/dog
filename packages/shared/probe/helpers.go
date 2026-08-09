@@ -13,6 +13,14 @@ import (
 )
 
 func newBaseResult(job domain.ProbeJob) domain.ProbeResult {
+	attrs := map[string]any{"monitor_type": string(job.Type)}
+	if job.ResourceID != "" {
+		attrs["resource_id"] = job.ResourceID
+	}
+	if job.WorkspaceID != "" {
+		attrs["workspace_id"] = job.WorkspaceID
+	}
+
 	return domain.ProbeResult{
 		ID:              uuid.NewString(),
 		JobID:           job.ID,
@@ -21,7 +29,7 @@ func newBaseResult(job domain.ProbeJob) domain.ProbeResult {
 		Status:          domain.StatusDown,
 		Success:         false,
 		Metrics:         map[string]any{},
-		Attributes:      map[string]any{"monitor_type": string(job.Type)},
+		Attributes:      attrs,
 		StartedAt:       time.Now().UTC(),
 	}
 }

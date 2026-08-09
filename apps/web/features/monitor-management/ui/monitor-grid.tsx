@@ -23,18 +23,18 @@ export function monitorBadgeTone(monitor: Monitor) {
     return "border-destructive/25 bg-destructive/10 text-destructive";
   }
   const metrics = monitor.last_result?.metrics ?? {};
-  const duration = monitor.type === "ping" ? metrics.avg_rtt_ms : monitor.last_result?.duration_millis;
+  const duration = monitor.type === "ping" ? metrics.rtt_ms : monitor.last_result?.duration_millis;
   const criticalChecks = [
     [duration, monitor.config.critical_duration_millis],
     [metrics.packet_loss_percent, monitor.config.critical_packet_loss_percent],
-    [metrics.stddev_rtt_ms, monitor.config.critical_jitter_millis],
+    [metrics.jitter_ms, monitor.config.critical_jitter_millis],
     [Math.abs(metrics.offset_ms ?? 0), monitor.config.max_offset_millis],
     [metrics.round_trip_ms, monitor.config.max_round_trip_millis],
   ];
   const warningChecks = [
     [duration, monitor.config.warning_duration_millis],
     [metrics.packet_loss_percent, monitor.config.warning_packet_loss_percent],
-    [metrics.stddev_rtt_ms, monitor.config.warning_jitter_millis],
+    [metrics.jitter_ms, monitor.config.warning_jitter_millis],
     [Math.abs(metrics.offset_ms ?? 0), monitor.config.warning_offset_millis],
     [metrics.round_trip_ms, monitor.config.warning_round_trip_millis],
   ];
@@ -94,7 +94,7 @@ export function MonitorGrid({ monitors }: { monitors: Monitor[] }) {
           <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-primary/20 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
 
           <Link
-            href={`${base}/nodes/${(node.monitors.find((m) => m.enabled) ?? node.monitors[0]).id}`}
+            href={`${base}/monitors/${(node.monitors.find((m) => m.enabled) ?? node.monitors[0]).id}`}
             className="block min-w-0 px-4 py-3.5 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           >
             <div className="flex items-center gap-2">
@@ -126,7 +126,7 @@ export function MonitorGrid({ monitors }: { monitors: Monitor[] }) {
                 return (
                   <Link
                     key={monitor.id}
-                    href={`${base}/nodes/${monitor.id}`}
+                    href={`${base}/monitors/${monitor.id}`}
                     title={monitor.name}
                     className={cn(
                       "inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-md border px-2 text-[11px] font-medium outline-none transition-all hover:brightness-110 active:translate-y-px focus-visible:ring-2 focus-visible:ring-ring",

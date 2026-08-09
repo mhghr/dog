@@ -477,6 +477,74 @@ func (r *ResultRepository) SeriesByProbe(ctx context.Context, monitorID string, 
 	return series, nil
 }
 
+// SeriesByProbeMetric returns one time-bucketed series per probe location for
+// a specific metric key in the probe_results.metrics JSONB column.
+func (r *ResultRepository) SeriesByProbeMetric(ctx context.Context, monitorID, metricKey string, from, to time.Time, stepSeconds int) ([]domain.ProbeSeries, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT
+			pl.id::text,
+			COALESCE(pl.name, ''),
+			COALESCE(pl.code, ''),
+			date_bin(make_interval(secs => $4::int), pr.started_at, TIMESTAMPTZ 'epoch') AS bucket,
+			AVG((pr.metrics->>$5)::numeric)::float8 AS value
+		FROM probe_results pr
+		LEFT JOIN probe_locations pl ON pl.id = pr.probe_location_id
+		WHERE pr.monitor_id = $1::uuid
+		  AND pr.started_at >= $2
+		  AND pr.started_at < $3
+		  AND pr.metrics->>$5 IS NOT NULL
+		GROUP BY pl.id, pl.name, pl.code, bucket
+		ORDER BY pl.name, bucket`,
+		monitorID, from, to, stepSeconds, metricKey)
+	if err != nil {
+		return nil, fmt.Errorf("query per-probe metric series: %w", err)
+	}
+	defer rows.Close()
+
+	type rawPoint struct {
+		probeID   string
+		probeName string
+		location  string
+		ts        time.Time
+		value     float64
+	}
+	var raw []rawPoint
+	for rows.Next() {
+		var (
+			pid, pname, loc string
+			bucket          time.Time
+			value           float64
+		)
+		if err := rows.Scan(&pid, &pname, &loc, &bucket, &value); err != nil {
+			return nil, fmt.Errorf("scan per-probe metric bucket: %w", err)
+		}
+		raw = append(raw, rawPoint{probeID: pid, probeName: pname, location: loc, ts: bucket, value: value})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	var series []domain.ProbeSeries
+	var current *domain.ProbeSeries
+	for _, p := range raw {
+		if current == nil || current.ProbeID != p.probeID {
+			series = append(series, domain.ProbeSeries{
+				ProbeID:   p.probeID,
+				ProbeName: p.probeName,
+				Location:  p.location,
+				MetricKey: metricKey,
+				Points:    []domain.MetricPoint{},
+				Values:    []domain.MetricPoint{},
+			})
+			current = &series[len(series)-1]
+		}
+		current.Points = append(current.Points, domain.MetricPoint{Timestamp: p.ts, Value: p.value})
+		current.Values = append(current.Values, domain.MetricPoint{Timestamp: p.ts, Value: p.value})
+	}
+
+	return series, nil
+}
+
 // LatestResultsByProbe returns the most recent probe result for each probe
 // location assigned to a monitor.
 func (r *ResultRepository) LatestResultsByProbe(ctx context.Context, monitorID string) ([]domain.ProbeResult, error) {

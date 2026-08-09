@@ -180,6 +180,12 @@ func NewRouter(deps Deps) http.Handler {
 				})
 			})
 
+			r.Route("/monitors/{monitorID}", func(r chi.Router) {
+				r.Get("/", handler.getResourceMonitor)
+				r.Get("/results", handler.listResourceMonitorResults)
+				r.Get("/metrics", handler.resourceMonitorMetrics)
+			})
+
 			r.Route("/workspaces", func(r chi.Router) {
 				r.Use(orgScoped)
 				r.Get("/", handler.listWorkspaces)

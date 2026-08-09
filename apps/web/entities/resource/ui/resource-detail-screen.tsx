@@ -118,7 +118,7 @@ function MonitorRow({ resourceId, monitor }: { resourceId: string; monitor: Moni
   const { data: latestResult, isPending: resultPending } = useResourceMonitorResults(resourceId, monitor.id);
 
   const isPing = monitor.name.toLowerCase().includes("ping") ||
-                 (latestResult?.metrics && "avg_rtt_ms" in latestResult.metrics);
+                 (latestResult?.metrics && "rtt_ms" in latestResult.metrics);
 
   return (
     <Card className={cn("border-border/70", !monitor.enabled && "opacity-70")}>
@@ -143,10 +143,10 @@ function MonitorRow({ resourceId, monitor }: { resourceId: string; monitor: Moni
 
           {isPing && latestResult && latestResult.metrics && (
             <div className="mt-2 grid grid-cols-3 gap-1.5">
-              {latestResult.metrics.avg_rtt_ms != null && (
+              {latestResult.metrics.rtt_ms != null && (
                 <MetricPill
                   label={isFa ? "RTT" : "RTT"}
-                  value={`${Math.round(Number(latestResult.metrics.avg_rtt_ms))}ms`}
+                  value={`${Math.round(Number(latestResult.metrics.rtt_ms))}ms`}
                 />
               )}
               {latestResult.metrics.packet_loss_percent != null && (
@@ -162,10 +162,10 @@ function MonitorRow({ resourceId, monitor }: { resourceId: string; monitor: Moni
                   value={`${Math.round(Number(latestResult.metrics.min_rtt_ms))}/${Math.round(Number(latestResult.metrics.max_rtt_ms))}ms`}
                 />
               )}
-              {latestResult.metrics.stddev_rtt_ms != null && (
+              {latestResult.metrics.jitter_ms != null && (
                 <MetricPill
                   label={isFa ? "Jitter" : "Jitter"}
-                  value={`${Number(latestResult.metrics.stddev_rtt_ms).toFixed(1)}ms`}
+                  value={`${Number(latestResult.metrics.jitter_ms).toFixed(1)}ms`}
                 />
               )}
               {latestResult.duration_millis != null && (

@@ -2,14 +2,13 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { Clock, SlidersHorizontal, Heart, CircleCheck, AlertTriangle, CircleAlert } from "lucide-react";
 
-import { Info } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { Switch } from "@/shared/ui/switch";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import {
   useCreateResourceMonitor,
   useUpdateResourceMonitor,
@@ -17,6 +16,7 @@ import {
 import type { MonitorTypeDef } from "@/entities/resource/model/types";
 import type { Monitor, MonitorInput } from "@/entities/resource/hooks/types";
 import { MonitorTypeIcon } from "./monitor-type-icon";
+import { cn } from "@/shared/utils/cn";
 
 interface MonitorConfigProps {
   resourceId: string;
@@ -72,6 +72,7 @@ export function MonitorConfig({ resourceId, type, monitor, isFa }: MonitorConfig
     packet_loss_percent: isFa ? "درصد Packet Loss" : "Packet Loss %",
     jitter_ms: isFa ? "Jitter" : "Jitter",
     response_time_ms: isFa ? "زمان پاسخ" : "Response time",
+    rtt_ms: isFa ? "RTT" : "RTT",
     status_code: isFa ? "کد وضعیت" : "Status code",
     cpu_percent: isFa ? "CPU" : "CPU",
     memory_percent: isFa ? "حافظه" : "Memory",
@@ -116,7 +117,7 @@ export function MonitorConfig({ resourceId, type, monitor, isFa }: MonitorConfig
 
   return (
     <Card variant="bordered" className="h-full">
-      <CardHeader className="border-b border-border/60 pb-3">
+      <CardHeader className="border-b border-border/60 pb-3.5">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -128,38 +129,25 @@ export function MonitorConfig({ resourceId, type, monitor, isFa }: MonitorConfig
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <span className="text-xs text-muted-foreground">{isFa ? "فعال" : "On"}</span>
+            <span className="text-[11px] text-muted-foreground">{isFa ? "فعال" : "On"}</span>
             <Switch checked={enabled} onCheckedChange={setEnabled} />
           </div>
         </div>
       </CardHeader>
-      <CardContent className="pt-4">
+      <CardContent className="pt-5">
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
           {/* Execution Settings */}
           <section>
-            <div className="mb-3 flex items-center gap-2">
-              <span className="size-1.5 rounded-full bg-primary/60" />
+            <div className="mb-3 flex items-center gap-2.5">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/8 text-primary">
+                <Clock className="size-3.5" />
+              </span>
               <h3 className="text-[13px] font-semibold">{isFa ? "تنظیمات اجرایی" : "Execution"}</h3>
             </div>
-            <div className="flex flex-wrap gap-3">
-              <div className="flex flex-col gap-1">
-                <LabelWithTip tip={isFa ? "فاصله بین هر بار اجرای مانیتور" : "Seconds between each execution"}>
-                  {isFa ? "بازه (s)" : "Interval (s)"}
-                </LabelWithTip>
-                <Input type="number" min={10} value={intervalSeconds} onChange={e => setIntervalSeconds(Number(e.target.value))} />
-              </div>
-              <div className="flex flex-col gap-1">
-                <LabelWithTip tip={isFa ? "حداکثر زمان انتظار برای پاسخ" : "Max wait time for a response"}>
-                  {isFa ? "تایم‌اوت (ms)" : "Timeout (ms)"}
-                </LabelWithTip>
-                <Input type="number" min={100} max={60000} value={timeoutMillis} onChange={e => setTimeoutMillis(Number(e.target.value))} />
-              </div>
-              <div className="flex flex-col gap-1">
-                <LabelWithTip tip={isFa ? "تعداد تلاش مجدد در صورت خطا" : "Retry attempts on failure"}>
-                  {isFa ? "تلاش مجدد" : "Retries"}
-                </LabelWithTip>
-                <Input type="number" min={0} max={5} value={retries} onChange={e => setRetries(Number(e.target.value))} />
-              </div>
+            <div className="grid grid-cols-3 gap-3">
+              <NumberInput label={isFa ? "بازه (s)" : "Interval (s)"} value={intervalSeconds} onChange={setIntervalSeconds} min={10} suffix="s" />
+              <NumberInput label={isFa ? "تایم‌اوت (ms)" : "Timeout (ms)"} value={timeoutMillis} onChange={setTimeoutMillis} min={100} max={60000} suffix="ms" />
+              <NumberInput label={isFa ? "تلاش مجدد" : "Retries"} value={retries} onChange={setRetries} min={0} max={5} suffix="×" />
             </div>
 
             {Object.keys(schema.properties ?? {}).length > 0 ? (
@@ -171,68 +159,119 @@ export function MonitorConfig({ resourceId, type, monitor, isFa }: MonitorConfig
                       <Switch checked={Boolean(fieldValues[key])} onCheckedChange={v => setField(key, v)} />
                     </div>
                   ) : (
-                    <div key={key} className="flex flex-col gap-1">
-                      <LabelWithTip tip={prop.title ?? key}>
-                        {prop.title ?? key}
-                      </LabelWithTip>
-                      <Input type={(prop.type === "number" || prop.type === "integer") ? "number" : "text"}
-                        min={prop.minimum} max={prop.maximum}
-                        value={String(fieldValues[key] ?? "")}
-                        onChange={e => setField(key, (prop.type === "number" || prop.type === "integer") ? Number(e.target.value) : e.target.value)}
-                        dir="ltr" />
-                    </div>
+                    <NumberInput
+                      key={key}
+                      label={prop.title ?? key}
+                      value={Number(fieldValues[key] ?? 0)}
+                      onChange={v => setField(key, v)}
+                      min={prop.minimum}
+                      max={prop.maximum}
+                      dir="ltr"
+                    />
                   )
                 ))}
               </div>
             ) : null}
           </section>
 
+          {/* Probe Config Fields */}
+          {Object.keys(schema.properties ?? {}).length > 2 ? (
+            <section>
+              <div className="mb-3 flex items-center gap-2.5">
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/8 text-primary">
+                  <SlidersHorizontal className="size-3.5" />
+                </span>
+                <h3 className="text-[13px] font-semibold">{isFa ? "تنظیمات پروب" : "Probe config"}</h3>
+              </div>
+              {Object.keys(schema.properties ?? {}).length > 0 ? (
+                <div className="flex flex-wrap gap-3">
+                  {Object.entries(schema.properties ?? {}).map(([key, prop]) => (
+                    prop.type !== "boolean" ? (
+                      <NumberInput
+                        key={key}
+                        label={prop.title ?? key}
+                        value={Number(fieldValues[key] ?? 0)}
+                        onChange={v => setField(key, v)}
+                        min={prop.minimum}
+                        max={prop.maximum}
+                        dir="ltr"
+                      />
+                    ) : null
+                  ))}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
           {/* Health Rules */}
           {Object.keys(healthRules).length > 0 ? (
             <section>
-              <div className="mb-3 flex items-center gap-2">
-                <span className="size-1.5 rounded-full bg-amber-500/60" />
-                <h3 className="text-sm font-semibold">{isFa ? "قوانین سلامت" : "Health Rules"}</h3>
+              <div className="mb-3 flex items-center gap-2.5">
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600">
+                  <Heart className="size-3.5" />
+                </span>
+                <h3 className="text-[13px] font-semibold">{isFa ? "قوانین سلامت" : "Health Rules"}</h3>
               </div>
               <div className="flex flex-col gap-4">
                 {Object.entries(healthRules).map(([key, rule]) => {
                   const def = healthParams[key];
                   return (
-                    <div key={key}>
-                      <div className="mb-2 flex items-center justify-between">
-                        <p className="text-sm font-medium">{labelName(key)}</p>
-                        {def?.unit ? <span className="text-xs text-muted-foreground">{def.unit}</span> : null}
+                    <div key={key} className="rounded-xl border border-border/50 bg-card/40 p-4">
+                      <div className="mb-3 flex items-center justify-between">
+                        <p className="text-sm font-semibold">{labelName(key)}</p>
+                        {def?.unit ? <span className="text-[11px] text-muted-foreground">{def.unit}</span> : null}
                       </div>
                       <div className="grid grid-cols-2 gap-3">
-                        <div className="flex flex-col gap-1">
-                          <Label className="text-xs text-muted-foreground">
-                            <span className="inline-block size-1.5 rounded-full bg-amber-500 align-middle mr-1.5" />
+                        <div className={cn(
+                          "flex flex-col gap-1.5 rounded-lg border p-3 transition-all focus-within:ring-[3px]",
+                          "border-amber-500/30 bg-amber-500/[0.04] focus-within:ring-amber-500/15",
+                        )}>
+                          <Label className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+                            <span className="size-1.5 rounded-full bg-amber-500" />
                             {isFa ? "هشدار" : "Warning"}
                           </Label>
                           <Input type="number" value={rule.warning ?? ""} placeholder="—"
                             onChange={e => setHealthRules(p => ({ ...p, [key]: { ...p[key], warning: e.target.value === "" ? undefined : Number(e.target.value) } }))}
-                            dir="ltr" />
+                            dir="ltr" className="border-0 bg-transparent p-0 text-sm font-medium shadow-none focus-visible:ring-0" />
                         </div>
-                        <div className="flex flex-col gap-1">
-                          <Label className="text-xs text-muted-foreground">
-                            <span className="inline-block size-1.5 rounded-full bg-red-500 align-middle mr-1.5" />
+                        <div className={cn(
+                          "flex flex-col gap-1.5 rounded-lg border p-3 transition-all focus-within:ring-[3px]",
+                          "border-red-500/30 bg-red-500/[0.04] focus-within:ring-red-500/15",
+                        )}>
+                          <Label className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+                            <span className="size-1.5 rounded-full bg-red-500" />
                             {isFa ? "بحرانی" : "Critical"}
                           </Label>
                           <Input type="number" value={rule.critical ?? ""} placeholder="—"
                             onChange={e => setHealthRules(p => ({ ...p, [key]: { ...p[key], critical: e.target.value === "" ? undefined : Number(e.target.value) } }))}
-                            dir="ltr" />
+                            dir="ltr" className="border-0 bg-transparent p-0 text-sm font-medium shadow-none focus-visible:ring-0" />
                         </div>
                       </div>
                     </div>
                   );
                 })}
               </div>
+
+              <div className="mt-4 flex flex-wrap items-center gap-3 text-[11px]">
+                <span className={cn("flex items-center gap-1.5", isFa ? "ms-1" : "me-1")}>
+                  <CircleCheck className="size-3 text-emerald-500" />
+                  <span className="text-muted-foreground">{isFa ? "سالم (> هشدار)" : "Healthy (< warning)"}</span>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <AlertTriangle className="size-3 text-amber-500" />
+                  <span className="text-muted-foreground">{isFa ? "هشدار" : "Warning"}</span>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <CircleAlert className="size-3 text-red-500" />
+                  <span className="text-muted-foreground">{isFa ? "بحرانی" : "Critical"}</span>
+                </span>
+              </div>
             </section>
           ) : null}
 
-          {/* Enable toggle + Save */}
+          {/* Save */}
           <div className="flex justify-end border-t border-border/60 pt-4">
-            <Button type="submit" disabled={pending} className="min-w-28">
+            <Button type="submit" disabled={pending} size="lg" className="min-w-32 shadow-sm">
               {pending ? (isFa ? "در حال ذخیره..." : "Saving...") : isFa ? "ذخیره" : "Save"}
             </Button>
           </div>
@@ -242,20 +281,42 @@ export function MonitorConfig({ resourceId, type, monitor, isFa }: MonitorConfig
   );
 }
 
-function LabelWithTip({ children, tip }: { children: React.ReactNode; tip: string }) {
+function NumberInput({
+  label,
+  value,
+  onChange,
+  min,
+  max,
+  suffix,
+  dir,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  min?: number;
+  max?: number;
+  suffix?: string;
+  dir?: "ltr" | "rtl";
+}) {
   return (
-    <div className="flex items-center gap-1">
-      <span className="text-xs text-muted-foreground">{children}</span>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="inline-flex cursor-help text-muted-foreground/50 transition-colors hover:text-muted-foreground">
-            <Info className="size-3" />
+    <div className="flex flex-col gap-1.5">
+      <Label className="text-[11px] font-medium text-muted-foreground">{label}</Label>
+      <div className="relative">
+        <Input
+          type="number"
+          min={min}
+          max={max}
+          value={value}
+          onChange={e => onChange(Number(e.target.value))}
+          dir={dir ?? "ltr"}
+          className={cn(suffix ? "pr-10" : "", "font-medium")}
+        />
+        {suffix ? (
+          <span className="pointer-events-none absolute inset-y-0 end-0 flex items-center pe-3 text-[11px] font-medium text-muted-foreground">
+            {suffix}
           </span>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="max-w-56 text-xs">
-          {tip}
-        </TooltipContent>
-      </Tooltip>
+        ) : null}
+      </div>
     </div>
   );
 }

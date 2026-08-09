@@ -30,7 +30,6 @@ import { Link, usePathname, useRouter } from "@/i18n/navigation";
 import { cn } from "@/shared/utils/cn";
 import {
   Browser,
-  Gauge,
   GearSix,
   MapPin,
   Monitor,
@@ -59,7 +58,6 @@ const NAV_ITEMS = {
   primary: [
     { href: "/dashboard",   labelKey: "dashboard" as const,   icon: SquaresFour },
     { href: "/resources",   labelKey: "resources" as const,   icon: Monitor },
-    { href: "/monitors",    labelKey: "monitors" as const,    icon: Gauge },
     { href: "/alerts",      labelKey: "alerts" as const,      icon: Warning },
     { href: "/status-pages",labelKey: "statusPages" as const, icon: Browser },
     { href: "/locations",   labelKey: "locations" as const,   icon: MapPin },

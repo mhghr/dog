@@ -41,7 +41,7 @@ export function MonitorTable({ monitors }: { monitors: Monitor[] }) {
             {nodes.map((node) => (
               <TableRow key={node.key} className="border-border/50 hover:bg-muted/25">
                 <TableCell className="max-w-56 font-medium">
-                  <Link href={`${base}/nodes/${node.monitors[0].id}`} className="block truncate rounded-sm hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <Link href={`${base}/monitors/${node.monitors[0].id}`} className="block truncate rounded-sm hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                     {node.name}
                   </Link>
                 </TableCell>
@@ -56,7 +56,7 @@ export function MonitorTable({ monitors }: { monitors: Monitor[] }) {
                       return (
                         <Link
                           key={monitor.id}
-                          href={`${base}/nodes/${monitor.id}`}
+                          href={`${base}/monitors/${monitor.id}`}
                           className={cn("inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-md border px-2 text-xs font-medium outline-none hover:brightness-110 focus-visible:ring-2 focus-visible:ring-ring", monitorBadgeTone(monitor))}
                         >
                           <Icon className="size-3.5" aria-hidden />

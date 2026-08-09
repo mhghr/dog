@@ -7,6 +7,7 @@ import { useLocale, useTranslations } from "next-intl";
 import dynamic from "next/dynamic";
 
 const MultiLocationChart = dynamic(() => import("@/shared/ui/charts/multi-location-chart").then((m) => m.MultiLocationChart), { ssr: false });
+const PingChartPanel = dynamic(() => import("@/plugins/monitoring/ping/ping-chart-panel").then((m) => m.PingChartPanel), { ssr: false });
 import { ErrorState } from "@/design-system/patterns/error-state";
 import { MonitorActions } from "@/features/monitor-management/ui/monitor-actions";
 import { MonitorStatusBadge } from "@/features/monitor-management/ui/monitor-status-badge";
@@ -50,7 +51,9 @@ export function MonitorDetailScreen({ monitorId }: { monitorId: string }) {
   if (monitorQuery.isError) return <ErrorState onRetry={() => void monitorQuery.refetch()} />;
 
   const monitor = monitorQuery.data;
-  const Summary = (getMonitorDefinition(monitor.type).Summary ?? GenericMonitorSummary);
+  const definition = getMonitorDefinition(monitor.type);
+  const Summary = (definition.Summary ?? GenericMonitorSummary);
+  const Configuration = definition.Configuration;
   const recentResults = recentResultsQuery.data?.items ?? [];
   const probeLocations = locationsQuery.data?.items ?? [];
 
@@ -74,7 +77,7 @@ export function MonitorDetailScreen({ monitorId }: { monitorId: string }) {
             <h1 className="max-w-full truncate text-xl font-semibold tracking-tight sm:text-2xl">{monitor.name}</h1>
             <MonitorStatusBadge status={monitor.last_status} />
             <Button variant="outline" size="icon-sm" asChild>
-              <Link href={`${base}/nodes/${monitor.id}/edit`}>
+              <Link href={`${base}/monitors/${monitor.id}/edit`}>
                 <Pencil aria-hidden />
                 <span className="sr-only">{tMonitors("editMonitor")}</span>
               </Link>
@@ -82,7 +85,7 @@ export function MonitorDetailScreen({ monitorId }: { monitorId: string }) {
           </div>
           <p dir="ltr" className="mt-1 max-w-full truncate text-start font-mono text-xs text-muted-foreground sm:text-sm">{monitor.target}</p>
         </div>
-        <MonitorActions monitor={monitor} afterDeleteHref={`${base}/nodes`} />
+        <MonitorActions monitor={monitor} afterDeleteHref={`${base}/monitors`} />
       </header>
 
       <NodeMonitorTabs currentMonitor={monitor} />
@@ -99,20 +102,37 @@ export function MonitorDetailScreen({ monitorId }: { monitorId: string }) {
         rangeLabel=""
       />
 
-      <div className="mt-4 grid min-w-0 gap-4 xl:grid-cols-[1fr_360px]">
-        <Card className="overflow-hidden border-border/65 py-0 shadow-none">
-          <CardContent className="px-4 py-3">
-            {metricsQuery.isPending ? <Skeleton className="h-52 w-full rounded-lg" /> : metricsQuery.isError ? <ErrorState onRetry={() => void metricsQuery.refetch()} /> : (
-              <MultiLocationChart
-                series={enrichedLocations.map((loc) => ({
-                  location: loc,
-                  results: recentResults.filter((r) => (r.probe_location_id || "default") === loc.id),
-                }))}
-              />
-            )}
-          </CardContent>
-        </Card>
+      {Configuration ? (
+        <div className="mt-4">
+          <Configuration
+            monitor={monitor}
+            latestResult={recentResults[0] ?? null}
+            recentResults={recentResults}
+            probeLocations={enrichedLocations}
+            locale={locale}
+          />
+        </div>
+      ) : null}
 
+      <div className="mt-4 grid min-w-0 gap-4 xl:grid-cols-[1fr_360px]">
+        {monitor.type === "ping" ? (
+          <PingChartPanel monitorId={monitor.id} probeLocations={enrichedLocations} />
+        ) : (
+          <Card className="overflow-hidden border-border/65 py-0 shadow-none">
+            <CardContent className="px-4 py-3">
+              {metricsQuery.isPending ? <Skeleton className="h-52 w-full rounded-lg" /> : metricsQuery.isError ? <ErrorState onRetry={() => void metricsQuery.refetch()} /> : (
+                <MultiLocationChart
+                  series={enrichedLocations.map((loc) => ({
+                    location: loc,
+                    results: recentResults.filter((r) => (r.probe_location_id || "default") === loc.id),
+                  }))}
+                />
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+{monitor.type !== "ping" ? (
         <div className="flex flex-col gap-2 rounded-xl border border-border/65 bg-card/50 px-4 py-3">
           <p className="text-xs font-medium text-muted-foreground">بازه زمانی</p>
           <div className="flex gap-1">
@@ -128,6 +148,7 @@ export function MonitorDetailScreen({ monitorId }: { monitorId: string }) {
             ))}
           </div>
         </div>
+        ) : null}
       </div>
     </div>
   );

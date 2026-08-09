@@ -222,7 +222,7 @@ func (r *MonitorRepository) ClaimDue(ctx context.Context, batchSize int, fn func
 
 	rows, err := tx.Query(ctx, `
 		SELECT `+monitorColumns+`,
-		       res.target, mt.name AS type_name
+		       res.target, res.workspace_id, mt.name AS type_name
 		FROM monitors m
 		JOIN resources res ON res.id = m.resource_id
 		JOIN monitor_types mt ON mt.id = m.monitor_type_id
@@ -245,14 +245,14 @@ func (r *MonitorRepository) ClaimDue(ctx context.Context, batchSize int, fn func
 		var m domain.Monitor
 		var healthProfileID, createdBy *string
 		var configJSON []byte
-		var target, typeName string
+		var target, workspaceID, typeName string
 		var lastChecked *time.Time
 
 		if err := rows.Scan(&m.ID, &m.ResourceID, &m.MonitorTypeID, &healthProfileID, &createdBy,
 			&m.Name, &m.Enabled, &configJSON, &m.Severity,
 			&m.IntervalSeconds, &m.TimeoutMillis, &m.Retries,
 			&m.LastStatus, &lastChecked, &m.NextRunAt,
-			&m.CreatedAt, &m.UpdatedAt, &target, &typeName); err != nil {
+			&m.CreatedAt, &m.UpdatedAt, &target, &workspaceID, &typeName); err != nil {
 			return 0, fmt.Errorf("scan resource monitor claim: %w", err)
 		}
 
@@ -261,6 +261,9 @@ func (r *MonitorRepository) ClaimDue(ctx context.Context, batchSize int, fn func
 		m.LastCheckedAt = lastChecked
 		json.Unmarshal(configJSON, &m.Configuration)
 		m.ResourceTarget = target
+		if workspaceID != "" {
+			m.WorkspaceID = &workspaceID
+		}
 		m.ProbeType = domain.MonitorTypeCode(typeName)
 
 		claimedAll = append(claimedAll, claimed{monitor: m, code: m.ProbeType})

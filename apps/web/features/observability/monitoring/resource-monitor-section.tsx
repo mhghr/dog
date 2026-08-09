@@ -52,7 +52,7 @@ export function ResourceMonitorSection({ resourceId }: { resourceId: string }) {
           <ResourceMonitorDashboard
             resourceId={resourceId}
             monitorId={monitor.id}
-            metricKeys={["avg_rtt_ms", "packet_loss_percent", "jitter_ms"]}
+            metricKeys={["rtt_ms", "packet_loss_percent", "jitter_ms"]}
             isFa={isFa}
           />
         </section>

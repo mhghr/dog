@@ -3,111 +3,65 @@
 import { Activity, Radio, Waves } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { Card, CardContent } from "@/shared/ui/card";
+import { PingMetricCard } from "@/plugins/monitoring/ping/ping-metric-card";
 import type { MonitorSummaryProps } from "@/plugins/monitoring/core/definition";
-import { formatDuration } from "@/shared/utils/formatters";
 import type { ProbeResult } from "@/entities/monitor/model/result";
-import type { ProbeLocation } from "@/entities/probe/model/types";
 
-function metric(result: ProbeResult | undefined, key: string): number | null {
-  if (!result) return null;
-  const value = result.metrics?.[key];
-  return typeof value === "number" ? value : null;
+function latestByMetric(results: ProbeResult[]): ProbeResult | null {
+  return results.length > 0 ? results[0] : null;
 }
 
-interface LocationRowProps {
-  location: ProbeLocation;
-  result: ProbeResult | undefined;
-  value: (result: ProbeResult) => string;
-}
-function LocationRow({ location, result, value }: LocationRowProps) {
-  return (
-    <div className="flex min-w-0 items-center justify-between gap-4 border-b border-border/40 py-2 last:border-0">
-      <div className="flex min-w-0 items-center gap-2">
-        <span className={result ? (result.success ? "size-1.5 shrink-0 rounded-full bg-success" : "size-1.5 shrink-0 rounded-full bg-destructive") : "size-1.5 shrink-0 rounded-full bg-muted-foreground/30"} />
-        <span className="truncate text-xs text-muted-foreground">{location.name}</span>
-        {location.code ? <span className="shrink-0 font-mono text-[9px] text-muted-foreground/70">{location.code}</span> : null}
-      </div>
-      <span className="shrink-0 text-sm font-semibold tabular-nums" dir="ltr">
-        {result ? value(result) : "—"}
-      </span>
-    </div>
-  );
-}
-
-export function PingMonitorSummary({ recentResults, probeLocations, locale }: MonitorSummaryProps) {
+export function PingMonitorSummary({ monitor, recentResults, locale }: MonitorSummaryProps) {
   const t = useTranslations("monitorDetail");
-
-  const latestByLocation = new Map<string, ProbeResult>();
-  for (const result of recentResults) {
-    const id = result.probe_location_id || "default";
-    if (!latestByLocation.has(id)) latestByLocation.set(id, result);
-  }
+  const latest = latestByMetric(recentResults);
 
   return (
-    <section className="grid min-w-0 gap-3 md:grid-cols-3">
-      <Card className="min-w-0 border-border/70 bg-card/60 shadow-none">
-        <CardContent className="p-3">
-          <div className="flex items-center gap-2 border-b border-border/60 pb-2.5 text-xs font-medium">
-            <Activity className="size-3.5 text-primary" aria-hidden />
-            <span>{t("rttRange")}</span>
-          </div>
-          <div className="pt-1">
-            {probeLocations.map((location) => (
-              <LocationRow
-                key={location.id}
-                location={location}
-                result={latestByLocation.get(location.id)}
-                value={(result) => formatDuration(metric(result, "avg_rtt_ms") ?? result.duration_millis, locale)}
-              />
-            ))}
-            {probeLocations.length === 0 ? <p className="py-4 text-center text-xs text-muted-foreground">{t("noLocationResults")}</p> : null}
-          </div>
-        </CardContent>
-      </Card>
+    <section className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <PingMetricCard
+        icon={Activity}
+        label={t("rttRange")}
+        metricKey="rtt_ms"
+        latestResult={latest}
+        locale={locale}
+        format="ms"
+        warningThreshold={monitor.config.warning_latency_millis as number}
+        criticalThreshold={monitor.config.critical_latency_millis as number}
+        recentResults={recentResults}
+      />
 
-      <Card className="min-w-0 border-border/70 bg-card/60 shadow-none">
-        <CardContent className="p-3">
-          <div className="flex items-center gap-2 border-b border-border/60 pb-2.5 text-xs font-medium">
-            <Radio className="size-3.5 text-primary" aria-hidden />
-            <span>{t("packetLoss")}</span>
-          </div>
-          <div className="pt-1">
-            {probeLocations.map((location) => (
-              <LocationRow
-                key={location.id}
-                location={location}
-                result={latestByLocation.get(location.id)}
-                value={(result) => {
-                  const loss = metric(result, "packet_loss_percent");
-                  return loss != null ? `${loss.toFixed(1)}%` : "—";
-                }}
-              />
-            ))}
-            {probeLocations.length === 0 ? <p className="py-4 text-center text-xs text-muted-foreground">{t("noLocationResults")}</p> : null}
-          </div>
-        </CardContent>
-      </Card>
+      <PingMetricCard
+        icon={Radio}
+        label={t("packetLoss")}
+        metricKey="packet_loss_percent"
+        latestResult={latest}
+        locale={locale}
+        format="percent"
+        warningThreshold={monitor.config.warning_packet_loss_percent as number}
+        criticalThreshold={monitor.config.critical_packet_loss_percent as number}
+        recentResults={recentResults}
+      />
 
-      <Card className="min-w-0 border-border/70 bg-card/60 shadow-none">
-        <CardContent className="p-3">
-          <div className="flex items-center gap-2 border-b border-border/60 pb-2.5 text-xs font-medium">
-            <Waves className="size-3.5 text-primary" aria-hidden />
-            <span>{t("jitter")}</span>
-          </div>
-          <div className="pt-1">
-            {probeLocations.map((location) => (
-              <LocationRow
-                key={location.id}
-                location={location}
-                result={latestByLocation.get(location.id)}
-                value={(result) => formatDuration(metric(result, "stddev_rtt_ms"), locale)}
-              />
-            ))}
-            {probeLocations.length === 0 ? <p className="py-4 text-center text-xs text-muted-foreground">{t("noLocationResults")}</p> : null}
-          </div>
-        </CardContent>
-      </Card>
+      <PingMetricCard
+        icon={Waves}
+        label={t("jitter")}
+        metricKey="jitter_ms"
+        latestResult={latest}
+        locale={locale}
+        format="ms"
+        warningThreshold={monitor.config.warning_jitter_millis as number}
+        criticalThreshold={monitor.config.critical_jitter_millis as number}
+        recentResults={recentResults}
+      />
+
+      <PingMetricCard
+        icon={Activity}
+        label={t("currentLatency")}
+        metricKey="rtt_ms"
+        latestResult={latest}
+        locale={locale}
+        format="ms"
+        recentResults={recentResults}
+      />
     </section>
   );
 }

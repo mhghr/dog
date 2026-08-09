@@ -196,7 +196,8 @@ func (h *Handler) resourceMonitorMetrics(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if _, err := h.deps.MonitorRepo.GetByID(r.Context(), monitorID); err != nil {
+	monitor, err := h.deps.MonitorRepo.GetByID(r.Context(), monitorID)
+	if err != nil {
 		writeDomainError(w, r, err)
 		return
 	}
@@ -230,7 +231,13 @@ func (h *Handler) resourceMonitorMetrics(w http.ResponseWriter, r *http.Request)
 
 	stepSeconds := resolveStep(query.Get("step"), to.Sub(from))
 
-	series, err := h.deps.Results.SeriesByProbe(r.Context(), monitorID, from, to, stepSeconds)
+	metricKey := query.Get("metric")
+	var series []domain.ProbeSeries
+	if metricKey != "" {
+		series, err = h.deps.Results.SeriesByProbeMetric(r.Context(), monitorID, metricKey, from, to, stepSeconds)
+	} else {
+		series, err = h.deps.Results.SeriesByProbe(r.Context(), monitorID, from, to, stepSeconds)
+	}
 	if err != nil {
 		h.deps.Logger.Error("query per-probe series failed", "monitor_id", monitorID, "error", err)
 		writeDomainError(w, r, err)
@@ -252,11 +259,13 @@ func (h *Handler) resourceMonitorMetrics(w http.ResponseWriter, r *http.Request)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"series": series,
-		"latest": latest,
+		"series":       series,
+		"latest":       latest,
 		"step_seconds": stepSeconds,
 		"from":         from,
 		"to":           to,
+		"metric_key":   metricKey,
+		"monitor_type": string(monitor.Type),
 	})
 }
 

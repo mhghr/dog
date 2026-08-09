@@ -14,6 +14,7 @@ import {
 } from "@/shared/ui/select";
 import { Switch } from "@/shared/ui/switch";
 import { Textarea } from "@/shared/ui/textarea";
+import { cn } from "@/shared/utils/cn";
 import type { MonitorFormValues } from "@/features/monitor-management/schemas/schemas";
 
 type MonitorForm = UseFormReturn<MonitorFormValues>;
@@ -123,6 +124,9 @@ export function NumberField({
   min,
   max,
   step,
+  suffix,
+  bare,
+  fullWidth,
 }: {
   form: MonitorForm;
   name: FieldName;
@@ -131,13 +135,16 @@ export function NumberField({
   min?: number;
   max?: number;
   step?: number;
+  suffix?: string;
+  bare?: boolean;
+  fullWidth?: boolean;
 }) {
   const error = fieldError(form, name);
 
-  return (
-    <FieldShell name={name} label={label} hint={hint} error={error}>
+  const inputElement = (
+    <div className="relative">
       <Input
-        id={name}
+        id={String(name)}
         type="number"
         inputMode="numeric"
         dir="ltr"
@@ -145,8 +152,23 @@ export function NumberField({
         max={max}
         step={step}
         aria-invalid={Boolean(error)}
+        aria-describedby={error ? `${String(name)}-error` : undefined}
+        className={cn(suffix && "pr-12", fullWidth && "w-full min-w-[200px]")}
         {...form.register(name)}
       />
+      {suffix ? (
+        <span className="pointer-events-none absolute inset-y-0 end-0 flex items-center pe-3 text-[11px] font-medium text-muted-foreground">
+          {suffix}
+        </span>
+      ) : null}
+    </div>
+  );
+
+  if (bare) return <div className="relative">{inputElement}</div>;
+
+  return (
+    <FieldShell name={String(name)} label={label} hint={hint} error={error}>
+      {inputElement}
     </FieldShell>
   );
 }
