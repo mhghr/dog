@@ -11,12 +11,12 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
-        source: "/api/v1/:path*",
-        destination: `${apiUrl}/api/v1/:path*`,
+        source: "/api/:path*",
+        destination: `${apiUrl}/api/:path*`,
       },
       {
-        source: "/events/v1/:path*",
-        destination: `${apiUrl}/events/v1/:path*`,
+        source: "/events/:path*",
+        destination: `${apiUrl}/events/:path*`,
       },
     ];
   },

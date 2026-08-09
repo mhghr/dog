@@ -26,6 +26,9 @@ func OrgScoped(issuer *TokenIssuer) func(http.Handler) http.Handler {
 			}
 
 			ctx := context.WithValue(r.Context(), domain.OrgIDContextKey, claims.OrgID)
+			if claims.WorkspaceID != "" {
+				ctx = context.WithValue(ctx, domain.WorkspaceIDContextKey, claims.WorkspaceID)
+			}
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

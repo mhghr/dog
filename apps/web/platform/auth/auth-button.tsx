@@ -5,20 +5,19 @@ import { useTranslations } from "next-intl";
 import { Button } from "@/shared/ui/button";
 import { useMe } from "@/platform/auth/use-auth";
 import { Link } from "@/i18n/navigation";
-import { Skeleton } from "@/shared/ui/skeleton";
 
-export function AuthButton() {
+export function AuthButton({ hasToken }: { hasToken?: boolean }) {
   const t = useTranslations("navigation");
-  const meQuery = useMe();
+  const meQuery = useMe({ enabled: hasToken });
 
-  if (meQuery.isPending) {
-    return <Skeleton className="h-8 w-20 rounded-lg" />;
-  }
+  // hasToken = cookie exists; meQuery confirms validity.
+  // Fall through to login when cookie is missing or token is invalid.
+  const isAuthenticated = hasToken && meQuery.isSuccess && meQuery.data;
 
-  if (meQuery.isSuccess && meQuery.data) {
+  if (isAuthenticated) {
     return (
       <Button asChild size="sm">
-        <Link href="/login">{t("console")}</Link>
+        <Link href="/app/dashboard">{t("console")}</Link>
       </Button>
     );
   }

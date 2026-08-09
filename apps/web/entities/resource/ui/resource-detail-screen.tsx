@@ -15,10 +15,9 @@ import {
   useResource,
   useResourceMonitorResults,
   useResourceMonitors,
-  type MonitorV2,
+  type Monitor,
 } from "@/entities/resource/hooks/use-resource";
-import { Link } from "@/i18n/navigation";
-import { useConsoleBase } from "@/widgets/console-shell/use-console-base";
+import { Link, usePathname } from "@/i18n/navigation";
 import { cn } from "@/shared/utils/cn";
 import type { MonitorTypeDef } from "@/entities/resource/model/types";
 
@@ -27,7 +26,9 @@ import { MonitorConfig } from "./components/monitor-config";
 
 export function ResourceDetailScreen({ resourceId }: { resourceId: string }) {
   const locale = useLocale();
-  const base = useConsoleBase();
+  const pathname = usePathname();
+  const wsMatch = pathname.match(/^\/console\/w\/([^/]+)/);
+  const base = wsMatch ? `/console/w/${wsMatch[1]}` : "/app";
   const isFa = locale === "fa";
   const resourceQuery = useResource(resourceId);
   const monitorsQuery = useResourceMonitors(resourceId);
@@ -110,7 +111,7 @@ export function ResourceDetailScreen({ resourceId }: { resourceId: string }) {
   );
 }
 
-function MonitorRow({ resourceId, monitor }: { resourceId: string; monitor: MonitorV2 }) {
+function MonitorRow({ resourceId, monitor }: { resourceId: string; monitor: Monitor }) {
   const locale = useLocale();
   const isFa = locale === "fa";
   const deleteMonitor = useDeleteResourceMonitor(resourceId);
@@ -207,7 +208,7 @@ function SettingsPanel({
   monitors,
 }: {
   resourceId: string;
-  monitors: MonitorV2[];
+  monitors: Monitor[];
 }) {
   const locale = useLocale();
   const isFa = locale === "fa";
@@ -264,7 +265,7 @@ function TypeSelector({
   isPending,
 }: {
   types: MonitorTypeDef[];
-  monitors: MonitorV2[];
+  monitors: Monitor[];
   selectedTypeId: string | null;
   onSelect: (id: string) => void;
   isPending: boolean;

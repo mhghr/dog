@@ -205,7 +205,7 @@ func seedToken(repo *fakeBootstrapTokenRepo, rawToken string, expiresAt time.Tim
 }
 
 func doBootstrapRequest(h *Handler, body string) *httptest.ResponseRecorder {
-	r := httptest.NewRequest(http.MethodPost, "/api/v1/monitoring/bootstrap", strings.NewReader(body))
+	r := httptest.NewRequest(http.MethodPost, "/api/monitoring/bootstrap", strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	h.bootstrapAgent(rr, r)
@@ -213,7 +213,7 @@ func doBootstrapRequest(h *Handler, body string) *httptest.ResponseRecorder {
 }
 
 func doBootstrapRequestWithContext(h *Handler, ctx context.Context, body string) *httptest.ResponseRecorder {
-	r := httptest.NewRequest(http.MethodPost, "/api/v1/monitoring/bootstrap", strings.NewReader(body))
+	r := httptest.NewRequest(http.MethodPost, "/api/monitoring/bootstrap", strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
 	r = r.WithContext(ctx)
 	rr := httptest.NewRecorder()
@@ -222,7 +222,7 @@ func doBootstrapRequestWithContext(h *Handler, ctx context.Context, body string)
 }
 
 func doCompleteRegistrationRequest(h *Handler, agentID, body string) *httptest.ResponseRecorder {
-	r := httptest.NewRequest(http.MethodPost, "/api/v1/monitoring/agents/"+agentID+"/complete", strings.NewReader(body))
+	r := httptest.NewRequest(http.MethodPost, "/api/monitoring/agents/"+agentID+"/complete", strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
 
 	rctx := chi.NewRouteContext()

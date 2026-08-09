@@ -3,94 +3,94 @@
 // discoverable and consistent. Domain API objects (entities/*/api) consume
 // these path builders; UI code must never hardcode `/api/...` strings.
 
-const v1 = "/api/v1" as const;
+const api = "/api" as const;
 
 export const endpoints = {
   auth: {
-    me: `${v1}/auth/me`,
-    refresh: `${v1}/auth/refresh`,
-    logout: `${v1}/auth/logout`,
+    me: `${api}/auth/me`,
+    refresh: `${api}/auth/refresh`,
+    logout: `${api}/auth/logout`,
     otp: {
-      request: `${v1}/auth/otp/request`,
-      verify: `${v1}/auth/otp/verify`,
+      request: `${api}/auth/otp/request`,
+      verify: `${api}/auth/otp/verify`,
     },
   },
 
   organization: {
-    create: `${v1}/organizations`,
-    projects: `${v1}/organizations/projects`,
+    create: `${api}/organizations`,
+    projects: `${api}/organizations/projects`,
   },
 
   workspace: {
-    list: `${v1}/workspaces`,
+    list: `${api}/workspaces`,
   },
 
   resource: {
-    types: `${v1}/resource-types`,
-    overview: `${v1}/resources/overview`,
-    list: `${v1}/resources`,
-    byId: (id: string) => `${v1}/resources/${id}`,
-    monitors: (resourceId: string) => `${v1}/resources/${resourceId}/monitors`,
+    types: `${api}/resource-types`,
+    overview: `${api}/resources/overview`,
+    list: `${api}/resources`,
+    byId: (id: string) => `${api}/resources/${id}`,
+    monitors: (resourceId: string) => `${api}/resources/${resourceId}/monitors`,
     monitor: (resourceId: string, monitorId: string) =>
-      `${v1}/resources/${resourceId}/monitors/${monitorId}`,
+      `${api}/resources/${resourceId}/monitors/${monitorId}`,
     monitorResults: (resourceId: string, monitorId: string) =>
-      `${v1}/resources/${resourceId}/monitors/${monitorId}/results`,
+      `${api}/resources/${resourceId}/monitors/${monitorId}/results`,
     monitorMetrics: (resourceId: string, monitorId: string) =>
-      `${v1}/resources/${resourceId}/monitors/${monitorId}/metrics`,
+      `${api}/resources/${resourceId}/monitors/${monitorId}/metrics`,
   },
 
   monitor: {
-    types: `${v1}/monitor-types`,
-    typeParameters: (type: string) => `${v1}/monitor-types/${type}/parameters`,
-    list: `${v1}/monitors`,
-    byId: (id: string) => `${v1}/monitors/${id}`,
-    pause: (id: string) => `${v1}/monitors/${id}/pause`,
-    resume: (id: string) => `${v1}/monitors/${id}/resume`,
-    metrics: (id: string) => `${v1}/monitors/${id}/metrics`,
-    results: (id: string) => `${v1}/monitors/${id}/results`,
+    types: `${api}/monitor-types`,
+    typeParameters: (type: string) => `${api}/monitor-types/${type}/parameters`,
+    list: `${api}/monitors`,
+    byId: (id: string) => `${api}/monitors/${id}`,
+    pause: (id: string) => `${api}/monitors/${id}/pause`,
+    resume: (id: string) => `${api}/monitors/${id}/resume`,
+    metrics: (id: string) => `${api}/monitors/${id}/metrics`,
+    results: (id: string) => `${api}/monitors/${id}/results`,
     health: {
-      rules: (id: string) => `${v1}/monitors/${id}/health/rules`,
-      states: (id: string) => `${v1}/monitors/${id}/health/states`,
-      policies: `${v1}/monitors/health/policies`,
-      policy: (id: string) => `${v1}/monitors/health/policies/${id}`,
-      monitorPolicies: (id: string) => `${v1}/monitors/${id}/health/policies`,
+      rules: (id: string) => `${api}/monitors/${id}/health/rules`,
+      states: (id: string) => `${api}/monitors/${id}/health/states`,
+      policies: `${api}/monitors/health/policies`,
+      policy: (id: string) => `${api}/monitors/health/policies/${id}`,
+      monitorPolicies: (id: string) => `${api}/monitors/${id}/health/policies`,
     },
   },
 
   alerting: {
-    policies: `${v1}/alerting/policies`,
-    alerts: `${v1}/alerting/alerts`,
-    channels: `${v1}/alerting/channels`,
+    policies: `${api}/alerting/policies`,
+    alerts: `${api}/alerting/alerts`,
+    channels: `${api}/alerting/channels`,
   },
 
   probe: {
-    locations: `${v1}/probe-locations`,
+    locations: `${api}/probe-locations`,
   },
 
   agent: {
-    list: (params: string) => `/api/v1/admin/probe-agents${params}`,
-    byId: (id: string) => `${v1}/admin/probe-agents/${id}`,
-    approve: (id: string) => `${v1}/admin/probe-agents/${id}/approve`,
-    reject: (id: string) => `${v1}/admin/probe-agents/${id}/reject`,
-    disable: (id: string) => `${v1}/admin/probe-agents/${id}/disable`,
-    enable: (id: string) => `${v1}/admin/probe-agents/${id}/enable`,
-    revoke: (id: string) => `${v1}/admin/probe-agents/${id}/revoke`,
-    drain: (id: string) => `${v1}/admin/probe-agents/${id}/drain`,
-    publicIp: (id: string) => `${v1}/admin/probe-agents/${id}/public-ip`,
-    location: (id: string) => `${v1}/admin/probe-agents/${id}/location`,
-    enrollmentTokens: `${v1}/admin/probe-agent-enrollment-tokens`,
+    list: (params: string) => `/api/admin/probe-agents${params}`,
+    byId: (id: string) => `${api}/admin/probe-agents/${id}`,
+    approve: (id: string) => `${api}/admin/probe-agents/${id}/approve`,
+    reject: (id: string) => `${api}/admin/probe-agents/${id}/reject`,
+    disable: (id: string) => `${api}/admin/probe-agents/${id}/disable`,
+    enable: (id: string) => `${api}/admin/probe-agents/${id}/enable`,
+    revoke: (id: string) => `${api}/admin/probe-agents/${id}/revoke`,
+    drain: (id: string) => `${api}/admin/probe-agents/${id}/drain`,
+    publicIp: (id: string) => `${api}/admin/probe-agents/${id}/public-ip`,
+    location: (id: string) => `${api}/admin/probe-agents/${id}/location`,
+    enrollmentTokens: `${api}/admin/probe-agent-enrollment-tokens`,
   },
 
   statusPage: {
-    list: `${v1}/status-pages`,
-    byId: (id: string) => `${v1}/status-pages/${id}`,
+    list: `${api}/status-pages`,
+    byId: (id: string) => `${api}/status-pages/${id}`,
   },
 
   dashboard: {
-    summary: `${v1}/dashboard/summary`,
+    summary: `${api}/dashboard/summary`,
   },
 
   system: {
-    health: `${v1}/system/health`,
+    health: `${api}/system/health`,
   },
 } as const;

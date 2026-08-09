@@ -55,21 +55,23 @@ function useSidebarCtx() {
   return ctx;
 }
 
-const NAV_ITEMS = [
-  { href: "/dashboard", labelKey: "dashboard" as const, icon: SquaresFour },
-  { href: "/resources", labelKey: "resources" as const, icon: Monitor },
-  { href: "/monitors", labelKey: "monitors" as const, icon: Gauge },
-  { href: "/alerts", labelKey: "alerts" as const, icon: Warning },
-  {
-    href: "/status-pages",
-    labelKey: "statusPages" as const,
-    icon: Browser,
-  },
-  { href: "/nodes", labelKey: "myNodes" as const, icon: MapPin },
-  { href: "/agents", labelKey: "agents" as const, icon: SignOut },
-  { href: "/locations", labelKey: "locations" as const, icon: MapPin },
-  { href: "/settings", labelKey: "settings" as const, icon: GearSix },
-];
+const NAV_ITEMS = {
+  primary: [
+    { href: "/dashboard",   labelKey: "dashboard" as const,   icon: SquaresFour },
+    { href: "/resources",   labelKey: "resources" as const,   icon: Monitor },
+    { href: "/monitors",    labelKey: "monitors" as const,    icon: Gauge },
+    { href: "/alerts",      labelKey: "alerts" as const,      icon: Warning },
+    { href: "/status-pages",labelKey: "statusPages" as const, icon: Browser },
+    { href: "/locations",   labelKey: "locations" as const,   icon: MapPin },
+  ],
+  workspace: [
+    { href: "/settings/members",     labelKey: "members" as const,      icon: GearSix },
+    { href: "/settings/api-keys",    labelKey: "apiKeys" as const,      icon: GearSix },
+    { href: "/settings/integrations",labelKey: "integrations" as const, icon: GearSix },
+    { href: "/settings/billing",     labelKey: "billing" as const,      icon: GearSix },
+    { href: "/settings",             labelKey: "workspaceSettings" as const, icon: GearSix },
+  ],
+};
 
 function ToggleIcon({ collapsed }: { collapsed: boolean }) {
   return (
@@ -175,10 +177,11 @@ function SidebarContent({
   const wsMatch = pathname.match(/^\/console\/w\/([^/]+)/);
   const base = wsMatch ? `/console/w/${wsMatch[1]}` : "/app";
 
-  const navItems = NAV_ITEMS.map((item) => ({
-    ...item,
-    href: `${base}${item.href}`,
-  }));
+  const buildNav = (items: readonly { href: string; labelKey: string; icon: React.ElementType }[]) =>
+    items.map((item) => ({
+      ...item,
+      href: `${base}${item.href}`,
+    }));
 
   return (
     <>
@@ -206,8 +209,47 @@ function SidebarContent({
           </button>
         )}
       </div>
-      <nav className="flex flex-1 flex-col gap-0.5 overflow-auto p-2 pt-3">
-        {navItems.map((item) => {
+      <nav className="flex flex-1 flex-col overflow-auto p-2 pt-3">
+        {buildNav(NAV_ITEMS.primary).map((item) => {
+          const Icon = item.icon;
+          const active =
+            pathname === item.href || pathname.startsWith(`${item.href}/`);
+
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={onNav}
+              data-active={active}
+              className={cn(
+                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-all duration-150 active:scale-[0.98] hover:bg-accent hover:text-foreground",
+                active && "bg-accent text-foreground",
+                collapsed && "justify-center px-0",
+              )}
+              title={collapsed ? t(item.labelKey) : undefined}
+            >
+              <span
+                className={cn(
+                  "flex size-7 shrink-0 items-center justify-center rounded-full transition-all duration-150",
+                  active
+                    ? "bg-primary text-primary-foreground shadow-sm shadow-primary/25"
+                    : "bg-muted text-muted-foreground",
+                )}
+              >
+                <Icon className="size-4" aria-hidden />
+              </span>
+              {!collapsed && (
+                <span className="min-w-0 flex-1 truncate">
+                  {t(item.labelKey)}
+                </span>
+              )}
+            </Link>
+          );
+        })}
+
+        <div className="my-3 border-t border-border/60" />
+
+        {buildNav(NAV_ITEMS.workspace).map((item) => {
           const Icon = item.icon;
           const active =
             pathname === item.href || pathname.startsWith(`${item.href}/`);

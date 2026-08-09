@@ -1,6 +1,6 @@
 import type { MonitorStatus } from "@/entities/monitor/model/types";
 
-export interface MonitorV2 {
+export interface Monitor {
   id: string;
   resource_id: string;
   monitor_type_id: string;
@@ -21,7 +21,7 @@ export interface MonitorV2 {
   resource_target?: string;
 }
 
-export interface MonitorV2Input {
+export interface MonitorInput {
   monitor_type_id: string;
   health_profile_id?: string | null;
   name: string;

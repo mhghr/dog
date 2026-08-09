@@ -25,13 +25,13 @@ describe("apiRequest session refresh", () => {
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const url = String(input);
 
-      if (url.endsWith("/api/v1/auth/refresh")) {
+      if (url.endsWith("/api/auth/refresh")) {
         return Promise.resolve(jsonResponse(200, { access_token: "new" }));
       }
 
-      if (url.endsWith("/api/v1/auth/me")) {
+      if (url.endsWith("/api/auth/me")) {
         const isRetry = fetchMock.mock.calls.some(([earlier]) =>
-          String(earlier).endsWith("/api/v1/auth/refresh"),
+          String(earlier).endsWith("/api/auth/refresh"),
         );
         if (isRetry) {
           return Promise.resolve(jsonResponse(200, { user: { id: "u1" } }));
@@ -45,11 +45,11 @@ describe("apiRequest session refresh", () => {
     });
 
     await expect(
-      apiRequest<{ user: { id: string } }>("/api/v1/auth/me"),
+      apiRequest<{ user: { id: string } }>("/api/auth/me"),
     ).resolves.toEqual({ user: { id: "u1" } });
 
     const calledPaths = fetchMock.mock.calls.map(([input]) => String(input));
-    expect(calledPaths.some((url) => url.endsWith("/api/v1/auth/refresh"))).toBe(true);
+    expect(calledPaths.some((url) => url.endsWith("/api/auth/refresh"))).toBe(true);
   });
 
   it("never attempts refresh for the refresh endpoint itself", async () => {
@@ -57,7 +57,7 @@ describe("apiRequest session refresh", () => {
       jsonResponse(401, { error: { code: "unauthorized", message: "no session" } }),
     );
 
-    await expect(apiRequest("/api/v1/auth/refresh")).rejects.toMatchObject({
+    await expect(apiRequest("/api/auth/refresh")).rejects.toMatchObject({
       status: 401,
     });
 

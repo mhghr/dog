@@ -106,7 +106,7 @@ func (h *Handler) handleAuthError(w http.ResponseWriter, r *http.Request, err er
 	}
 }
 
-// POST /api/v1/auth/google/exchange — web console code flow.
+// POST /api/auth/google/exchange — web console code flow.
 func (h *Handler) googleExchange(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		Code        string `json:"code"`
@@ -126,7 +126,7 @@ func (h *Handler) googleExchange(w http.ResponseWriter, r *http.Request) {
 	h.writeTokenResponse(w, user, pair)
 }
 
-// POST /api/v1/auth/google/mobile — native apps post a Google ID token.
+// POST /api/auth/google/mobile — native apps post a Google ID token.
 func (h *Handler) googleMobile(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		IDToken string `json:"id_token"`
@@ -145,7 +145,7 @@ func (h *Handler) googleMobile(w http.ResponseWriter, r *http.Request) {
 	h.writeTokenResponse(w, user, pair)
 }
 
-// POST /api/v1/auth/otp/request
+// POST /api/auth/otp/request
 func (h *Handler) otpRequest(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		Phone string `json:"phone"`
@@ -172,7 +172,7 @@ func (h *Handler) otpRequest(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
-// POST /api/v1/auth/otp/verify
+// POST /api/auth/otp/verify
 func (h *Handler) otpVerify(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		Phone string `json:"phone"`
@@ -192,7 +192,7 @@ func (h *Handler) otpVerify(w http.ResponseWriter, r *http.Request) {
 	h.writeTokenResponse(w, user, pair)
 }
 
-// POST /api/v1/auth/refresh — rotates the refresh token. The token comes
+// POST /api/auth/refresh — rotates the refresh token. The token comes
 // from the HttpOnly cookie (web) or the JSON body (mobile).
 func (h *Handler) authRefresh(w http.ResponseWriter, r *http.Request) {
 	refreshToken := ""
@@ -219,7 +219,7 @@ func (h *Handler) authRefresh(w http.ResponseWriter, r *http.Request) {
 	h.writeTokenResponse(w, user, pair)
 }
 
-// POST /api/v1/auth/logout
+// POST /api/auth/logout
 func (h *Handler) authLogout(w http.ResponseWriter, r *http.Request) {
 	refreshToken := ""
 
@@ -243,7 +243,7 @@ func (h *Handler) authLogout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// GET /api/v1/auth/me
+// GET /api/auth/me
 func (h *Handler) authMe(w http.ResponseWriter, r *http.Request) {
 	userID, ok := auth.UserIDFromContext(r.Context())
 	if !ok {

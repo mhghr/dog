@@ -4,9 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { resourcesApi } from "@/entities/resource/api/resource.api";
 import type { ResourceInput } from "@/entities/resource/model/types";
 import type { ProbeResult } from "@/entities/monitor/model/result";
-import type { MonitorV2Input, MonitorV2 } from "@/entities/resource/model/monitor-v2";
+import type { MonitorInput, Monitor } from "@/entities/resource/hooks/types";
 
-export { type MonitorV2, type MonitorV2Input };
+export { type Monitor, type MonitorInput };
 
 export function useResourceTypes() {
   return useQuery({
@@ -106,7 +106,7 @@ export function useResourceMonitors(resourceId: string | undefined) {
 export function useCreateResourceMonitor(resourceId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: MonitorV2Input) => resourcesApi.createMonitor(resourceId, input),
+    mutationFn: (input: MonitorInput) => resourcesApi.createMonitor(resourceId, input),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["resources", resourceId, "monitors"] }); },
   });
 }
@@ -114,7 +114,7 @@ export function useCreateResourceMonitor(resourceId: string) {
 export function useUpdateResourceMonitor(resourceId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...input }: MonitorV2Input & { id: string }) => resourcesApi.updateMonitor(resourceId, id, input),
+    mutationFn: ({ id, ...input }: MonitorInput & { id: string }) => resourcesApi.updateMonitor(resourceId, id, input),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["resources", resourceId, "monitors"] }); },
   });
 }

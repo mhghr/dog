@@ -4,7 +4,29 @@ import { useTranslations } from "next-intl";
 
 import { AnimatedGroup } from "@/shared/ui/motion/animated-group";
 import { TextEffect } from "@/shared/ui/motion/text-effect";
-import { MONITOR_TYPE_ICONS, MONITOR_TYPES } from "@/entities/monitor/model/monitor-meta";
+import {
+  Broadcast,
+  CalendarCheck,
+  Clock,
+  EnvelopeSimple,
+  Globe,
+  PlugsConnected,
+  ShieldCheck,
+  TreeStructure,
+} from "@/shared/ui/icons";
+
+// Lightweight: inline static icons for the landing page.
+// The heavy plugin registry lives in plugins/monitoring and is NOT imported here.
+const LANDING_MONITOR_TYPES = [
+  { type: "http",             icon: Globe,           label: "http" },
+  { type: "tcp",              icon: PlugsConnected,  label: "tcp" },
+  { type: "dns",              icon: TreeStructure,   label: "dns" },
+  { type: "ping",             icon: Broadcast,       label: "ping" },
+  { type: "tls",              icon: ShieldCheck,     label: "tls" },
+  { type: "domain_expiration",icon: CalendarCheck,   label: "domain_expiration" },
+  { type: "smtp",             icon: EnvelopeSimple,  label: "smtp" },
+  { type: "ntp",              icon: Clock,           label: "ntp" },
+];
 
 const transitionVariants = {
   item: {
@@ -88,20 +110,20 @@ export default function MonitorTypesSection() {
           <div className="mask-b-from-55% relative mt-10 overflow-hidden px-4 sm:mt-14 md:mt-20">
             <div className="inset-shadow-2xs ring-background dark:inset-shadow-white/20 bg-background relative mx-auto max-w-5xl overflow-hidden rounded-2xl border p-4 shadow-lg shadow-zinc-950/15 ring-1">
               <div className="grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-2 xl:grid-cols-4">
-                {MONITOR_TYPES.map((monitorType) => {
-                  const Icon = MONITOR_TYPE_ICONS[monitorType];
+                {LANDING_MONITOR_TYPES.map((item) => {
+                  const Icon = item.icon;
                   return (
                     <div
-                      key={monitorType}
+                      key={item.type}
                       className="group flex min-w-0 flex-col gap-4 bg-card p-5 transition-colors hover:bg-accent/45"
                     >
                       <span className="grid size-10 place-items-center rounded-xl border border-border/70 bg-background text-primary transition-colors group-hover:border-primary/40">
                         <Icon className="size-4.5" aria-hidden />
                       </span>
                       <div className="min-w-0">
-                        <h3 className="text-sm font-semibold">{tTypes(monitorType)}</h3>
+                        <h3 className="text-sm font-semibold">{tTypes(item.type)}</h3>
                         <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                          {t(`typeDesc.${monitorType}`)}
+                          {t(`typeDesc.${item.type}`)}
                         </p>
                       </div>
                     </div>

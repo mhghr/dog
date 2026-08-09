@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
+import { Search } from "lucide-react";
 
 import { EmptyState } from "@/design-system/patterns/empty-state";
 import { ErrorState } from "@/design-system/patterns/error-state";
@@ -26,46 +26,7 @@ import { ResourceTypeIcon } from "@/entities/resource/ui/components/resource-typ
 import { Link, usePathname } from "@/i18n/navigation";
 import { cn } from "@/shared/utils/cn";
 
-function healthTone(status: string | undefined): string {
-  switch (status) {
-    case "healthy":
-    case "up":
-    case "ok":
-      return "bg-success/12 text-success";
-    case "degraded":
-    case "warning":
-      return "bg-warning/15 text-warning";
-    case "down":
-    case "critical":
-    case "error":
-      return "bg-destructive/12 text-destructive";
-    default:
-      return "bg-muted text-muted-foreground";
-  }
-}
-
-function healthLabel(t: (key: string) => string, status: string | undefined) {
-  switch (status) {
-    case "healthy":
-    case "up":
-    case "ok":
-      return t("healthy");
-    case "degraded":
-    case "warning":
-      return t("warning");
-    case "down":
-    case "critical":
-    case "error":
-      return t("critical");
-    default:
-      return "—";
-  }
-}
-
 function ResourceCard({ resource }: { resource: Resource }) {
-  const locale = useLocale();
-  const isFa = locale === "fa";
-  const t = useTranslations("resources");
   const pathname = usePathname();
 
   // Stay inside the active workspace console route.
@@ -79,39 +40,21 @@ function ResourceCard({ resource }: { resource: Resource }) {
         className="h-full transition-all duration-200 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5"
       >
         <CardContent className="flex h-full flex-col gap-3 p-4">
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <div className="flex items-start gap-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <ResourceTypeIcon
                 type={resource.type_icon ?? resource.type_name ?? ""}
-                className="size-6"
+                className="size-5"
               />
             </div>
-            <span
-              className={cn(
-                "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
-                healthTone(resource.health_status),
-              )}
-            >
-              <span className="size-1.5 rounded-full bg-current" aria-hidden />
-              {healthLabel(t, resource.health_status)}
-            </span>
-          </div>
-
-          <div className="min-w-0">
-            <h3 className="truncate text-sm font-semibold" dir="auto">
-              {resource.name}
-            </h3>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground" dir="ltr">
-              {resource.target || resource.type_name || "—"}
-            </p>
-          </div>
-
-          <div className="mt-auto flex items-center justify-between gap-2 border-t border-border/60 pt-3 text-xs text-muted-foreground">
-            <span>{resource.type_name ?? "—"}</span>
-            <span className="tabular-nums">
-              {resource.monitors_count ?? 0}{" "}
-              {isFa ? "مانیتور" : resource.monitors_count === 1 ? "monitor" : "monitors"}
-            </span>
+            <div className="flex min-w-0 flex-1 flex-col text-right">
+              <h3 className="truncate text-sm font-semibold">
+                {resource.name}
+              </h3>
+              <p className="truncate text-xs text-muted-foreground">
+                {resource.target || resource.type_name || "—"}
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -317,51 +260,50 @@ export default function ResourcesPage() {
 
   return (
     <div>
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">{t("title")}</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">{t("subtitle")}</p>
-        </div>
-        <Button onClick={() => setWizardOpen(true)}>
-          <Plus className="size-4" aria-hidden />
-          {t("addResource")}
-        </Button>
-      </div>
-
-      <div className="mb-5 flex items-center gap-3">
-        <div className="relative w-full max-w-sm">
+      <div dir="ltr" className="mb-5 flex items-center gap-3">
+        <div className="w-32" />
+        <div className="relative mx-auto w-full max-w-sm">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/60" />
           <Input
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
-            placeholder={t("search")}
+            className="bg-white pl-9 dark:bg-background"
             dir="auto"
           />
         </div>
+        <div className="flex w-32 justify-end">
+          <Button size="sm" onClick={() => setWizardOpen(true)}>
+            {t("addResource")}
+          </Button>
+        </div>
       </div>
 
-      {resourcesQuery.isPending ? (
-        <ResourceGridSkeleton />
-      ) : resourcesQuery.isError ? (
+      <div className="mb-5 border-b border-border" />
+
+      {resourcesQuery.isError ? (
         <ErrorState onRetry={() => void resourcesQuery.refetch()} />
       ) : resources.length === 0 ? (
-        <EmptyState
-          title={debouncedSearch ? t("noResults") : isFa ? "ریسورسی وجود ندارد" : "No resources yet"}
-          description={
-            debouncedSearch
-              ? undefined
-              : isFa
-                ? "اولین ریسورس خود را اضافه کنید"
-                : "Add your first resource to start monitoring"
-          }
-          action={
-            !debouncedSearch ? (
-              <Button onClick={() => setWizardOpen(true)}>
-                <Plus className="size-4" aria-hidden />
-                {t("addResource")}
-              </Button>
-            ) : undefined
-          }
-        />
+        resourcesQuery.isPending ? (
+          <ResourceGridSkeleton />
+        ) : (
+          <EmptyState
+            title={debouncedSearch ? t("noResults") : isFa ? "ریسورسی وجود ندارد" : "No resources yet"}
+            description={
+              debouncedSearch
+                ? undefined
+                : isFa
+                  ? "اولین ریسورس خود را اضافه کنید"
+                  : "Add your first resource to start monitoring"
+            }
+            action={
+              !debouncedSearch ? (
+                <Button onClick={() => setWizardOpen(true)}>
+                  {t("addResource")}
+                </Button>
+              ) : undefined
+            }
+          />
+        )
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {resources.map((resource) => (

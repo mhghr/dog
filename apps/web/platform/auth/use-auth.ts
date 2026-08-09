@@ -9,19 +9,20 @@ import type {
   OTPRequestResponse,
 } from "@/shared/types/auth";
 
-export function useMe() {
+export function useMe(opts?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["auth", "me"],
-    queryFn: () => apiRequest<{ user: AuthUser }>("/api/v1/auth/me"),
+    queryFn: () => apiRequest<{ user: AuthUser }>("/api/auth/me"),
     retry: false,
     staleTime: 60_000,
+    enabled: opts?.enabled !== false,
   });
 }
 
 export function useRequestOtp() {
   return useMutation({
     mutationFn: (phone: string) =>
-      apiRequest<OTPRequestResponse>("/api/v1/auth/otp/request", {
+      apiRequest<OTPRequestResponse>("/api/auth/otp/request", {
         method: "POST",
         body: JSON.stringify({ phone }),
       }),
@@ -33,7 +34,7 @@ export function useVerifyOtp() {
 
   return useMutation({
     mutationFn: (input: { phone: string; code: string }) =>
-      apiRequest<AuthTokensResponse>("/api/v1/auth/otp/verify", {
+      apiRequest<AuthTokensResponse>("/api/auth/otp/verify", {
         method: "POST",
         body: JSON.stringify(input),
       }),
@@ -48,7 +49,7 @@ export function useLogout() {
 
   return useMutation({
     mutationFn: () =>
-      apiRequest<void>("/api/v1/auth/logout", {
+      apiRequest<void>("/api/auth/logout", {
         method: "POST",
         body: "{}",
       }),

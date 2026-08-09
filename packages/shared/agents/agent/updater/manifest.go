@@ -41,7 +41,7 @@ func NewUpdateChecker(baseURL string) *UpdateChecker {
 }
 
 func (c *UpdateChecker) CheckForUpdate(currentVersion, channel, osArch string) (*ReleaseManifest, error) {
-	url := fmt.Sprintf("%s/api/v1/agent/updates/release-manifest.json", c.baseURL)
+	url := fmt.Sprintf("%s/api/agent/updates/release-manifest.json", c.baseURL)
 
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {

@@ -81,7 +81,7 @@ func (c *ResultClient) SendBatch(ctx context.Context, results []*domain.ProbeRes
 	request, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
-		c.baseURL+"/internal/v1/results/batch",
+		c.baseURL+"/internal/results/batch",
 		bytes.NewReader(payload),
 	)
 	if err != nil {
@@ -114,7 +114,7 @@ func (c *ResultClient) post(ctx context.Context, payload []byte) error {
 	request, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
-		c.baseURL+"/internal/v1/results",
+		c.baseURL+"/internal/results",
 		bytes.NewReader(payload),
 	)
 	if err != nil {

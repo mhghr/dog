@@ -42,7 +42,7 @@ async function fetchStatusPage(slug: string): Promise<PublicStatusPage | null> {
 
   try {
     const response = await fetch(
-      `${baseURL}/api/v1/status-pages/public/${encodeURIComponent(slug)}`,
+      `${baseURL}/api/status-pages/public/${encodeURIComponent(slug)}`,
       { next: { revalidate: 30 } },
     );
     if (!response.ok) {

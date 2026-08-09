@@ -92,7 +92,8 @@ func (i *TokenIssuer) VerifyAccessToken(raw string) (string, error) {
 }
 
 type OrgClaims struct {
-	OrgID string
+	OrgID       string
+	WorkspaceID string
 }
 
 func (i *TokenIssuer) ParseOrgClaims(rawToken string) (OrgClaims, error) {
@@ -118,5 +119,6 @@ func (i *TokenIssuer) ParseOrgClaims(rawToken string) (OrgClaims, error) {
 	}
 
 	orgID, _ := claims["org"].(string)
-	return OrgClaims{OrgID: orgID}, nil
+	workspaceID, _ := claims["ws"].(string)
+	return OrgClaims{OrgID: orgID, WorkspaceID: workspaceID}, nil
 }

@@ -12,7 +12,7 @@ let refreshPromise: Promise<boolean> | null = null;
 // Concurrent 401s share a single refresh request.
 async function tryRefreshSession(): Promise<boolean> {
   if (!refreshPromise) {
-    refreshPromise = fetch(`${API_ORIGIN}/api/v1/auth/refresh`, {
+    refreshPromise = fetch(`${API_ORIGIN}/api/auth/refresh`, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -85,10 +85,10 @@ async function rawRequest(path: string, init?: RequestInit): Promise<Response> {
 // wrong credentials, not an expired session). /auth/me IS refreshable —
 // it is the session probe used by the console auth gate.
 function isRefreshableRequest(path: string): boolean {
-  if (!path.startsWith("/api/v1/auth/")) {
+  if (!path.startsWith("/api/auth/")) {
     return true;
   }
-  return path === "/api/v1/auth/me";
+  return path === "/api/auth/me";
 }
 
 export async function apiRequest<T>(

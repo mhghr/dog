@@ -143,7 +143,7 @@ type MonitorTypeDef struct {
 	DefaultConfiguration   json.RawMessage `json:"default_configuration"`
 	MetricSchema           json.RawMessage `json:"metric_schema"`
 	HealthParameters       json.RawMessage `json:"health_parameters"`
-	SupportedResourceTypes json.RawMessage `json:"supported_resource_types"`
+	SupportedResourceTypes []string        `json:"supported_resource_types"`
 	CreatedAt              time.Time       `json:"created_at"`
 	UpdatedAt              time.Time       `json:"updated_at"`
 }

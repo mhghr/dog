@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const exchangeResponse = await fetch(
-      `${apiBaseURL}/api/v1/auth/google/exchange`,
+      `${apiBaseURL}/api/auth/google/exchange`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },

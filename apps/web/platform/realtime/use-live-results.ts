@@ -21,7 +21,7 @@ export function useLiveResults(enabled = true) {
       return;
     }
 
-    const client = new SseClient("/events/v1/stream");
+    const client = new SseClient("/events/stream");
     client.connect();
 
     const off = client.on(REAL_TIME_EVENTS.probeResult, (event) => {

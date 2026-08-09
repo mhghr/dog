@@ -6,7 +6,7 @@ import type {
   ResourceType,
   MonitorTypeDef,
 } from "@/entities/resource/model/types";
-import type { MonitorV2, MonitorV2Input } from "@/entities/resource/model/monitor-v2";
+import type { Monitor, MonitorInput } from "@/entities/resource/hooks/types";
 import type { ProbeResult } from "@/entities/monitor/model/result";
 
 export const resourcesApi = {
@@ -51,15 +51,15 @@ export const resourcesApi = {
   },
 
   listMonitors(resourceId: string) {
-    return apiRequest<{ items: MonitorV2[] }>(endpoints.resource.monitors(resourceId));
+    return apiRequest<{ items: Monitor[] }>(endpoints.resource.monitors(resourceId));
   },
 
-  createMonitor(resourceId: string, input: MonitorV2Input) {
-    return apiRequest<MonitorV2>(endpoints.resource.monitors(resourceId), { method: "POST", body: JSON.stringify(input) });
+  createMonitor(resourceId: string, input: MonitorInput) {
+    return apiRequest<Monitor>(endpoints.resource.monitors(resourceId), { method: "POST", body: JSON.stringify(input) });
   },
 
-  updateMonitor(resourceId: string, id: string, input: MonitorV2Input) {
-    return apiRequest<MonitorV2>(endpoints.resource.monitor(resourceId, id), { method: "PUT", body: JSON.stringify(input) });
+  updateMonitor(resourceId: string, id: string, input: MonitorInput) {
+    return apiRequest<Monitor>(endpoints.resource.monitor(resourceId, id), { method: "PUT", body: JSON.stringify(input) });
   },
 
   deleteMonitor(resourceId: string, id: string) {

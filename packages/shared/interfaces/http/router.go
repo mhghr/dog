@@ -94,17 +94,17 @@ func NewRouter(deps Deps) http.Handler {
 	router.Get("/health/ready", handler.healthReady)
 	router.Method(http.MethodGet, "/metrics", deps.Prom)
 
-	router.Route("/api/v1", func(r chi.Router) {
+	router.Route("/api", func(r chi.Router) {
 		r.Use(middleware.Timeout(60 * time.Second))
 
 		// Public, unauthenticated status page projection.
 		r.Get("/status-pages/public/{slug}", handler.publicStatusPage)
 
 		// Agent enrollment (public, token-authenticated)
-		r.Post("/agent/v1/enroll", handler.agentEnroll)
+		r.Post("/agent/enroll", handler.agentEnroll)
 
 		// Agent status polling (public, agent ID lookup only)
-		r.Get("/agent/v1/status/{agentID}", handler.agentStatus)
+		r.Get("/agent/status/{agentID}", handler.agentStatus)
 
 		// Monitoring agent bootstrap (public, one-time token authenticated)
 		r.Post("/monitoring/bootstrap", handler.bootstrapAgent)
@@ -256,10 +256,10 @@ func NewRouter(deps Deps) http.Handler {
 
 	router.Group(func(r chi.Router) {
 		r.Use(requireAuth)
-		r.Get("/events/v1/stream", handler.eventStream)
+		r.Get("/events/stream", handler.eventStream)
 	})
 
-	router.Route("/internal/v1", func(r chi.Router) {
+	router.Route("/internal", func(r chi.Router) {
 		r.Use(handler.workerAuth)
 		r.Post("/results", handler.ingestResult)
 		r.Post("/results/batch", handler.ingestResultBatch)

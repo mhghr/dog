@@ -128,8 +128,8 @@ func (h *Handler) bootstrapAgent(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"agent_id":            agentID,
 		"agent_secret":        agentSecret,
-		"config_url":          "/api/v1/monitoring/agents/" + agentID + "/config",
-		"heartbeat_url":       "/api/v1/monitoring/agents/" + agentID + "/heartbeat",
+		"config_url":          "/api/monitoring/agents/" + agentID + "/config",
+		"heartbeat_url":       "/api/monitoring/agents/" + agentID + "/heartbeat",
 		"config_poll_seconds": 60,
 	})
 }
