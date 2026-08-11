@@ -36,6 +36,11 @@ Thumbs.db
 .agents/
 .opencode/
 
+# repowise
+.repowise/
+.claude/
+.mcp.json
+
 # Docker volumes (local)
 postgres_data/
 redis_data/
