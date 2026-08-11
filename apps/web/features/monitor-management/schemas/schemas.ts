@@ -316,16 +316,32 @@ export function buildMonitorPayload(values: MonitorFormValues): CreateMonitorInp
   };
 }
 
+function applyReverseTransform(raw: unknown, f: FieldDef): unknown | undefined {
+  if (f.reverse === "csv") {
+    const arr = Array.isArray(raw) ? (raw as unknown[]).map(String) : [];
+    return arr.length > 0 ? arr.join(", ") : undefined;
+  }
+  if (f.reverse === "headers") {
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      return formatHeaders(raw as Record<string, unknown>);
+    }
+    return undefined;
+  }
+  if (f.transform === "codes") {
+    const arr = Array.isArray(raw) ? (raw as number[]).map(String) : [];
+    return arr.length > 0 ? arr.join(", ") : undefined;
+  }
+  return raw;
+}
+
 export function monitorToFormValues(monitor: Monitor): MonitorFormValues {
   const values = defaultFormValues(monitor.type);
   const config = monitor.config ?? {};
 
-  const str = (key: string) =>
-    typeof config[key] === "string" ? (config[key] as string) : undefined;
-  const num = (key: string) =>
-    typeof config[key] === "number" ? (config[key] as number) : undefined;
   const bool = (key: string) =>
     typeof config[key] === "boolean" ? (config[key] as boolean) : undefined;
+  const num = (key: string) =>
+    typeof config[key] === "number" ? (config[key] as number) : undefined;
 
   values.name = monitor.name;
   values.type = monitor.type;
@@ -347,34 +363,10 @@ export function monitorToFormValues(monitor: Monitor): MonitorFormValues {
       continue;
     }
 
-    let result: unknown = raw;
-    switch (f.reverse) {
-      case "csv": {
-        const arr = Array.isArray(raw) ? (raw as unknown[]).map(String) : [];
-        if (arr.length > 0) result = arr.join(", ");
-        else continue;
-        break;
-      }
-      case "headers": {
-        if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-          result = formatHeaders(raw as Record<string, unknown>);
-        } else continue;
-        break;
-      }
-      default:
-        switch (f.transform) {
-          case "codes": {
-            const arr = Array.isArray(raw) ? (raw as number[]).map(String) : [];
-            if (arr.length > 0) result = arr.join(", ");
-            else continue;
-            break;
-          }
-          default:
-            result = raw;
-        }
+    const result = applyReverseTransform(raw, f);
+    if (result !== undefined) {
+      (values as Record<string, unknown>)[f.formKey] = result;
     }
-
-    (values as Record<string, unknown>)[f.formKey] = result;
   }
 
   return values;
