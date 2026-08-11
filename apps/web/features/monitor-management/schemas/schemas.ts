@@ -154,10 +154,7 @@ export function defaultFormValues(type: MonitorType = "http"): MonitorFormValues
 }
 
 function parseCsv(raw?: string): string[] {
-  if (!raw) {
-    return [];
-  }
-
+  if (!raw) return [];
   return raw
     .split(/[,\n]/)
     .map((item) => item.trim())
@@ -172,134 +169,135 @@ function parseStatusCodes(raw?: string): number[] {
 
 function parseHeaders(raw?: string): Record<string, string> {
   const headers: Record<string, string> = {};
-
   for (const line of (raw ?? "").split("\n")) {
     const separator = line.indexOf(":");
-    if (separator <= 0) {
-      continue;
-    }
-
+    if (separator <= 0) continue;
     const name = line.slice(0, separator).trim();
     const value = line.slice(separator + 1).trim();
-    if (name) {
-      headers[name] = value;
-    }
+    if (name) headers[name] = value;
   }
-
   return headers;
 }
 
-// buildProbeConfig converts flat form values into the per-type config object
-// expected by the API.
+function joinCsv(arr: unknown[]): string {
+  return arr.map(String).join(", ");
+}
+
+function formatHeaders(obj: Record<string, unknown>): string {
+  return Object.entries(obj)
+    .map(([name, value]) => `${name}: ${String(value)}`)
+    .join("\n");
+}
+
+type FieldDef = {
+  configKey: string;
+  formKey: string;
+  transform?: "upper" | "codes" | "csv" | "headers";
+  reverse?: "csv" | "csv-list" | "headers";
+  optional?: true;
+};
+
+const TYPE_FIELDS: Record<string, FieldDef[]> = {
+  http: [
+    { configKey: "method", formKey: "http_method", transform: "upper" },
+    { configKey: "expected_status_codes", formKey: "http_expected_status_codes", transform: "codes", reverse: "csv" },
+    { configKey: "body_contains", formKey: "http_body_contains" },
+    { configKey: "body", formKey: "http_body" },
+    { configKey: "headers", formKey: "http_headers", transform: "headers", reverse: "headers" },
+    { configKey: "follow_redirects", formKey: "http_follow_redirects", optional: true },
+    { configKey: "max_redirects", formKey: "http_max_redirects" },
+    { configKey: "verify_tls", formKey: "http_verify_tls", optional: true },
+  ],
+  tcp: [
+    { configKey: "port", formKey: "tcp_port" },
+  ],
+  dns: [
+    { configKey: "server", formKey: "dns_server" },
+    { configKey: "record_type", formKey: "dns_record_type", transform: "upper" },
+    { configKey: "expected_values", formKey: "dns_expected_values", transform: "csv", reverse: "csv" },
+  ],
+  ping: [
+    { configKey: "packet_count", formKey: "ping_packet_count" },
+    { configKey: "packet_interval_millis", formKey: "ping_packet_interval_millis" },
+    { configKey: "warning_latency_millis", formKey: "ping_warning_latency_millis" },
+    { configKey: "critical_latency_millis", formKey: "ping_critical_latency_millis" },
+    { configKey: "warning_packet_loss_percent", formKey: "ping_warning_packet_loss_percent" },
+    { configKey: "critical_packet_loss_percent", formKey: "ping_critical_packet_loss_percent" },
+    { configKey: "warning_jitter_millis", formKey: "ping_warning_jitter_millis" },
+    { configKey: "critical_jitter_millis", formKey: "ping_critical_jitter_millis" },
+  ],
+  tls: [
+    { configKey: "port", formKey: "tls_port" },
+    { configKey: "server_name", formKey: "tls_server_name" },
+    { configKey: "verify_chain", formKey: "tls_verify_chain", optional: true },
+    { configKey: "verify_hostname", formKey: "tls_verify_hostname", optional: true },
+    { configKey: "minimum_tls_version", formKey: "tls_min_version" },
+    { configKey: "warning_days", formKey: "tls_warning_days" },
+    { configKey: "critical_days", formKey: "tls_critical_days" },
+    { configKey: "expected_issuer_contains", formKey: "tls_expected_issuer" },
+    { configKey: "expected_fingerprint_sha256", formKey: "tls_expected_fingerprint" },
+  ],
+  domain_expiration: [
+    { configKey: "warning_days", formKey: "domain_warning_days" },
+    { configKey: "critical_days", formKey: "domain_critical_days" },
+    { configKey: "check_nameservers", formKey: "domain_check_nameservers", optional: true },
+    { configKey: "expected_registrar_contains", formKey: "domain_expected_registrar" },
+    { configKey: "expected_nameservers", formKey: "domain_expected_nameservers", transform: "csv", reverse: "csv" },
+  ],
+  smtp: [
+    { configKey: "port", formKey: "smtp_port" },
+    { configKey: "mode", formKey: "smtp_mode" },
+    { configKey: "ehlo_domain", formKey: "smtp_ehlo_domain" },
+    { configKey: "require_starttls", formKey: "smtp_require_starttls", optional: true },
+    { configKey: "verify_tls", formKey: "smtp_verify_tls", optional: true },
+    { configKey: "expected_banner_contains", formKey: "smtp_expected_banner" },
+    { configKey: "expected_capabilities", formKey: "smtp_expected_capabilities", transform: "csv", reverse: "csv" },
+  ],
+  ntp: [
+    { configKey: "port", formKey: "ntp_port" },
+    { configKey: "version", formKey: "ntp_version" },
+    { configKey: "max_offset_millis", formKey: "ntp_max_offset_millis" },
+    { configKey: "max_round_trip_millis", formKey: "ntp_max_round_trip_millis" },
+    { configKey: "allowed_stratum_min", formKey: "ntp_stratum_min" },
+    { configKey: "allowed_stratum_max", formKey: "ntp_stratum_max" },
+    { configKey: "warning_offset_millis", formKey: "ntp_warning_offset_millis" },
+    { configKey: "warning_round_trip_millis", formKey: "ntp_warning_round_trip_millis" },
+  ],
+};
+
+function isEmptyValue(value: unknown): boolean {
+  return value === undefined || value === null || value === "" ||
+    (Array.isArray(value) && value.length === 0) ||
+    (typeof value === "object" && !Array.isArray(value) && Object.keys(value as object).length === 0);
+}
+
+function applyTransform(value: unknown, transform: FieldDef["transform"]): unknown {
+  switch (transform) {
+    case "upper": return typeof value === "string" ? value.toUpperCase() : value;
+    case "codes": return parseStatusCodes(value as string);
+    case "csv": return parseCsv(value as string);
+    case "headers": return parseHeaders(value as string);
+    default: return value;
+  }
+}
+
 export function buildProbeConfig(values: MonitorFormValues): Record<string, unknown> {
   const config: Record<string, unknown> = {};
 
   const set = (key: string, value: unknown) => {
-    if (
-      value === undefined ||
-      value === null ||
-      value === "" ||
-      (Array.isArray(value) && value.length === 0) ||
-      (typeof value === "object" &&
-        !Array.isArray(value) &&
-        Object.keys(value as object).length === 0)
-    ) {
-      return;
-    }
+    if (isEmptyValue(value)) return;
     config[key] = value;
   };
 
   set("warning_duration_millis", values.warning_duration_millis);
   set("critical_duration_millis", values.critical_duration_millis);
 
-  switch (values.type) {
-    case "http": {
-      set("method", values.http_method?.toUpperCase());
-      const codes = parseStatusCodes(values.http_expected_status_codes);
-      if (codes.length > 0) set("expected_status_codes", codes);
-      set("body_contains", values.http_body_contains);
-      set("body", values.http_body);
-      set("headers", parseHeaders(values.http_headers));
-      if (values.http_follow_redirects !== undefined) {
-        set("follow_redirects", values.http_follow_redirects);
-      }
-      set("max_redirects", values.http_max_redirects);
-      if (values.http_verify_tls !== undefined) {
-        set("verify_tls", values.http_verify_tls);
-      }
-      break;
-    }
-    case "tcp": {
-      set("port", values.tcp_port);
-      break;
-    }
-    case "dns": {
-      set("server", values.dns_server);
-      set("record_type", values.dns_record_type?.toUpperCase());
-      const expected = parseCsv(values.dns_expected_values);
-      if (expected.length > 0) set("expected_values", expected);
-      break;
-    }
-    case "ping": {
-      set("packet_count", values.ping_packet_count);
-      set("packet_interval_millis", values.ping_packet_interval_millis);
-      set("warning_latency_millis", values.ping_warning_latency_millis);
-      set("critical_latency_millis", values.ping_critical_latency_millis);
-      set("warning_packet_loss_percent", values.ping_warning_packet_loss_percent);
-      set("critical_packet_loss_percent", values.ping_critical_packet_loss_percent);
-      set("warning_jitter_millis", values.ping_warning_jitter_millis);
-      set("critical_jitter_millis", values.ping_critical_jitter_millis);
-      break;
-    }
-    case "tls": {
-      set("port", values.tls_port);
-      set("server_name", values.tls_server_name);
-      if (values.tls_verify_chain !== undefined) set("verify_chain", values.tls_verify_chain);
-      if (values.tls_verify_hostname !== undefined) {
-        set("verify_hostname", values.tls_verify_hostname);
-      }
-      set("minimum_tls_version", values.tls_min_version);
-      set("warning_days", values.tls_warning_days);
-      set("critical_days", values.tls_critical_days);
-      set("expected_issuer_contains", values.tls_expected_issuer);
-      set("expected_fingerprint_sha256", values.tls_expected_fingerprint);
-      break;
-    }
-    case "domain_expiration": {
-      set("warning_days", values.domain_warning_days);
-      set("critical_days", values.domain_critical_days);
-      if (values.domain_check_nameservers !== undefined) {
-        set("check_nameservers", values.domain_check_nameservers);
-      }
-      set("expected_registrar_contains", values.domain_expected_registrar);
-      const nameservers = parseCsv(values.domain_expected_nameservers);
-      if (nameservers.length > 0) set("expected_nameservers", nameservers);
-      break;
-    }
-    case "smtp": {
-      set("port", values.smtp_port);
-      set("mode", values.smtp_mode);
-      set("ehlo_domain", values.smtp_ehlo_domain);
-      if (values.smtp_require_starttls !== undefined) {
-        set("require_starttls", values.smtp_require_starttls);
-      }
-      if (values.smtp_verify_tls !== undefined) set("verify_tls", values.smtp_verify_tls);
-      set("expected_banner_contains", values.smtp_expected_banner);
-      const capabilities = parseCsv(values.smtp_expected_capabilities);
-      if (capabilities.length > 0) set("expected_capabilities", capabilities);
-      break;
-    }
-    case "ntp": {
-      set("port", values.ntp_port);
-      set("version", values.ntp_version);
-      set("max_offset_millis", values.ntp_max_offset_millis);
-      set("max_round_trip_millis", values.ntp_max_round_trip_millis);
-      set("allowed_stratum_min", values.ntp_stratum_min);
-      set("allowed_stratum_max", values.ntp_stratum_max);
-      set("warning_offset_millis", values.ntp_warning_offset_millis);
-      set("warning_round_trip_millis", values.ntp_warning_round_trip_millis);
-      break;
-    }
+  const fields = TYPE_FIELDS[values.type] ?? [];
+  for (const f of fields) {
+    const raw = (values as Record<string, unknown>)[f.formKey];
+    if (f.optional && raw === undefined) continue;
+    const transformed = f.transform ? applyTransform(raw, f.transform) : raw;
+    set(f.configKey, transformed);
   }
 
   return config;
@@ -318,8 +316,6 @@ export function buildMonitorPayload(values: MonitorFormValues): CreateMonitorInp
   };
 }
 
-// monitorToFormValues flattens a stored monitor back into form values for the
-// edit screen.
 export function monitorToFormValues(monitor: Monitor): MonitorFormValues {
   const values = defaultFormValues(monitor.type);
   const config = monitor.config ?? {};
@@ -330,8 +326,6 @@ export function monitorToFormValues(monitor: Monitor): MonitorFormValues {
     typeof config[key] === "number" ? (config[key] as number) : undefined;
   const bool = (key: string) =>
     typeof config[key] === "boolean" ? (config[key] as boolean) : undefined;
-  const list = (key: string) =>
-    Array.isArray(config[key]) ? (config[key] as unknown[]).map(String) : [];
 
   values.name = monitor.name;
   values.type = monitor.type;
@@ -343,96 +337,44 @@ export function monitorToFormValues(monitor: Monitor): MonitorFormValues {
   values.warning_duration_millis = num("warning_duration_millis");
   values.critical_duration_millis = num("critical_duration_millis");
 
-  switch (monitor.type) {
-    case "http": {
-      values.http_method = str("method") ?? values.http_method;
-      const codes = list("expected_status_codes");
-      if (codes.length > 0) values.http_expected_status_codes = codes.join(", ");
-      values.http_body_contains = str("body_contains");
-      values.http_body = str("body");
-      const headers = config["headers"];
-      if (headers && typeof headers === "object" && !Array.isArray(headers)) {
-        values.http_headers = Object.entries(headers as Record<string, unknown>)
-          .map(([name, value]) => `${name}: ${String(value)}`)
-          .join("\n");
+  const fields = TYPE_FIELDS[monitor.type] ?? [];
+  for (const f of fields) {
+    const raw = config[f.configKey];
+    if (raw == null) continue;
+
+    if (f.optional && typeof raw === "boolean") {
+      (values as Record<string, unknown>)[f.formKey] = bool(f.configKey) ?? (values as Record<string, unknown>)[f.formKey];
+      continue;
+    }
+
+    let result: unknown = raw;
+    switch (f.reverse) {
+      case "csv": {
+        const arr = Array.isArray(raw) ? (raw as unknown[]).map(String) : [];
+        if (arr.length > 0) result = arr.join(", ");
+        else continue;
+        break;
       }
-      values.http_follow_redirects = bool("follow_redirects") ?? values.http_follow_redirects;
-      values.http_max_redirects = num("max_redirects");
-      values.http_verify_tls = bool("verify_tls") ?? values.http_verify_tls;
-      break;
-    }
-    case "tcp": {
-      values.tcp_port = num("port");
-      break;
-    }
-    case "dns": {
-      values.dns_server = str("server") ?? values.dns_server;
-      values.dns_record_type = str("record_type") ?? values.dns_record_type;
-      const expected = list("expected_values");
-      if (expected.length > 0) values.dns_expected_values = expected.join(", ");
-      break;
-    }
-    case "ping": {
-      values.ping_packet_count = num("packet_count") ?? values.ping_packet_count;
-      values.ping_packet_interval_millis = num("packet_interval_millis");
-      values.ping_warning_latency_millis = num("warning_latency_millis") ?? values.ping_warning_latency_millis;
-      values.ping_critical_latency_millis = num("critical_latency_millis") ?? values.ping_critical_latency_millis;
-      values.ping_warning_packet_loss_percent = num("warning_packet_loss_percent");
-      values.ping_critical_packet_loss_percent = num("critical_packet_loss_percent");
-      values.ping_warning_jitter_millis = num("warning_jitter_millis");
-      values.ping_critical_jitter_millis = num("critical_jitter_millis");
-      break;
-    }
-    case "tls": {
-      values.tls_port = num("port") ?? values.tls_port;
-      values.tls_server_name = str("server_name");
-      values.tls_verify_chain = bool("verify_chain") ?? values.tls_verify_chain;
-      values.tls_verify_hostname = bool("verify_hostname") ?? values.tls_verify_hostname;
-      values.tls_min_version = str("minimum_tls_version") ?? values.tls_min_version;
-      values.tls_warning_days = num("warning_days") ?? values.tls_warning_days;
-      values.tls_critical_days = num("critical_days") ?? values.tls_critical_days;
-      values.tls_expected_issuer = str("expected_issuer_contains");
-      values.tls_expected_fingerprint = str("expected_fingerprint_sha256");
-      break;
-    }
-    case "domain_expiration": {
-      values.domain_warning_days = num("warning_days") ?? values.domain_warning_days;
-      values.domain_critical_days = num("critical_days") ?? values.domain_critical_days;
-      values.domain_check_nameservers =
-        bool("check_nameservers") ?? values.domain_check_nameservers;
-      values.domain_expected_registrar = str("expected_registrar_contains");
-      const nameservers = list("expected_nameservers");
-      if (nameservers.length > 0) {
-        values.domain_expected_nameservers = nameservers.join(", ");
+      case "headers": {
+        if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+          result = formatHeaders(raw as Record<string, unknown>);
+        } else continue;
+        break;
       }
-      break;
+      default:
+        switch (f.transform) {
+          case "codes": {
+            const arr = Array.isArray(raw) ? (raw as number[]).map(String) : [];
+            if (arr.length > 0) result = arr.join(", ");
+            else continue;
+            break;
+          }
+          default:
+            result = raw;
+        }
     }
-    case "smtp": {
-      values.smtp_port = num("port") ?? values.smtp_port;
-      values.smtp_mode = str("mode") ?? values.smtp_mode;
-      values.smtp_ehlo_domain = str("ehlo_domain") ?? values.smtp_ehlo_domain;
-      values.smtp_require_starttls =
-        bool("require_starttls") ?? values.smtp_require_starttls;
-      values.smtp_verify_tls = bool("verify_tls") ?? values.smtp_verify_tls;
-      values.smtp_expected_banner = str("expected_banner_contains");
-      const capabilities = list("expected_capabilities");
-      if (capabilities.length > 0) {
-        values.smtp_expected_capabilities = capabilities.join(", ");
-      }
-      break;
-    }
-    case "ntp": {
-      values.ntp_port = num("port") ?? values.ntp_port;
-      values.ntp_version = num("version") ?? values.ntp_version;
-      values.ntp_max_offset_millis = num("max_offset_millis") ?? values.ntp_max_offset_millis;
-      values.ntp_max_round_trip_millis =
-        num("max_round_trip_millis") ?? values.ntp_max_round_trip_millis;
-      values.ntp_stratum_min = num("allowed_stratum_min");
-      values.ntp_stratum_max = num("allowed_stratum_max");
-      values.ntp_warning_offset_millis = num("warning_offset_millis");
-      values.ntp_warning_round_trip_millis = num("warning_round_trip_millis");
-      break;
-    }
+
+    (values as Record<string, unknown>)[f.formKey] = result;
   }
 
   return values;

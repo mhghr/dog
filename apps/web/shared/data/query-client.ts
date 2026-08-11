@@ -3,7 +3,7 @@ import { QueryClient } from "@tanstack/react-query";
 // Cache policy knobs (seconds). Static reference data is cached for a long
 // time; normal operational data for tens of seconds; realtime data streams
 // through SSE/WebSocket instead of polling.
-export const cachePolicy = {
+const cachePolicy = {
   static: {
     staleTime: 60 * 60 * 1000, // 1h — resource types, plugin schemas
     gcTime: 24 * 60 * 60 * 1000, // 24h

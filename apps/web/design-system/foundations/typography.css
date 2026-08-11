@@ -1,0 +1,88 @@
+/* ════════════════════════════════════════════════════════════════
+   FOUNDATIONS — Typography
+   Defines the type scale. Components use these, never raw sizes.
+   ════════════════════════════════════════════════════════════════ */
+
+@layer foundations {
+  /* ── Display ── */
+  .text-display {
+    font-size: var(--text-display);
+    line-height: var(--leading-display);
+    letter-spacing: var(--tracking-display);
+    font-weight: var(--weight-display);
+  }
+
+  /* ── Headings ── */
+  .heading-1 {
+    font-size: var(--text-h1);
+    line-height: var(--leading-h1);
+    letter-spacing: var(--tracking-h1);
+    font-weight: var(--weight-h1);
+  }
+
+  .heading-2 {
+    font-size: var(--text-h2);
+    line-height: var(--leading-h2);
+    letter-spacing: var(--tracking-h2);
+    font-weight: var(--weight-h2);
+  }
+
+  .heading-3 {
+    font-size: var(--text-h3);
+    line-height: var(--leading-h3);
+    letter-spacing: var(--tracking-h3);
+    font-weight: var(--weight-h3);
+  }
+
+  /* ── Body ── */
+  .text-body-lg {
+    font-size: var(--text-body-lg);
+    line-height: var(--leading-body);
+  }
+
+  .text-body {
+    font-size: var(--text-body);
+    line-height: var(--leading-body);
+  }
+
+  .text-body-sm {
+    font-size: var(--text-body-sm);
+    line-height: var(--leading-body-sm);
+  }
+
+  /* ── Labels ── */
+  .text-label {
+    font-size: var(--text-label);
+    line-height: var(--leading-label);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+    font-weight: var(--weight-label);
+  }
+
+  .text-caption {
+    font-size: var(--text-caption);
+    line-height: var(--leading-caption);
+  }
+
+  /* ── Mono ── */
+  .text-mono {
+    font-size: var(--text-mono);
+    line-height: var(--leading-mono);
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .text-mono-sm {
+    font-size: var(--text-mono-sm);
+    line-height: var(--leading-mono);
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Weight utilities ── */
+  .text-regular  { font-weight: var(--weight-regular); }
+  .text-medium   { font-weight: var(--weight-medium); }
+  .text-semibold { font-weight: var(--weight-semibold); }
+  .text-bold     { font-weight: var(--weight-bold); }
+  .text-extrabold { font-weight: var(--weight-extrabold); }
+}

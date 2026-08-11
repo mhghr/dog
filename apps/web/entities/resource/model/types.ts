@@ -38,6 +38,8 @@ export interface Resource {
   monitors_count?: number;
   health_status?: string;
   health_score?: number;
+  last_checked_at?: string;
+  avg_response_ms?: number;
   tags?: Tag[];
   created_at: string;
   updated_at: string;

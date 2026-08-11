@@ -13,7 +13,6 @@ import {
   SelectValue,
 } from "@/shared/ui/select";
 import { Switch } from "@/shared/ui/switch";
-import { Textarea } from "@/shared/ui/textarea";
 import { cn } from "@/shared/utils/cn";
 import type { MonitorFormValues } from "@/features/monitor-management/schemas/schemas";
 
@@ -79,37 +78,6 @@ export function TextField({
         dir={dir}
         aria-invalid={Boolean(error)}
         aria-describedby={error ? `${name}-error` : undefined}
-        {...form.register(name)}
-      />
-    </FieldShell>
-  );
-}
-
-export function TextAreaField({
-  form,
-  name,
-  label,
-  placeholder,
-  hint,
-  rows = 3,
-}: {
-  form: MonitorForm;
-  name: FieldName;
-  label: string;
-  placeholder?: string;
-  hint?: string;
-  rows?: number;
-}) {
-  const error = fieldError(form, name);
-
-  return (
-    <FieldShell name={name} label={label} hint={hint} error={error}>
-      <Textarea
-        id={name}
-        dir="ltr"
-        rows={rows}
-        placeholder={placeholder}
-        aria-invalid={Boolean(error)}
         {...form.register(name)}
       />
     </FieldShell>

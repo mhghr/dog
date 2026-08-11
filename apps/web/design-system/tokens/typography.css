@@ -1,22 +1,69 @@
 /* ════════════════════════════════════════════════════════════════
-   TYPOGRAPHY TOKENS — font families, sizes, weights, tracking,
-   line-height.  Uses `rem` for sizes so they scale with the user's
-   root font-size preference.
+   FOUNDATIONS — Typography tokens
    ════════════════════════════════════════════════════════════════ */
 
 @theme inline {
-  --font-sans: var(--sans-font);
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  --font-heading: var(--heading-font);
-  --font-display: var(--display-font);
+  /* ── Font families ── */
+  --font-sans: var(--font-family-sans);
+  --font-mono: var(--font-family-mono);
 
-  /* Caption scale — used in marketing mock-ups and mono labels.
-     Added because the default Tailwind scale bottoms out at text-xs
-     (0.75rem / 12 px) while design calls for smaller mono labels. */
-  --text-caption-sm: 0.5625rem;
-  --text-caption-sm--line-height: 1rem;
-  --text-caption: 0.625rem;
-  --text-caption--line-height: 1rem;
-  --text-caption-lg: 0.6875rem;
-  --text-caption-lg--line-height: 1rem;
+  /* ── Size scale ── */
+  --text-display: var(--font-size-display);
+  --text-h1: var(--font-size-h1);
+  --text-h2: var(--font-size-h2);
+  --text-h3: var(--font-size-h3);
+  --text-body-lg: var(--font-size-body-lg);
+  --text-body: var(--font-size-body);
+  --text-body-sm: var(--font-size-body-sm);
+  --text-label: var(--font-size-label);
+  --text-caption: var(--font-size-caption);
+  --text-mono: var(--font-size-mono);
+  --text-mono-sm: var(--font-size-mono-sm);
+
+  /* ── Leading (line-height) ── */
+  --leading-display: 1.05;
+  --leading-h1: 1.15;
+  --leading-h2: 1.2;
+  --leading-h3: 1.25;
+  --leading-body: 1.55;
+  --leading-body-sm: 1.5;
+  --leading-label: 1.2;
+  --leading-caption: 1.4;
+  --leading-mono: 1.4;
+
+  /* ── Tracking (letter-spacing) ── */
+  --tracking-display: -0.025em;
+  --tracking-h1: -0.02em;
+  --tracking-h2: -0.015em;
+  --tracking-h3: -0.01em;
+  --tracking-label: 0.06em;
+
+  /* ── Weight ── */
+  --weight-display: 700;
+  --weight-h1: 700;
+  --weight-h2: 600;
+  --weight-h3: 600;
+  --weight-label: 600;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --weight-extrabold: 800;
+}
+
+:root {
+  --font-family-sans: var(--sans-font, ui-sans-serif, system-ui, sans-serif);
+  --font-family-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --font-size-display: clamp(2.25rem, 5vw, 3.5rem);
+  --font-size-h1: 1.5rem;
+  --font-size-h2: 1.25rem;
+  --font-size-h3: 1.125rem;
+  --font-size-body-lg: 1.0625rem;
+  --font-size-body: 0.9375rem;
+  --font-size-body-sm: 0.8125rem;
+  --font-size-label: 0.6875rem;
+  --font-size-caption: 0.75rem;
+  --font-size-mono: 0.8125rem;
+  --font-size-mono-sm: 0.6875rem;
 }

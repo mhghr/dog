@@ -24,7 +24,7 @@ export function SectionHeader({
   );
 }
 
-export function BentoTile({
+function BentoTile({
   title,
   body,
   className,
@@ -49,7 +49,7 @@ export function BentoTile({
   );
 }
 
-export function EyebrowLabel({
+function EyebrowLabel({
   children,
   className,
 }: {

@@ -152,5 +152,4 @@ export {
   InputGroupButton,
   InputGroupText,
   InputGroupInput,
-  InputGroupTextarea,
 }

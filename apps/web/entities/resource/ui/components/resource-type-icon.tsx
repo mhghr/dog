@@ -64,7 +64,7 @@ export function ResourceTypeIcon({
   return <Icon className={cn("shrink-0", className)} aria-hidden />;
 }
 
-export function statusTone(status: string): string {
+function statusTone(status: string): string {
   switch (status) {
     case "active":
     case "up":

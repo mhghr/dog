@@ -11,4 +11,6 @@
   --shadow-popover: var(--shadow-lg);
   --shadow-modal: var(--shadow-2xl);
   --shadow-floating: var(--shadow-xl);
+  --shadow-panel: var(--shadow-panel);
+  --shadow-glow: var(--shadow-glow);
 }

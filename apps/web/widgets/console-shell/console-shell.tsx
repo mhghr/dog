@@ -342,7 +342,7 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
 
         <div
           className={cn(
-            "relative flex min-w-0 flex-1 flex-col bg-gradient-to-br from-white via-[#F8F9FC] to-[#EEF0F6] dark:from-[#060B14] dark:via-[#0A1020] dark:to-[#040912]",
+            "relative flex min-w-0 flex-1 flex-col bg-white dark:bg-[#060B14]",
           )}
         >
           <header className="sticky top-0 z-sticky flex h-14 items-center gap-2 border-b border-border bg-white/70 px-4 backdrop-blur-xl dark:bg-[#060B14]/70 dark:border-primary/10">
