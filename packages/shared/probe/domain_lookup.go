@@ -270,25 +270,33 @@ func whoisInfoFromResponse(responseText string) domainInfo {
 	info := domainInfo{Source: "whois"}
 
 	for _, line := range strings.Split(responseText, "\n") {
-		if info.ExpiresAt == nil {
-			if match := whoisExpiryPattern.FindStringSubmatch(line); match != nil {
-				if parsed, ok := parseWhoisDate(strings.TrimSpace(match[1])); ok {
-					info.ExpiresAt = &parsed
-				}
+		info = applyWhoisLine(info, line)
+	}
+
+	return info
+}
+
+// applyWhoisLine extracts a single field (expiry, registrar or nameserver)
+// from one WHOIS response line, when present.
+func applyWhoisLine(info domainInfo, line string) domainInfo {
+	if info.ExpiresAt == nil {
+		if match := whoisExpiryPattern.FindStringSubmatch(line); match != nil {
+			if parsed, ok := parseWhoisDate(strings.TrimSpace(match[1])); ok {
+				info.ExpiresAt = &parsed
 			}
 		}
+	}
 
-		if info.Registrar == "" {
-			if match := whoisRegistrarPattern.FindStringSubmatch(line); match != nil {
-				info.Registrar = strings.TrimSpace(match[1])
-			}
+	if info.Registrar == "" {
+		if match := whoisRegistrarPattern.FindStringSubmatch(line); match != nil {
+			info.Registrar = strings.TrimSpace(match[1])
 		}
+	}
 
-		if match := whoisNameserverPattern.FindStringSubmatch(line); match != nil {
-			nameserver := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(match[1]), "."))
-			if nameserver != "" && !containsString(info.Nameservers, nameserver) {
-				info.Nameservers = append(info.Nameservers, nameserver)
-			}
+	if match := whoisNameserverPattern.FindStringSubmatch(line); match != nil {
+		nameserver := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(match[1]), "."))
+		if nameserver != "" && !containsString(info.Nameservers, nameserver) {
+			info.Nameservers = append(info.Nameservers, nameserver)
 		}
 	}
 

@@ -44,19 +44,9 @@ func (h *Handler) createEnrollmentToken(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	var locID *uuid.UUID
-	if req.LocationCode != "" {
-		loc, err := h.deps.Locations.GetByCode(r.Context(), req.LocationCode)
-		if err != nil {
-			writeDomainError(w, r, err)
-			return
-		}
-		id, parseErr := uuid.Parse(loc.ID)
-		if parseErr != nil {
-			writeError(w, r, http.StatusInternalServerError, "internal_error", "Invalid location ID", nil)
-			return
-		}
-		locID = &id
+	locID, ok := h.resolveLocationID(w, r, req.LocationCode)
+	if !ok {
+		return
 	}
 
 	token, err := h.deps.AgentRepo.CreateEnrollmentToken(r.Context(), agents.CreateTokenParams{
@@ -84,6 +74,28 @@ func (h *Handler) createEnrollmentToken(w http.ResponseWriter, r *http.Request) 
 		"location_id": locationID,
 		"expires_at":  time.Now().Add(time.Duration(req.TTLMinutes) * time.Minute).Format(time.RFC3339),
 	})
+}
+
+// resolveLocationID looks up and parses an optional location code into its
+// UUID. It writes the error response and returns ok=false on failure.
+func (h *Handler) resolveLocationID(w http.ResponseWriter, r *http.Request, locationCode string) (*uuid.UUID, bool) {
+	if locationCode == "" {
+		return nil, true
+	}
+
+	loc, err := h.deps.Locations.GetByCode(r.Context(), locationCode)
+	if err != nil {
+		writeDomainError(w, r, err)
+		return nil, false
+	}
+
+	id, parseErr := uuid.Parse(loc.ID)
+	if parseErr != nil {
+		writeError(w, r, http.StatusInternalServerError, "internal_error", "Invalid location ID", nil)
+		return nil, false
+	}
+
+	return &id, true
 }
 
 func (h *Handler) listEnrollmentTokens(w http.ResponseWriter, r *http.Request) {
