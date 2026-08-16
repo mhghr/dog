@@ -30,20 +30,7 @@ func (e *Engine) EvaluateResult(ctx context.Context, result *domain.ProbeResult)
 		return nil
 	}
 
-	catalogByKey := make(map[string]ParameterDefinition, len(catalogDefs))
-	for _, def := range catalogDefs {
-		catalogByKey[def.Key] = def
-	}
-
-	rules, err := e.repo.ListParameterRules(ctx, result.MonitorID)
-	if err != nil {
-		rules = nil
-	}
-
-	rulesByKey := make(map[string]ParameterRule, len(rules))
-	for _, rule := range rules {
-		rulesByKey[rule.ParameterKey] = rule
-	}
+	rulesByKey := e.rulesByKey(ctx, result.MonitorID)
 
 	for _, catDef := range catalogDefs {
 		rule, hasRule := rulesByKey[catDef.Key]
@@ -81,6 +68,20 @@ func detectMonitorType(result *domain.ProbeResult) string {
 		return mt
 	}
 	return ""
+}
+
+// rulesByKey loads the parameter rules for a monitor and indexes them by key.
+func (e *Engine) rulesByKey(ctx context.Context, monitorID string) map[string]ParameterRule {
+	rules, err := e.repo.ListParameterRules(ctx, monitorID)
+	if err != nil {
+		rules = nil
+	}
+
+	rulesByKey := make(map[string]ParameterRule, len(rules))
+	for _, rule := range rules {
+		rulesByKey[rule.ParameterKey] = rule
+	}
+	return rulesByKey
 }
 
 func defaultRuleFromCatalog(catDef ParameterDefinition, monitorID string) ParameterRule {
@@ -372,36 +373,44 @@ func aggregateValues(values []float64, agg string) float64 {
 
 	switch agg {
 	case "min":
-		min := values[0]
-		for _, v := range values[1:] {
-			if v < min {
-				min = v
-			}
-		}
-		return min
+		return minValue(values)
 	case "max":
-		max := values[0]
-		for _, v := range values[1:] {
-			if v > max {
-				max = v
-			}
-		}
-		return max
+		return maxValue(values)
 	case "sum":
-		sum := 0.0
-		for _, v := range values {
-			sum += v
-		}
-		return sum
+		return sumValues(values)
 	case "last":
 		return values[len(values)-1]
 	default:
-		sum := 0.0
-		for _, v := range values {
-			sum += v
-		}
-		return sum / float64(len(values))
+		return sumValues(values) / float64(len(values))
 	}
+}
+
+func minValue(values []float64) float64 {
+	min := values[0]
+	for _, v := range values[1:] {
+		if v < min {
+			min = v
+		}
+	}
+	return min
+}
+
+func maxValue(values []float64) float64 {
+	max := values[0]
+	for _, v := range values[1:] {
+		if v > max {
+			max = v
+		}
+	}
+	return max
+}
+
+func sumValues(values []float64) float64 {
+	sum := 0.0
+	for _, v := range values {
+		sum += v
+	}
+	return sum
 }
 
 func compareValue(value, threshold float64, op string) bool {
@@ -493,15 +502,7 @@ func (e *Engine) EvaluateMonitor(ctx context.Context, monitor *domain.Monitor, r
 		return MonitorHealth{}, nil
 	}
 
-	rules, err := e.repo.ListParameterRules(ctx, monitor.ID)
-	if err != nil {
-		rules = nil
-	}
-
-	rulesByKey := make(map[string]ParameterRule, len(rules))
-	for _, rule := range rules {
-		rulesByKey[rule.ParameterKey] = rule
-	}
+	rulesByKey := e.rulesByKey(ctx, monitor.ID)
 
 	paramStates := make(map[string]HealthState)
 	worstState := HealthOK

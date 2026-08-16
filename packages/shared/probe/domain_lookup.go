@@ -20,14 +20,17 @@ type rdapDomain struct {
 		EventAction string    `json:"eventAction"`
 		EventDate   time.Time `json:"eventDate"`
 	} `json:"events"`
-	Status   []string `json:"status"`
-	Entities []struct {
-		Roles      []string        `json:"roles"`
-		VcardArray json.RawMessage `json:"vcardArray"`
-	} `json:"entities"`
+	Status   []string     `json:"status"`
+	Entities []rdapEntity `json:"entities"`
 	Nameservers []struct {
 		LdhName string `json:"ldhName"`
 	} `json:"nameservers"`
+}
+
+// rdapEntity is a registrar/registrant entity from an RDAP response.
+type rdapEntity struct {
+	Roles      []string        `json:"roles"`
+	VcardArray json.RawMessage `json:"vcardArray"`
 }
 
 type domainInfo struct {
@@ -149,12 +152,8 @@ func rdapInfoFromPayload(payload rdapDomain) domainInfo {
 	}
 
 	for _, entity := range payload.Entities {
-		for _, role := range entity.Roles {
-			if strings.EqualFold(role, "registrar") {
-				if name := parseVcardFullName(entity.VcardArray); name != "" {
-					info.Registrar = name
-				}
-			}
+		if name := rdapRegistrarName(entity); name != "" {
+			info.Registrar = name
 		}
 	}
 
@@ -165,6 +164,19 @@ func rdapInfoFromPayload(payload rdapDomain) domainInfo {
 	}
 
 	return info
+}
+
+// rdapRegistrarName returns the registrar's full name from an RDAP entity if
+// the entity carries the registrar role.
+func rdapRegistrarName(entity rdapEntity) string {
+	for _, role := range entity.Roles {
+		if strings.EqualFold(role, "registrar") {
+			if name := parseVcardFullName(entity.VcardArray); name != "" {
+				return name
+			}
+		}
+	}
+	return ""
 }
 
 // parseVcardFullName extracts the "fn" property from a jCard array.

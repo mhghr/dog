@@ -192,16 +192,8 @@ func (h *Handler) listAgents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getAgent(w http.ResponseWriter, r *http.Request) {
-	agentID := chi.URLParam(r, "agentID")
-	id, err := uuid.Parse(agentID)
-	if err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_id", "Invalid agent ID", nil)
-		return
-	}
-
-	agent, err := h.deps.AgentRepo.GetAgent(r.Context(), id)
-	if err != nil {
-		writeDomainError(w, r, err)
+	_, agent, ok := h.loadAgent(w, r)
+	if !ok {
 		return
 	}
 
@@ -222,17 +214,28 @@ func (h *Handler) getAgent(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Handler) approveAgent(w http.ResponseWriter, r *http.Request) {
+// loadAgent parses the agentID URL param, validates it, and loads the agent.
+// It writes the error response and returns ok=false on failure.
+func (h *Handler) loadAgent(w http.ResponseWriter, r *http.Request) (uuid.UUID, *agents.ProbeAgent, bool) {
 	agentID := chi.URLParam(r, "agentID")
 	id, err := uuid.Parse(agentID)
 	if err != nil {
 		writeError(w, r, http.StatusBadRequest, "invalid_id", "Invalid agent ID", nil)
-		return
+		return uuid.Nil, nil, false
 	}
 
 	agent, err := h.deps.AgentRepo.GetAgent(r.Context(), id)
 	if err != nil {
 		writeDomainError(w, r, err)
+		return uuid.Nil, nil, false
+	}
+
+	return id, agent, true
+}
+
+func (h *Handler) approveAgent(w http.ResponseWriter, r *http.Request) {
+	id, agent, ok := h.loadAgent(w, r)
+	if !ok {
 		return
 	}
 
@@ -352,10 +355,8 @@ func (h *Handler) drainAgent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) deleteAgent(w http.ResponseWriter, r *http.Request) {
-	agentID := chi.URLParam(r, "agentID")
-	id, err := uuid.Parse(agentID)
-	if err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_id", "Invalid agent ID", nil)
+	id, _, ok := h.loadAgent(w, r)
+	if !ok {
 		return
 	}
 
@@ -368,16 +369,8 @@ func (h *Handler) deleteAgent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) updateAgentStatus(w http.ResponseWriter, r *http.Request, status agents.AgentStatus, action string) {
-	agentID := chi.URLParam(r, "agentID")
-	id, err := uuid.Parse(agentID)
-	if err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_id", "Invalid agent ID", nil)
-		return
-	}
-
-	agent, err := h.deps.AgentRepo.GetAgent(r.Context(), id)
-	if err != nil {
-		writeDomainError(w, r, err)
+	id, agent, ok := h.loadAgent(w, r)
+	if !ok {
 		return
 	}
 
