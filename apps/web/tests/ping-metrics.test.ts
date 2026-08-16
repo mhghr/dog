@@ -205,7 +205,7 @@ describe("buildDownIntervals", () => {
     expect(buildDownIntervals(upSeries)).toEqual([]);
   });
 
-  it("treats an absent final point as still-down through the last sample", () => {
+  it("extends a trailing down window through the last sample", () => {
     const tail: PingChartSeries[] = [
       {
         metric: "status",
@@ -219,7 +219,36 @@ describe("buildDownIntervals", () => {
       },
     ];
     const intervals = buildDownIntervals(tail);
-    expect(intervals).toHaveLength(1);
-    expect(intervals[0].start).toBe("2026-01-01T00:05:00Z");
+    expect(intervals).toEqual([
+      { start: "2026-01-01T00:05:00Z", end: "2026-01-01T00:10:00Z" },
+    ]);
+  });
+
+  it("does not merge windows across probes", () => {
+    const multi: PingChartSeries[] = [
+      {
+        metric: "status",
+        location: "A",
+        probeName: "A",
+        points: [
+          { time: "2026-01-01T00:00:00Z", value: 1 },
+          { time: "2026-01-01T00:05:00Z", value: 0 },
+          { time: "2026-01-01T00:10:00Z", value: 0 },
+        ],
+      },
+      {
+        metric: "status",
+        location: "B",
+        probeName: "B",
+        points: [
+          { time: "2026-01-01T00:00:00Z", value: 1 },
+          { time: "2026-01-01T00:15:00Z", value: 1 },
+        ],
+      },
+    ];
+    const intervals = buildDownIntervals(multi);
+    expect(intervals).toEqual([
+      { start: "2026-01-01T00:05:00Z", end: "2026-01-01T00:10:00Z" },
+    ]);
   });
 });
