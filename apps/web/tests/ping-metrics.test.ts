@@ -6,7 +6,11 @@ import {
   toProbeStats,
   toChartSeries,
   PING_METRIC_KEYS,
+  formatPingKpiValue,
+  formatPingKpiValueWithUnit,
+  buildDownIntervals,
 } from "@/entities/resource/ui/monitoring/ping/ping-metrics";
+import type { PingChartSeries } from "@/entities/resource/ui/monitoring/ping/ping-metrics";
 import type { ProbeResult } from "@/entities/monitor/model/result";
 
 function probe(partial: Partial<ProbeResult>): ProbeResult {
@@ -124,5 +128,98 @@ describe("toChartSeries", () => {
         points: [{ time: "2026-01-01T00:00:00Z", value: 42 }],
       },
     ]);
+  });
+});
+
+describe("formatPingKpiValue", () => {
+  it("formats a measured latency (bare, unit rendered by the card)", () => {
+    expect(formatPingKpiValue(42, "ms", false)).toBe("42");
+  });
+
+  it("formats a measured packet loss (bare)", () => {
+    expect(formatPingKpiValue(2.5, "percent", false)).toBe("2.50");
+  });
+
+  it("shows infinity for missing latency when down", () => {
+    expect(formatPingKpiValue(null, "ms", true)).toBe("∞");
+  });
+
+  it("shows 100 for missing packet loss when down", () => {
+    expect(formatPingKpiValue(null, "percent", true)).toBe("100");
+  });
+
+  it("shows N/A when there is simply no data", () => {
+    expect(formatPingKpiValue(null, "ms", false)).toBe("N/A");
+    expect(formatPingKpiValue(null, "percent", false)).toBe("N/A");
+  });
+});
+
+describe("formatPingKpiValueWithUnit", () => {
+  it("embeds the unit for inline row values", () => {
+    expect(formatPingKpiValueWithUnit(42, "ms", false)).toBe("42 ms");
+    expect(formatPingKpiValueWithUnit(2.5, "percent", false)).toBe("2.50%");
+    expect(formatPingKpiValueWithUnit(null, "ms", true)).toBe("∞ ms");
+    expect(formatPingKpiValueWithUnit(null, "percent", true)).toBe("100%");
+  });
+
+  it("leaves N/A without a unit", () => {
+    expect(formatPingKpiValueWithUnit(null, "ms", false)).toBe("N/A");
+  });
+});
+
+describe("buildDownIntervals", () => {
+  const series: PingChartSeries[] = [
+    {
+      metric: "status",
+      location: "Amsterdam",
+      probeName: "Amsterdam",
+      points: [
+        { time: "2026-01-01T00:00:00Z", value: 1 },
+        { time: "2026-01-01T00:05:00Z", value: 0 },
+        { time: "2026-01-01T00:10:00Z", value: 0 },
+        { time: "2026-01-01T00:15:00Z", value: 1 },
+        { time: "2026-01-01T00:20:00Z", value: 1 },
+      ],
+    },
+  ];
+
+  it("returns [start, end) time windows where status is 0", () => {
+    const intervals = buildDownIntervals(series);
+    expect(intervals).toEqual([
+      { start: "2026-01-01T00:05:00Z", end: "2026-01-01T00:15:00Z" },
+    ]);
+  });
+
+  it("returns an empty array when fully up", () => {
+    const upSeries: PingChartSeries[] = [
+      {
+        metric: "status",
+        location: "Amsterdam",
+        probeName: "Amsterdam",
+        points: [
+          { time: "2026-01-01T00:00:00Z", value: 1 },
+          { time: "2026-01-01T00:05:00Z", value: 1 },
+        ],
+      },
+    ];
+    expect(buildDownIntervals(upSeries)).toEqual([]);
+  });
+
+  it("treats an absent final point as still-down through the last sample", () => {
+    const tail: PingChartSeries[] = [
+      {
+        metric: "status",
+        location: "Amsterdam",
+        probeName: "Amsterdam",
+        points: [
+          { time: "2026-01-01T00:00:00Z", value: 1 },
+          { time: "2026-01-01T00:05:00Z", value: 0 },
+          { time: "2026-01-01T00:10:00Z", value: 0 },
+        ],
+      },
+    ];
+    const intervals = buildDownIntervals(tail);
+    expect(intervals).toHaveLength(1);
+    expect(intervals[0].start).toBe("2026-01-01T00:05:00Z");
   });
 });

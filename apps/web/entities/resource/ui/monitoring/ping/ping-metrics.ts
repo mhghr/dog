@@ -167,3 +167,62 @@ export function toChartSeries(
     })),
   }));
 }
+
+// KPI display formatter. When a metric is missing and the monitor is down,
+// latency/jitter read as "∞" (unreachable) and packet loss as 100. Zero is
+// never shown for a down target — absence of data is a distinct state.
+//
+// These return the BARE value; the KpiCard renders the unit in its own span.
+// Use `formatPingKpiValueWithUnit` for inline row values.
+export function formatPingKpiValue(
+  value: number | null,
+  format: "ms" | "percent",
+  down: boolean,
+): string {
+  if (value != null) {
+    return format === "ms" ? String(Math.round(value)) : value.toFixed(2);
+  }
+  if (down) {
+    return format === "ms" ? "∞" : "100";
+  }
+  return "N/A";
+}
+
+// Same as `formatPingKpiValue` but embeds the unit for standalone rendering.
+export function formatPingKpiValueWithUnit(
+  value: number | null,
+  format: "ms" | "percent",
+  down: boolean,
+): string {
+  const bare = formatPingKpiValue(value, format, down);
+  if (bare === "N/A") return bare;
+  return `${bare}${format === "ms" ? " ms" : "%"}`;
+}
+
+// Computes [start, end) half-open windows where a status series reports fully
+// down (value === 0). The end of the last window is the timestamp of the last
+// point. Series points must be ordered ascending by time.
+export interface DownInterval {
+  start: string;
+  end: string;
+}
+
+export function buildDownIntervals(series: PingChartSeries[]): DownInterval[] {
+  const intervals: DownInterval[] = [];
+  let start: string | null = null;
+
+  for (const s of series) {
+    for (const p of s.points) {
+      if (p.value === 0) {
+        if (start === null) start = p.time;
+      } else if (start !== null) {
+        intervals.push({ start, end: p.time });
+        start = null;
+      }
+    }
+  }
+  if (start !== null) {
+    intervals.push({ start, end: start });
+  }
+  return intervals;
+}
