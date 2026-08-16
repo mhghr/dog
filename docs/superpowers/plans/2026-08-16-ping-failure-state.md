@@ -972,7 +972,7 @@ describe("buildDownIntervals", () => {
     expect(buildDownIntervals(upSeries)).toEqual([]);
   });
 
-  it("treats an absent final point as still-down through the last sample", () => {
+  it("extends a trailing down window through the last sample", () => {
     const tail: PingChartSeries[] = [
       {
         metric: "status",
@@ -986,13 +986,42 @@ describe("buildDownIntervals", () => {
       },
     ];
     const intervals = buildDownIntervals(tail);
-    expect(intervals).toHaveLength(1);
-    expect(intervals[0].start).toBe("2026-01-01T00:05:00Z");
+    expect(intervals).toEqual([
+      { start: "2026-01-01T00:05:00Z", end: "2026-01-01T00:10:00Z" },
+    ]);
+  });
+
+  it("does not merge windows across probes", () => {
+    const multi: PingChartSeries[] = [
+      {
+        metric: "status",
+        location: "A",
+        probeName: "A",
+        points: [
+          { time: "2026-01-01T00:00:00Z", value: 1 },
+          { time: "2026-01-01T00:05:00Z", value: 0 },
+          { time: "2026-01-01T00:10:00Z", value: 0 },
+        ],
+      },
+      {
+        metric: "status",
+        location: "B",
+        probeName: "B",
+        points: [
+          { time: "2026-01-01T00:00:00Z", value: 1 },
+          { time: "2026-01-01T00:15:00Z", value: 1 },
+        ],
+      },
+    ];
+    const intervals = buildDownIntervals(multi);
+    expect(intervals).toEqual([
+      { start: "2026-01-01T00:05:00Z", end: "2026-01-01T00:10:00Z" },
+    ]);
   });
 });
 ```
 
-Note: `buildDownIntervals` treats a value of `0` (fully down) as DOWN and any positive value as UP.
+Note: `buildDownIntervals` treats a value of `0` (fully down) as DOWN and any positive value as UP. Each probe series is processed independently so windows never merge across probes; a trailing down run extends through that series' last sample time.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -1036,8 +1065,9 @@ export function formatPingKpiValueWithUnit(
 }
 
 // Computes [start, end) half-open windows where a status series reports fully
-// down (value === 0). The end of the last window is the timestamp of the last
-// point. Series points must be ordered ascending by time.
+// down (value === 0). Each series is processed independently (a probe's window
+// never bleeds into another probe's timeline). A trailing down run extends to
+// that series' last sample time. Series points must be ordered ascending.
 export interface DownInterval {
   start: string;
   end: string;
@@ -1045,9 +1075,9 @@ export interface DownInterval {
 
 export function buildDownIntervals(series: PingChartSeries[]): DownInterval[] {
   const intervals: DownInterval[] = [];
-  let start: string | null = null;
 
   for (const s of series) {
+    let start: string | null = null;
     for (const p of s.points) {
       if (p.value === 0) {
         if (start === null) start = p.time;
@@ -1056,9 +1086,9 @@ export function buildDownIntervals(series: PingChartSeries[]): DownInterval[] {
         start = null;
       }
     }
-  }
-  if (start !== null) {
-    intervals.push({ start, end: start });
+    if (start !== null && s.points.length > 0) {
+      intervals.push({ start, end: s.points[s.points.length - 1].time });
+    }
   }
   return intervals;
 }
