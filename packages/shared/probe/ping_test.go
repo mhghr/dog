@@ -3,10 +3,13 @@ package probe
 import (
 	"context"
 	"errors"
+	"io"
+	"log/slog"
 	"testing"
 	"time"
 
 	"monitoring-platform/packages/shared/domain"
+	"monitoring-platform/packages/shared/security"
 )
 
 func newPingResult() domain.ProbeResult {
@@ -106,5 +109,20 @@ func TestMapErrorCodePermissionDenied(t *testing.T) {
 func TestMapErrorCodeTimeout(t *testing.T) {
 	if code := mapErrorCode("ping_failed", context.DeadlineExceeded); code != "timeout" {
 		t.Fatalf("expected timeout, got %s", code)
+	}
+}
+
+func TestPingGuardFailureWritesReachabilityZero(t *testing.T) {
+	strictDeps := Deps{
+		Guard:  security.NewGuard(false),
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	executor := NewPingExecutor(strictDeps)
+	result := executor.Execute(execCtx(t), testJob(domain.MonitorPing, "127.0.0.1", nil))
+	if result.Success || result.Status != domain.StatusDown {
+		t.Fatalf("expected down, got %+v", result)
+	}
+	if result.Metrics["reachability"] != 0 {
+		t.Fatalf("expected reachability=0 on guard failure, got %v", result.Metrics["reachability"])
 	}
 }
