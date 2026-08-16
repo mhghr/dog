@@ -45,7 +45,7 @@ func TestBuildLinesDownWritesNoLatency(t *testing.T) {
 	lines := buildLines(pingResult(false), "ping", "loc-1")
 	joined := strings.Join(lines, "\n")
 
-	if !strings.Contains(joined, `monitor_ping_status{`) || !strings.Contains(joined, "} 0 ") {
+	if !strings.Contains(joined, `monitor_ping_status{monitor_id="m1",monitor_type="ping",probe_location="loc-1",resource_id="res-1",workspace_id="ws-1"} 0 `) {
 		t.Fatalf("expected down status line with value 0, got:\n%s", joined)
 	}
 	if strings.Contains(joined, "monitor_ping_rtt_ms") {
