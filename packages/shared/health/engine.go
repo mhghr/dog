@@ -123,11 +123,11 @@ func splitParamKey(key string) []string {
 
 	switch {
 	case key == "ping.reachability":
-		return []string{"ping.reachability"}
+		return []string{"ping.reachability", "reachability"}
 	case key == "ping.packet_loss_percent":
 		return []string{"packet_loss_percent", "packet_loss"}
 	case key == "ping.rtt.avg_ms":
-		return []string{"rtt_avg_ms", "avg_rtt_ms"}
+		return []string{"rtt_avg_ms", "avg_rtt_ms", "rtt_ms"}
 	case key == "ping.rtt.min_ms":
 		return []string{"rtt_min_ms", "min_rtt_ms"}
 	case key == "ping.rtt.max_ms":

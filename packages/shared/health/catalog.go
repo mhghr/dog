@@ -34,7 +34,7 @@ var PingParameters = []ParameterDefinition{
 	{
 		Key: "ping.packet_loss_percent", Name: "Packet Loss",
 		DataType: "PERCENTAGE", Direction: "HIGHER_IS_WORSE", Unit: "%",
-		DefaultWarning: ptr(1.0), DefaultError: ptr(5.0), Recovery: ptr(0.5),
+		DefaultWarning: ptr(5.0), DefaultError: ptr(20.0), Recovery: ptr(3.0),
 	},
 	{
 		Key: "ping.jitter_ms", Name: "Jitter",
