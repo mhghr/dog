@@ -64,6 +64,13 @@ export function PingMonitoringView({
   const lastSuccessAt = statusQuery.data?.last_success_at ?? null;
 
   const latest = useMemo(() => latencyQuery.data?.latest ?? [], [latencyQuery.data?.latest]);
+
+  const failureReason = useMemo(() => {
+    const failed = latest.find((r) => !r.success && (r.error_message || r.error_code));
+    if (failed?.error_message) return failed.error_message;
+    if (failed?.error_code) return failed.error_code;
+    return null;
+  }, [latest]);
   const summary = useMemo(() => summarize(latest), [latest]);
   const probeStats = useMemo(() => toProbeStats(latest), [latest]);
 
@@ -147,6 +154,7 @@ export function PingMonitoringView({
             states={kpiStates}
             probeStats={probeStats}
             lastSuccessAt={lastSuccessAt}
+            failureReason={failureReason}
           />
 
           {/* Latency chart */}
@@ -180,6 +188,7 @@ function KpiGrid({
   states,
   probeStats,
   lastSuccessAt,
+  failureReason,
 }: {
   isFa: boolean;
   down: boolean;
@@ -192,6 +201,7 @@ function KpiGrid({
   };
   probeStats: PingProbeStat[];
   lastSuccessAt: string | null;
+  failureReason: string | null;
 }) {
   const t = (en: string, fa: string) => (isFa ? fa : en);
 
@@ -227,6 +237,12 @@ function KpiGrid({
           <span className="font-semibold text-destructive">
             {t("Target is down", "منبع قطع است")}
           </span>
+          {failureReason && (
+            <span className="text-muted-foreground">
+              {t("Reason: ", "دلیل: ")}
+              {failureReason}
+            </span>
+          )}
           {lastSuccessAt && (
             <span className="text-muted-foreground">
               {t("Last successful check: ", "آخرین بررسی موفق: ")}
