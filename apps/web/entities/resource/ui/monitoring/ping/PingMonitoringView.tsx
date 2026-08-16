@@ -6,6 +6,7 @@ import { useLocale } from "next-intl";
 import { Skeleton } from "@/shared/ui/skeleton";
 import {
   useResourceMonitorMetrics,
+  useResourceMonitorStatus,
   type MetricsRange,
 } from "@/entities/resource/hooks/use-resource";
 import type { Monitor } from "@/entities/resource/hooks/types";
@@ -20,7 +21,11 @@ import {
   summarize,
   toProbeStats,
   toChartSeries,
+  buildDownIntervals,
+  formatPingKpiValue,
+  formatPingKpiValueWithUnit,
   type PingProbeStat,
+  type PingChartSeries,
 } from "./ping-metrics";
 import { PingMonitorHeader } from "./PingMonitorHeader";
 import { PingKpiCard, type PingKpiRow } from "./PingKpiCard";
@@ -51,6 +56,14 @@ export function PingMonitoringView({
   const config = useMemo(() => readPingConfig(monitor.configuration), [monitor.configuration]);
 
   const latencyQuery = useResourceMonitorMetrics(resourceId, monitor.id, range);
+  const statusQuery = useResourceMonitorStatus(resourceId, monitor.id, range);
+  const statusSeries: PingChartSeries[] = useMemo(
+    () => toChartSeries(statusQuery.data?.series ?? [], "status"),
+    [statusQuery.data?.series],
+  );
+  const downIntervals = useMemo(() => buildDownIntervals(statusSeries), [statusSeries]);
+  void downIntervals;
+  const lastSuccessAt = statusQuery.data?.last_success_at ?? null;
 
   const latest = useMemo(() => latencyQuery.data?.latest ?? [], [latencyQuery.data?.latest]);
   const summary = useMemo(() => summarize(latest), [latest]);
@@ -135,6 +148,7 @@ export function PingMonitoringView({
             summary={summary}
             states={kpiStates}
             probeStats={probeStats}
+            lastSuccessAt={lastSuccessAt}
           />
 
           {/* Latency chart */}
@@ -158,6 +172,7 @@ function KpiGrid({
   summary,
   states,
   probeStats,
+  lastSuccessAt,
 }: {
   isFa: boolean;
   down: boolean;
@@ -169,17 +184,13 @@ function KpiGrid({
     jitter: PingHealthState;
   };
   probeStats: PingProbeStat[];
+  lastSuccessAt: string | null;
 }) {
   const t = (en: string, fa: string) => (isFa ? fa : en);
 
-  // When a metric has no value, show a meaningful placeholder instead of a bare
-  // dash — "∞" when the source is down, otherwise "N/A"/"نامشخص".
-  const noValue = (sourceDown: boolean) =>
-    sourceDown ? "∞" : t("N/A", "نامشخص");
-  const fmtMs = (v: number | null, sourceDown: boolean) =>
-    v == null ? noValue(sourceDown) : `${Math.round(v)} ms`;
-  const fmtPct = (v: number | null, sourceDown: boolean) =>
-    v == null ? noValue(sourceDown) : `${v.toFixed(1)}%`;
+  const latency = summary.latency == null ? null : summary.latency;
+  const packetLoss = summary.packetLoss == null ? null : summary.packetLoss;
+  const jitter = summary.jitter == null ? null : summary.jitter;
 
   const availabilityRows: PingKpiRow[] = probeStats.map((s) => ({
     label: s.location,
@@ -189,58 +200,71 @@ function KpiGrid({
 
   const latencyRows: PingKpiRow[] = probeStats.map((s) => ({
     label: s.location,
-    value: fmtMs(s.latency, !s.success),
+    value: formatPingKpiValueWithUnit(s.latency, "ms", !s.success),
   }));
 
   const lossRows: PingKpiRow[] = probeStats.map((s) => ({
     label: s.location,
-    value: fmtPct(s.packetLoss, !s.success),
+    value: formatPingKpiValueWithUnit(s.packetLoss, "percent", !s.success),
     tone: s.packetLoss != null && s.packetLoss > 0 ? "warning" : "muted",
   }));
 
   const jitterRows: PingKpiRow[] = probeStats.map((s) => ({
     label: s.location,
-    value: fmtMs(s.jitter, !s.success),
+    value: formatPingKpiValueWithUnit(s.jitter, "ms", !s.success),
   }));
 
   return (
-    <div className="grid max-w-4xl grid-cols-2 gap-3 sm:grid-cols-4">
-      <PingKpiCard
-        label={t("Availability", "دسترس‌پذیری")}
-        value={summary.availability == null
-          ? noValue(states.availability === "down")
-          : summary.availability.toFixed(2)}
-        unit="%"
-        state={states.availability}
-        rows={availabilityRows}
-      />
-      <PingKpiCard
-        label={t("Latency", "تأخیر")}
-        value={summary.latency == null
-          ? noValue(states.latency === "down")
-          : String(Math.round(summary.latency))}
-        unit="ms"
-        state={states.latency}
-        rows={latencyRows}
-      />
-      <PingKpiCard
-        label={t("Packet loss", "افت بسته")}
-        value={summary.packetLoss == null
-          ? noValue(states.packetLoss === "down")
-          : summary.packetLoss.toFixed(2)}
-        unit="%"
-        state={states.packetLoss}
-        rows={lossRows}
-      />
-      <PingKpiCard
-        label={t("Jitter", "نوسان")}
-        value={summary.jitter == null
-          ? noValue(states.jitter === "down")
-          : String(Math.round(summary.jitter))}
-        unit="ms"
-        state={states.jitter}
-        rows={jitterRows}
-      />
-    </div>
+    <section className="space-y-3">
+      {down && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm"
+        >
+          <span className="font-semibold text-destructive">
+            {isFa ? "منبع قطع است" : "Target is down"}
+          </span>
+          {lastSuccessAt && (
+            <span className="text-muted-foreground">
+              {isFa ? "آخرین بررسی موفق: " : "Last successful check: "}
+              {lastSuccessAt}
+            </span>
+          )}
+        </div>
+      )}
+
+      <div className="grid max-w-4xl grid-cols-2 gap-3 sm:grid-cols-4">
+        <PingKpiCard
+          label={t("Availability", "دسترس‌پذیری")}
+          value={summary.availability == null
+            ? down ? "0.00" : "N/A"
+            : summary.availability.toFixed(2)}
+          unit="%"
+          state={states.availability}
+          rows={availabilityRows}
+        />
+        <PingKpiCard
+          label={t("Latency", "تأخیر")}
+          value={formatPingKpiValue(latency, "ms", down)}
+          unit={latency != null || down ? "ms" : undefined}
+          state={states.latency}
+          rows={latencyRows}
+        />
+        <PingKpiCard
+          label={t("Packet loss", "افت بسته")}
+          value={formatPingKpiValue(packetLoss, "percent", down)}
+          unit={packetLoss != null || down ? "%" : undefined}
+          state={states.packetLoss}
+          rows={lossRows}
+        />
+        <PingKpiCard
+          label={t("Jitter", "نوسان")}
+          value={formatPingKpiValue(jitter, "ms", down)}
+          unit={jitter != null || down ? "ms" : undefined}
+          state={states.jitter}
+          rows={jitterRows}
+        />
+      </div>
+    </section>
   );
 }
