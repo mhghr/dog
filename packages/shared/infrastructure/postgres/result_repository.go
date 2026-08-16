@@ -600,3 +600,92 @@ func (r *ResultRepository) LatestResultsByProbe(ctx context.Context, monitorID s
 
 	return results, rows.Err()
 }
+
+// StatusSeriesByProbe returns one time-bucketed success-ratio series per
+// probe location for a monitor, including failed checks. This is the explicit
+// availability signal: 1.0 means fully up in that bucket, 0.0 fully down, and
+// an absent bucket means no data (never inferred as downtime by consumers).
+func (r *ResultRepository) StatusSeriesByProbe(ctx context.Context, monitorID string, from, to time.Time, stepSeconds int) ([]domain.ProbeSeries, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT
+			pl.id::text,
+			COALESCE(pl.name, ''),
+			COALESCE(pl.code, ''),
+			date_bin(make_interval(secs => $4::int), pr.started_at, TIMESTAMPTZ 'epoch') AS bucket,
+			AVG(CASE WHEN pr.success THEN 1 ELSE 0 END)::float8 AS value
+		FROM probe_results pr
+		LEFT JOIN probe_locations pl ON pl.id = pr.probe_location_id
+		WHERE pr.monitor_id = $1::uuid
+		  AND pr.started_at >= $2
+		  AND pr.started_at < $3
+		GROUP BY pl.id, pl.name, pl.code, bucket
+		ORDER BY pl.name, bucket`,
+		monitorID, from, to, stepSeconds)
+	if err != nil {
+		return nil, fmt.Errorf("query status series: %w", err)
+	}
+	defer rows.Close()
+
+	type rawPoint struct {
+		probeID   string
+		probeName string
+		location  string
+		ts        time.Time
+		value     float64
+	}
+	var raw []rawPoint
+	for rows.Next() {
+		var (
+			pid, pname, loc string
+			bucket          time.Time
+			value           float64
+		)
+		if err := rows.Scan(&pid, &pname, &loc, &bucket, &value); err != nil {
+			return nil, fmt.Errorf("scan status bucket: %w", err)
+		}
+		raw = append(raw, rawPoint{probeID: pid, probeName: pname, location: loc, ts: bucket, value: value})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	var series []domain.ProbeSeries
+	var current *domain.ProbeSeries
+	for _, p := range raw {
+		if current == nil || current.ProbeID != p.probeID {
+			series = append(series, domain.ProbeSeries{
+				ProbeID:   p.probeID,
+				ProbeName: p.probeName,
+				Location:  p.location,
+				MetricKey: "status",
+				Points:    []domain.MetricPoint{},
+				Values:    []domain.MetricPoint{},
+			})
+			current = &series[len(series)-1]
+		}
+		current.Points = append(current.Points, domain.MetricPoint{Timestamp: p.ts, Value: p.value})
+		current.Values = append(current.Values, domain.MetricPoint{Timestamp: p.ts, Value: p.value})
+	}
+
+	return series, nil
+}
+
+// LatestSuccessAt returns the most recent successful check time, or nil.
+func (r *ResultRepository) LatestSuccessAt(ctx context.Context, monitorID string) (*time.Time, error) {
+	var at time.Time
+	err := r.pool.QueryRow(ctx, `
+		SELECT started_at
+		FROM probe_results
+		WHERE monitor_id = $1::uuid AND success = TRUE
+		ORDER BY started_at DESC
+		LIMIT 1`,
+		monitorID,
+	).Scan(&at)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query latest success: %w", err)
+	}
+	return &at, nil
+}

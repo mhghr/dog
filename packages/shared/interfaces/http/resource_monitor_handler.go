@@ -233,10 +233,15 @@ func (h *Handler) resourceMonitorMetrics(w http.ResponseWriter, r *http.Request)
 
 	metricKey := query.Get("metric")
 	var series []domain.ProbeSeries
-	if metricKey != "" {
-		series, err = h.deps.Results.SeriesByProbeMetric(r.Context(), monitorID, metricKey, from, to, stepSeconds)
-	} else {
-		series, err = h.deps.Results.SeriesByProbe(r.Context(), monitorID, from, to, stepSeconds)
+	switch metricKey {
+	case "status":
+		series, err = h.deps.Results.StatusSeriesByProbe(r.Context(), monitorID, from, to, stepSeconds)
+	default:
+		if metricKey != "" {
+			series, err = h.deps.Results.SeriesByProbeMetric(r.Context(), monitorID, metricKey, from, to, stepSeconds)
+		} else {
+			series, err = h.deps.Results.SeriesByProbe(r.Context(), monitorID, from, to, stepSeconds)
+		}
 	}
 	if err != nil {
 		h.deps.Logger.Error("query per-probe series failed", "monitor_id", monitorID, "error", err)
@@ -258,14 +263,21 @@ func (h *Handler) resourceMonitorMetrics(w http.ResponseWriter, r *http.Request)
 		latest = []domain.ProbeResult{}
 	}
 
+	lastSuccessAt, err := h.deps.Results.LatestSuccessAt(r.Context(), monitorID)
+	if err != nil {
+		h.deps.Logger.Error("query latest success failed", "monitor_id", monitorID, "error", err)
+		lastSuccessAt = nil
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
-		"series":       series,
-		"latest":       latest,
-		"step_seconds": stepSeconds,
-		"from":         from,
-		"to":           to,
-		"metric_key":   metricKey,
-		"monitor_type": string(monitor.Type),
+		"series":          series,
+		"latest":          latest,
+		"step_seconds":    stepSeconds,
+		"from":            from,
+		"to":              to,
+		"metric_key":      metricKey,
+		"monitor_type":    string(monitor.Type),
+		"last_success_at": lastSuccessAt,
 	})
 }
 
