@@ -194,6 +194,7 @@ func (e *PingExecutor) Execute(ctx context.Context, job domain.ProbeJob) domain.
 
 	ips, err := e.deps.Guard.ResolveAndValidate(ctx, job.Target)
 	if err != nil {
+		result.Metrics["reachability"] = 0
 		return finishFailure(result, "dns_resolution_failed", err)
 	}
 
@@ -232,10 +233,10 @@ func (e *PingExecutor) Execute(ctx context.Context, job domain.ProbeJob) domain.
 	case <-ctx.Done():
 		pinger.Stop()
 		<-runDone
-		return finishFailure(result, "ping_timeout", ctx.Err())
+		return finishFailure(result, "timeout", ctx.Err())
 	case err := <-runDone:
 		if err != nil {
-			return finishFailure(result, "ping_failed", err)
+			return finishFailure(result, "network_unreachable", err)
 		}
 	}
 
@@ -1168,6 +1169,7 @@ Update the `KpiGrid` usage:
             states={kpiStates}
             probeStats={probeStats}
             lastSuccessAt={lastSuccessAt}
+            failureReason={failureReason}
           />
 ```
 
@@ -1197,6 +1199,7 @@ function KpiGrid({
   states,
   probeStats,
   lastSuccessAt,
+  failureReason,
 }: {
   isFa: boolean;
   down: boolean;
@@ -1209,6 +1212,7 @@ function KpiGrid({
   };
   probeStats: PingProbeStat[];
   lastSuccessAt: string | null;
+  failureReason: string | null;
 }) {
   const t = (en: string, fa: string) => (isFa ? fa : en);
 
@@ -1248,6 +1252,12 @@ function KpiGrid({
           <span className="font-semibold text-destructive">
             {isFa ? "منبع قطع است" : "Target is down"}
           </span>
+          {failureReason && (
+            <span className="text-muted-foreground">
+              {isFa ? "دلیل: " : "Reason: "}
+              {failureReason}
+            </span>
+          )}
           {lastSuccessAt && (
             <span className="text-muted-foreground">
               {isFa ? "آخرین بررسی موفق: " : "Last successful check: "}
