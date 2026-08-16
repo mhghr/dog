@@ -74,19 +74,50 @@ func (e *PingExecutor) Execute(ctx context.Context, job domain.ProbeJob) domain.
 	}
 
 	stats := pinger.Statistics()
-	result.Attributes["packets_sent"] = stats.PacketsSent
-	result.Attributes["packets_received"] = stats.PacketsRecv
-	result.Attributes["resolved_ip"] = ips[0].String()
+	return shapePingResult(result, ips[0].String(), pingStats{
+		packetsSent:     stats.PacketsSent,
+		packetsReceived: stats.PacketsRecv,
+		packetLoss:      stats.PacketLoss,
+		avgRTT:          stats.AvgRtt,
+		minRTT:          stats.MinRtt,
+		maxRTT:          stats.MaxRtt,
+		stdDevRTT:       stats.StdDevRtt,
+	})
+}
 
-	if stats.PacketsRecv == 0 {
-		return finishFailure(result, "packet_loss_100", fmt.Errorf("no ICMP reply received"))
+// pingStats carries the raw statistics of a finished ping run so result
+// shaping can be unit-tested without real ICMP traffic.
+type pingStats struct {
+	packetsSent     int
+	packetsReceived int
+	packetLoss      float64
+	avgRTT          time.Duration
+	minRTT          time.Duration
+	maxRTT          time.Duration
+	stdDevRTT       time.Duration
+}
+
+// shapePingResult turns raw ping statistics into a finished ProbeResult,
+// keeping availability separate from performance metrics. An unreachable
+// target (zero replies) yields reachability=0, packet_loss_percent=100 and
+// NO latency keys — they stay absent so consumers see NULL, never 0.
+func shapePingResult(result domain.ProbeResult, resolvedIP string, stats pingStats) domain.ProbeResult {
+	result.Attributes["packets_sent"] = stats.packetsSent
+	result.Attributes["packets_received"] = stats.packetsReceived
+	result.Attributes["resolved_ip"] = resolvedIP
+
+	if stats.packetsReceived == 0 {
+		result.Metrics["reachability"] = 0
+		result.Metrics["packet_loss_percent"] = 100.0
+		return finishFailure(result, "timeout", fmt.Errorf("no ICMP reply received"))
 	}
 
-	result.Metrics["packet_loss_percent"] = stats.PacketLoss
-	result.Metrics["rtt_ms"] = float64(stats.AvgRtt.Microseconds()) / 1000
-	result.Metrics["min_rtt_ms"] = float64(stats.MinRtt.Microseconds()) / 1000
-	result.Metrics["max_rtt_ms"] = float64(stats.MaxRtt.Microseconds()) / 1000
-	result.Metrics["jitter_ms"] = float64(stats.StdDevRtt.Microseconds()) / 1000
+	result.Metrics["reachability"] = 1
+	result.Metrics["packet_loss_percent"] = stats.packetLoss
+	result.Metrics["rtt_ms"] = float64(stats.avgRTT.Microseconds()) / 1000
+	result.Metrics["min_rtt_ms"] = float64(stats.minRTT.Microseconds()) / 1000
+	result.Metrics["max_rtt_ms"] = float64(stats.maxRTT.Microseconds()) / 1000
+	result.Metrics["jitter_ms"] = float64(stats.stdDevRTT.Microseconds()) / 1000
 
 	return finishSuccess(result)
 }

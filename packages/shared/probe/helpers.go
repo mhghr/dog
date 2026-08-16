@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -75,6 +76,11 @@ func mapErrorCode(code string, err error) string {
 
 	if errors.Is(err, context.DeadlineExceeded) {
 		return "timeout"
+	}
+
+	if strings.Contains(strings.ToLower(err.Error()), "permission denied") ||
+		strings.Contains(strings.ToLower(err.Error()), "operation not permitted") {
+		return "permission_denied"
 	}
 
 	return code
