@@ -43,7 +43,7 @@ const JITTER_KEYS = ["jitter_ms"] as const;
 // defaults so that a fresh monitor behaves identically before it is saved.
 const DEFAULT_THRESHOLDS: PingThresholds = {
   latency: { warning: 200, critical: 500 },
-  packetLoss: { warning: 1, critical: 5 },
+  packetLoss: { warning: 5, critical: 20 },
   jitter: { warning: 30, critical: 80 },
 };
 

@@ -172,3 +172,13 @@ export function useResourceMonitorMetrics(
     placeholderData: (prev) => prev,
   });
 }
+
+// Fetches the explicit per-probe availability series (success ratio 0..1) for
+// a ping monitor. Down periods come from this signal, never from latency gaps.
+export function useResourceMonitorStatus(
+  resourceId: string | undefined,
+  monitorId: string | undefined,
+  range: MetricsRange,
+) {
+  return useResourceMonitorMetrics(resourceId, monitorId, range, "status");
+}

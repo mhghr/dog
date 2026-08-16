@@ -101,4 +101,5 @@ export interface MonitorMetricsResponse {
   to: string;
   metric_key?: string;
   monitor_type?: string;
+  last_success_at?: string | null;
 }
