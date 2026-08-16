@@ -188,10 +188,6 @@ function KpiGrid({
 }) {
   const t = (en: string, fa: string) => (isFa ? fa : en);
 
-  const latency = summary.latency == null ? null : summary.latency;
-  const packetLoss = summary.packetLoss == null ? null : summary.packetLoss;
-  const jitter = summary.jitter == null ? null : summary.jitter;
-
   const availabilityRows: PingKpiRow[] = probeStats.map((s) => ({
     label: s.location,
     value: s.success ? t("Up", "بالا") : t("Down", "پایین"),
@@ -222,11 +218,11 @@ function KpiGrid({
           className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm"
         >
           <span className="font-semibold text-destructive">
-            {isFa ? "منبع قطع است" : "Target is down"}
+            {t("Target is down", "منبع قطع است")}
           </span>
           {lastSuccessAt && (
             <span className="text-muted-foreground">
-              {isFa ? "آخرین بررسی موفق: " : "Last successful check: "}
+              {t("Last successful check: ", "آخرین بررسی موفق: ")}
               {lastSuccessAt}
             </span>
           )}
@@ -245,22 +241,22 @@ function KpiGrid({
         />
         <PingKpiCard
           label={t("Latency", "تأخیر")}
-          value={formatPingKpiValue(latency, "ms", down)}
-          unit={latency != null || down ? "ms" : undefined}
+          value={formatPingKpiValue(summary.latency, "ms", down)}
+          unit={summary.latency != null || down ? "ms" : undefined}
           state={states.latency}
           rows={latencyRows}
         />
         <PingKpiCard
           label={t("Packet loss", "افت بسته")}
-          value={formatPingKpiValue(packetLoss, "percent", down)}
-          unit={packetLoss != null || down ? "%" : undefined}
+          value={formatPingKpiValue(summary.packetLoss, "percent", down)}
+          unit={summary.packetLoss != null || down ? "%" : undefined}
           state={states.packetLoss}
           rows={lossRows}
         />
         <PingKpiCard
           label={t("Jitter", "نوسان")}
-          value={formatPingKpiValue(jitter, "ms", down)}
-          unit={jitter != null || down ? "ms" : undefined}
+          value={formatPingKpiValue(summary.jitter, "ms", down)}
+          unit={summary.jitter != null || down ? "ms" : undefined}
           state={states.jitter}
           rows={jitterRows}
         />
