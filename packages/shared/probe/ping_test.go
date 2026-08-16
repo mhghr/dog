@@ -2,6 +2,7 @@ package probe
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -94,6 +95,15 @@ func TestShapePingResultSetsResolvedIP(t *testing.T) {
 }
 
 func TestMapErrorCodePermissionDenied(t *testing.T) {
+	if code := mapErrorCode("ping_failed", errors.New("listen icmp: operation not permitted")); code != "permission_denied" {
+		t.Fatalf("expected permission_denied, got %s", code)
+	}
+	if code := mapErrorCode("ping_failed", errors.New("socket: permission denied")); code != "permission_denied" {
+		t.Fatalf("expected permission_denied, got %s", code)
+	}
+}
+
+func TestMapErrorCodeTimeout(t *testing.T) {
 	if code := mapErrorCode("ping_failed", context.DeadlineExceeded); code != "timeout" {
 		t.Fatalf("expected timeout, got %s", code)
 	}
