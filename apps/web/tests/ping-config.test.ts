@@ -6,7 +6,7 @@ describe("readPingThresholds", () => {
   it("returns defaults when configuration is empty", () => {
     const t = readPingThresholds(undefined);
     expect(t.latency).toEqual({ warning: 200, critical: 500 });
-    expect(t.packetLoss).toEqual({ warning: 1, critical: 5 });
+    expect(t.packetLoss).toEqual({ warning: 5, critical: 20 });
     expect(t.jitter).toEqual({ warning: 30, critical:80 });
   });
 
