@@ -124,6 +124,12 @@ func lookupRDAP(ctx context.Context, client *http.Client, domainName string) (do
 		return domainInfo{}, fmt.Errorf("decode RDAP response: %w", err)
 	}
 
+	return rdapInfoFromPayload(payload), nil
+}
+
+// rdapInfoFromPayload converts the parsed RDAP response into the domain info
+// the platform consumes (dates, registrar, nameservers).
+func rdapInfoFromPayload(payload rdapDomain) domainInfo {
 	info := domainInfo{
 		Registered: true,
 		Statuses:   payload.Status,
@@ -158,7 +164,7 @@ func lookupRDAP(ctx context.Context, client *http.Client, domainName string) (do
 		}
 	}
 
-	return info, nil
+	return info
 }
 
 // parseVcardFullName extracts the "fn" property from a jCard array.
@@ -234,6 +240,21 @@ func lookupWHOIS(ctx context.Context, dial func(context.Context, string, string)
 		}
 	}
 
+	info := whoisInfoFromResponse(responseText)
+
+	lower := strings.ToLower(responseText)
+	if strings.Contains(lower, "no match for") ||
+		strings.Contains(lower, "not found") && info.ExpiresAt == nil && info.Registrar == "" {
+		return domainInfo{}, &errDomainNotRegistered{domain: domainName}
+	}
+
+	info.Registered = true
+	return info, nil
+}
+
+// whoisInfoFromResponse parses WHOIS response lines for expiry, registrar and
+// nameserver fields.
+func whoisInfoFromResponse(responseText string) domainInfo {
 	info := domainInfo{Source: "whois"}
 
 	for _, line := range strings.Split(responseText, "\n") {
@@ -259,14 +280,7 @@ func lookupWHOIS(ctx context.Context, dial func(context.Context, string, string)
 		}
 	}
 
-	lower := strings.ToLower(responseText)
-	if strings.Contains(lower, "no match for") ||
-		strings.Contains(lower, "not found") && info.ExpiresAt == nil && info.Registrar == "" {
-		return domainInfo{}, &errDomainNotRegistered{domain: domainName}
-	}
-
-	info.Registered = true
-	return info, nil
+	return info
 }
 
 func whoisQuery(ctx context.Context, dial func(context.Context, string, string) (net.Conn, error), address, query string) (string, error) {

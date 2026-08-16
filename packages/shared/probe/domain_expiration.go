@@ -84,43 +84,22 @@ func (e *DomainExpirationExecutor) Execute(ctx context.Context, job domain.Probe
 	result.Attributes["days_remaining"] = daysRemaining
 	result.Metrics["days_remaining"] = daysRemaining
 
-	warningDays := intConfig(job.Config, "warning_days", 45)
-	criticalDays := intConfig(job.Config, "critical_days", 15)
-
 	if daysRemaining < 0 {
 		return finishFailure(result, "domain_expired", fmt.Errorf("domain expired at %s", expiresAt.Format(time.RFC3339)))
 	}
 
-	if expectedRegistrar := stringConfig(job.Config, "expected_registrar_contains", ""); expectedRegistrar != "" {
-		if !strings.Contains(strings.ToLower(info.Registrar), strings.ToLower(expectedRegistrar)) {
-			return finishFailure(
-				result,
-				"registrar_mismatch",
-				fmt.Errorf("registrar %q does not contain %q", info.Registrar, expectedRegistrar),
-			)
-		}
+	if err := checkExpectedRegistrar(job.Config, info.Registrar); err != nil {
+		return finishFailure(result, "registrar_mismatch", err)
 	}
 
-	if boolConfig(job.Config, "check_nameservers", false) {
-		expectedNameservers := stringSliceConfig(job.Config, "expected_nameservers", nil)
-		if len(expectedNameservers) > 0 {
-			matched := false
-			for _, expected := range expectedNameservers {
-				if containsString(info.Nameservers, strings.ToLower(strings.TrimSuffix(expected, "."))) {
-					matched = true
-					break
-				}
-			}
-			result.Metrics["nameserver_match"] = boolToInt(matched)
-			if !matched {
-				return finishFailure(
-					result,
-					"nameserver_mismatch",
-					fmt.Errorf("nameservers %v do not include any of %v", info.Nameservers, expectedNameservers),
-				)
-			}
-		}
+	matched, err := checkExpectedNameservers(job.Config, info.Nameservers)
+	result.Metrics["nameserver_match"] = boolToInt(matched)
+	if err != nil {
+		return finishFailure(result, "nameserver_mismatch", err)
 	}
+
+	warningDays := intConfig(job.Config, "warning_days", 45)
+	criticalDays := intConfig(job.Config, "critical_days", 15)
 
 	if daysRemaining <= criticalDays {
 		return finishFailure(
@@ -135,6 +114,49 @@ func (e *DomainExpirationExecutor) Execute(ctx context.Context, job domain.Probe
 	}
 
 	return finishSuccess(result)
+}
+
+// checkExpectedRegistrar verifies the registrar matches the configured
+// expected_registrar_contains constraint, if any.
+func checkExpectedRegistrar(config map[string]any, registrar string) error {
+	expectedRegistrar := stringConfig(config, "expected_registrar_contains", "")
+	if expectedRegistrar == "" {
+		return nil
+	}
+
+	if strings.Contains(strings.ToLower(registrar), strings.ToLower(expectedRegistrar)) {
+		return nil
+	}
+
+	return fmt.Errorf("registrar %q does not contain %q", registrar, expectedRegistrar)
+}
+
+// checkExpectedNameservers verifies the domain's nameservers include at least
+// one of the expected_nameservers when check_nameservers is enabled. It
+// returns whether a match was found.
+func checkExpectedNameservers(config map[string]any, nameservers []string) (bool, error) {
+	if !boolConfig(config, "check_nameservers", false) {
+		return false, nil
+	}
+
+	expectedNameservers := stringSliceConfig(config, "expected_nameservers", nil)
+	if len(expectedNameservers) == 0 {
+		return false, nil
+	}
+
+	matched := false
+	for _, expected := range expectedNameservers {
+		if containsString(nameservers, strings.ToLower(strings.TrimSuffix(expected, "."))) {
+			matched = true
+			break
+		}
+	}
+
+	if !matched {
+		return false, fmt.Errorf("nameservers %v do not include any of %v", nameservers, expectedNameservers)
+	}
+
+	return true, nil
 }
 
 func (e *DomainExpirationExecutor) lookup(ctx context.Context, domainName string) (domainInfo, error) {

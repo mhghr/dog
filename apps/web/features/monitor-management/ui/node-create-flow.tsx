@@ -21,8 +21,7 @@ import {
 } from "@/shared/ui/card";
 import { Label } from "@/shared/ui/label";
 import { MonitorThresholdFields } from "@/features/monitor-management/ui/monitor-threshold-fields";
-import { ApiError } from "@/shared/api";
-import { getMonitorDefinition, getMonitorFormField, MONITOR_TYPES } from "@/plugins/monitoring/core/registry";
+import { getMonitorDefinition, MONITOR_TYPES } from "@/plugins/monitoring/core/registry";
 import {
   buildMonitorPayload,
   buildProbeConfig,
@@ -30,6 +29,7 @@ import {
   defaultFormValues,
   type MonitorFormValues,
 } from "@/features/monitor-management/schemas/schemas";
+import { mapServerErrors } from "@/features/monitor-management/schemas/submit-helpers";
 import { cn } from "@/shared/utils/cn";
 import type { CreateMonitorInput, MonitorType } from "@/entities/monitor/model/types";
 
@@ -204,14 +204,7 @@ function CreateForm({
     try {
       await onSubmit(buildMonitorPayload(values));
     } catch (error) {
-      if (error instanceof ApiError && error.fields) {
-        for (const [field, messages] of Object.entries(error.fields)) {
-          const formField = getMonitorFormField(values.type, field);
-          if (formField && messages.length > 0) {
-            form.setError(formField, { type: "server", message: messages[0] });
-          }
-        }
-      }
+      mapServerErrors(form, values.type, error);
       throw error;
     }
   });

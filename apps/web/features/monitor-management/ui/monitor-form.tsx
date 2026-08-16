@@ -13,14 +13,14 @@ import {
   TextField,
 } from "@/features/monitor-management/ui/form-fields";
 import { Button } from "@/shared/ui/button";
-import { ApiError } from "@/shared/api";
-import { getMonitorDefinition, getMonitorFormField, MONITOR_TYPE_GROUPS } from "@/plugins/monitoring/core/registry";
+import { getMonitorDefinition, MONITOR_TYPE_GROUPS } from "@/plugins/monitoring/core/registry";
 import {
   buildMonitorPayload,
   createMonitorFormSchema,
   defaultFormValues,
   type MonitorFormValues,
 } from "@/features/monitor-management/schemas/schemas";
+import { mapServerErrors } from "@/features/monitor-management/schemas/submit-helpers";
 import { cn } from "@/shared/utils/cn";
 import type { CreateMonitorInput, MonitorType } from "@/entities/monitor/model/types";
 
@@ -70,14 +70,7 @@ export function MonitorForm({
     try {
       await onSubmit(buildMonitorPayload(values));
     } catch (error) {
-      if (error instanceof ApiError && error.fields) {
-        for (const [field, messages] of Object.entries(error.fields)) {
-          const formField = getMonitorFormField(values.type, field);
-          if (formField && messages.length > 0) {
-            form.setError(formField, { type: "server", message: messages[0] });
-          }
-        }
-      }
+      mapServerErrors(form, values.type, error);
       throw error;
     }
   });

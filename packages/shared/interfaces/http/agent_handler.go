@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -262,24 +263,8 @@ func (h *Handler) approveAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var certPEM, serial string
-	if h.deps.CA != nil && agent.PublicKey != "" {
-		block, _ := pem.Decode([]byte(agent.PublicKey))
-		if block != nil {
-			pub, pubErr := x509.ParsePKIXPublicKey(block.Bytes)
-			if pubErr == nil {
-				certPEM, serial, pubErr = h.deps.CA.IssueAgentCertificate(id.String(), agent.Hostname, pub)
-				if pubErr == nil {
-					if setErr := h.deps.AgentRepo.SetAgentCertificate(r.Context(), id, serial); setErr != nil {
-						h.deps.Logger.Warn("set agent certificate failed", "error", setErr)
-					}
-					if setErr := h.deps.AgentRepo.SetAgentGatewayCert(r.Context(), id, certPEM); setErr != nil {
-						h.deps.Logger.Warn("set agent gateway cert failed", "error", setErr)
-					}
-				} else {
-					h.deps.Logger.Warn("issue certificate failed", "error", pubErr)
-				}
-			}
-		}
+	if certPEM, serial = h.issueAgentCertificate(r.Context(), id, agent); certPEM != "" {
+		// certificate was issued and persisted
 	}
 
 	prevState, _ := json.Marshal(map[string]string{"status": string(agent.Status)})
@@ -308,6 +293,42 @@ func (h *Handler) approveAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// issueAgentCertificate issues and persists a certificate for an approved
+// agent's public key. It returns the cert PEM and serial; both are empty when
+// no certificate could be produced (no CA configured, missing public key, or
+// a parse/issue error). Failures are logged, never fatal to the approval.
+func (h *Handler) issueAgentCertificate(ctx context.Context, agentID uuid.UUID, agent *agents.ProbeAgent) (certPEM, serial string) {
+	if h.deps.CA == nil || agent.PublicKey == "" {
+		return "", ""
+	}
+
+	block, _ := pem.Decode([]byte(agent.PublicKey))
+	if block == nil {
+		return "", ""
+	}
+
+	pub, pubErr := x509.ParsePKIXPublicKey(block.Bytes)
+	if pubErr != nil {
+		h.deps.Logger.Warn("parse public key failed", "error", pubErr)
+		return "", ""
+	}
+
+	certPEM, serial, pubErr = h.deps.CA.IssueAgentCertificate(agentID.String(), agent.Hostname, pub)
+	if pubErr != nil {
+		h.deps.Logger.Warn("issue certificate failed", "error", pubErr)
+		return "", ""
+	}
+
+	if setErr := h.deps.AgentRepo.SetAgentCertificate(ctx, agentID, serial); setErr != nil {
+		h.deps.Logger.Warn("set agent certificate failed", "error", setErr)
+	}
+	if setErr := h.deps.AgentRepo.SetAgentGatewayCert(ctx, agentID, certPEM); setErr != nil {
+		h.deps.Logger.Warn("set agent gateway cert failed", "error", setErr)
+	}
+
+	return certPEM, serial
 }
 
 func (h *Handler) rejectAgent(w http.ResponseWriter, r *http.Request) {

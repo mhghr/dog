@@ -29,33 +29,40 @@ func ConvertOTLPMetrics(req *collector.ExportMetricsServiceRequest, receivedAt t
 
 		for _, sm := range rm.GetScopeMetrics() {
 			for _, m := range sm.GetMetrics() {
-				switch data := m.GetData().(type) {
-				case *metricspb.Metric_Gauge:
-					for _, dp := range data.Gauge.GetDataPoints() {
-						if v := doubleValue(dp); v != nil {
-							samples = append(samples, domain.MetricSample{
-								Name:      m.GetName(),
-								Type:      domain.MetricTypeGauge,
-								Value:     *v,
-								Labels:    mergeLabels(resourceLabels, attrMap(dp.GetAttributes())),
-								Timestamp: time.Unix(0, int64(dp.GetTimeUnixNano())),
-							})
-						}
-					}
-				case *metricspb.Metric_Sum:
-					for _, dp := range data.Sum.GetDataPoints() {
-						if v := doubleValue(dp); v != nil {
-							samples = append(samples, domain.MetricSample{
-								Name:      m.GetName(),
-								Type:      domain.MetricTypeSum,
-								Value:     *v,
-								Labels:    mergeLabels(resourceLabels, attrMap(dp.GetAttributes())),
-								Timestamp: time.Unix(0, int64(dp.GetTimeUnixNano())),
-							})
-						}
-					}
-				}
+				samples = append(samples, convertMetricData(m, resourceLabels)...)
 			}
+		}
+	}
+
+	return samples
+}
+
+// convertMetricData converts a single OTLP metric into domain samples, based
+// on the underlying data type (gauge or cumulative sum).
+func convertMetricData(m *metricspb.Metric, resourceLabels map[string]string) []domain.MetricSample {
+	var samples []domain.MetricSample
+
+	var dataPoints []*metricspb.NumberDataPoint
+	var sampleType domain.MetricType
+
+	switch data := m.GetData().(type) {
+	case *metricspb.Metric_Gauge:
+		dataPoints = data.Gauge.GetDataPoints()
+		sampleType = domain.MetricTypeGauge
+	case *metricspb.Metric_Sum:
+		dataPoints = data.Sum.GetDataPoints()
+		sampleType = domain.MetricTypeSum
+	}
+
+	for _, dp := range dataPoints {
+		if v := doubleValue(dp); v != nil {
+			samples = append(samples, domain.MetricSample{
+				Name:      m.GetName(),
+				Type:      sampleType,
+				Value:     *v,
+				Labels:    mergeLabels(resourceLabels, attrMap(dp.GetAttributes())),
+				Timestamp: time.Unix(0, int64(dp.GetTimeUnixNano())),
+			})
 		}
 	}
 

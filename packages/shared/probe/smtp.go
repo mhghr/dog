@@ -33,15 +33,7 @@ func (e *SMTPExecutor) Execute(ctx context.Context, job domain.ProbeJob) domain.
 	host := job.Target
 	mode := strings.ToLower(stringConfig(job.Config, "mode", "plain"))
 
-	defaultPort := 25
-	switch mode {
-	case "starttls":
-		defaultPort = 587
-	case "implicit_tls":
-		defaultPort = 465
-	}
-
-	port := intConfig(job.Config, "port", defaultPort)
+	port := intConfig(job.Config, "port", defaultSMTPPort(mode))
 	ehloDomain := stringConfig(job.Config, "ehlo_domain", "monitoring.local")
 	verifyTLS := boolConfig(job.Config, "verify_tls", true)
 	requireStartTLS := boolConfig(job.Config, "require_starttls", mode == "starttls")
@@ -67,8 +59,8 @@ func (e *SMTPExecutor) Execute(ctx context.Context, job domain.ProbeJob) domain.
 	}
 
 	if mode == "implicit_tls" {
-		tlsConn := tls.Client(conn, tlsConfig)
-		if err := tlsConn.HandshakeContext(ctx); err != nil {
+		tlsConn, err := wrapTLS(conn, tlsConfig, ctx)
+		if err != nil {
 			return finishFailure(result, "smtp_tls_invalid", err)
 		}
 		conn = tlsConn
@@ -89,14 +81,8 @@ func (e *SMTPExecutor) Execute(ctx context.Context, job domain.ProbeJob) domain.
 		return finishFailure(result, "smtp_invalid_banner", fmt.Errorf("expected 220 banner, received %d %s", code, banner))
 	}
 
-	if expectedBanner := stringConfig(job.Config, "expected_banner_contains", ""); expectedBanner != "" {
-		if !strings.Contains(banner, expectedBanner) {
-			return finishFailure(
-				result,
-				"smtp_invalid_banner",
-				fmt.Errorf("banner does not contain %q", expectedBanner),
-			)
-		}
+	if err := checkExpectedBanner(job.Config, banner); err != nil {
+		return finishFailure(result, "smtp_invalid_banner", err)
 	}
 
 	ehloStart := time.Now()
@@ -109,55 +95,41 @@ func (e *SMTPExecutor) Execute(ctx context.Context, job domain.ProbeJob) domain.
 	startTLSAvailable := capabilities["STARTTLS"]
 	result.Metrics["starttls_available"] = boolToInt(startTLSAvailable)
 
-	if mode == "starttls" {
-		if !startTLSAvailable {
-			if requireStartTLS {
-				return finishFailure(result, "smtp_starttls_unavailable", fmt.Errorf("server does not advertise STARTTLS"))
-			}
-		} else {
-			startTLSStart := time.Now()
+	if mode == "starttls" && startTLSAvailable {
+		startTLSStart := time.Now()
 
-			if err := text.PrintfLine("STARTTLS"); err != nil {
-				return finishFailure(result, "smtp_starttls_failed", err)
-			}
-			code, message, err := readSMTPResponse(text)
-			if err != nil || code != 220 {
-				if err == nil {
-					err = fmt.Errorf("STARTTLS rejected: %d %s", code, message)
-				}
-				return finishFailure(result, "smtp_starttls_failed", err)
-			}
-
-			tlsConn := tls.Client(conn, tlsConfig)
-			if err := tlsConn.HandshakeContext(ctx); err != nil {
-				return finishFailure(result, "smtp_tls_invalid", err)
-			}
-			conn = tlsConn
-			text = textproto.NewConn(conn)
-			result.Attributes["tls_version"] = tlsVersionName(tlsConn.ConnectionState().Version)
-			result.Metrics["starttls_duration_ms"] = time.Since(startTLSStart).Milliseconds()
-
-			capabilities, err = smtpEHLO(text, ehloDomain)
-			if err != nil {
-				return finishFailure(result, "smtp_ehlo_failed", err)
-			}
+		if err := text.PrintfLine("STARTTLS"); err != nil {
+			return finishFailure(result, "smtp_starttls_failed", err)
 		}
+		code, message, err := readSMTPResponse(text)
+		if err != nil || code != 220 {
+			if err == nil {
+				err = fmt.Errorf("STARTTLS rejected: %d %s", code, message)
+			}
+			return finishFailure(result, "smtp_starttls_failed", err)
+		}
+
+		tlsConn, err := wrapTLS(conn, tlsConfig, ctx)
+		if err != nil {
+			return finishFailure(result, "smtp_tls_invalid", err)
+		}
+		conn = tlsConn
+		text = textproto.NewConn(conn)
+		result.Attributes["tls_version"] = tlsVersionName(tlsConn.ConnectionState().Version)
+		result.Metrics["starttls_duration_ms"] = time.Since(startTLSStart).Milliseconds()
+
+		capabilities, err = smtpEHLO(text, ehloDomain)
+		if err != nil {
+			return finishFailure(result, "smtp_ehlo_failed", err)
+		}
+	} else if mode == "starttls" && requireStartTLS {
+		return finishFailure(result, "smtp_starttls_unavailable", fmt.Errorf("server does not advertise STARTTLS"))
 	}
 
-	capabilityNames := make([]string, 0, len(capabilities))
-	for capability := range capabilities {
-		capabilityNames = append(capabilityNames, capability)
-	}
-	result.Attributes["capabilities"] = capabilityNames
+	result.Attributes["capabilities"] = capabilityNames(capabilities)
 
-	for _, expected := range stringSliceConfig(job.Config, "expected_capabilities", nil) {
-		if !capabilities[strings.ToUpper(strings.TrimSpace(expected))] {
-			return finishFailure(
-				result,
-				"smtp_capability_missing",
-				fmt.Errorf("capability %q is not advertised", expected),
-			)
-		}
+	if err := checkExpectedCapabilities(job.Config, capabilities); err != nil {
+		return finishFailure(result, "smtp_capability_missing", err)
 	}
 
 	if err := text.PrintfLine("NOOP"); err != nil {
@@ -174,6 +146,55 @@ func (e *SMTPExecutor) Execute(ctx context.Context, job domain.ProbeJob) domain.
 	_, _, _ = readSMTPResponse(text)
 
 	return finishSuccess(result)
+}
+
+// defaultSMTPPort returns the conventional port for the given mode.
+func defaultSMTPPort(mode string) int {
+	switch mode {
+	case "starttls":
+		return 587
+	case "implicit_tls":
+		return 465
+	default:
+		return 25
+	}
+}
+
+// wrapTLS upgrades a raw connection to TLS and performs the handshake.
+func wrapTLS(conn net.Conn, tlsConfig *tls.Config, ctx context.Context) (*tls.Conn, error) {
+	tlsConn := tls.Client(conn, tlsConfig)
+	if err := tlsConn.HandshakeContext(ctx); err != nil {
+		return nil, err
+	}
+	return tlsConn, nil
+}
+
+// checkExpectedBanner verifies the banner contains expected_banner_contains.
+func checkExpectedBanner(config map[string]any, banner string) error {
+	expectedBanner := stringConfig(config, "expected_banner_contains", "")
+	if expectedBanner == "" || strings.Contains(banner, expectedBanner) {
+		return nil
+	}
+	return fmt.Errorf("banner does not contain %q", expectedBanner)
+}
+
+// checkExpectedCapabilities verifies the server advertises every configured
+// expected_capabilities entry.
+func checkExpectedCapabilities(config map[string]any, capabilities map[string]bool) error {
+	for _, expected := range stringSliceConfig(config, "expected_capabilities", nil) {
+		if !capabilities[strings.ToUpper(strings.TrimSpace(expected))] {
+			return fmt.Errorf("capability %q is not advertised", expected)
+		}
+	}
+	return nil
+}
+
+func capabilityNames(capabilities map[string]bool) []string {
+	names := make([]string, 0, len(capabilities))
+	for capability := range capabilities {
+		names = append(names, capability)
+	}
+	return names
 }
 
 func smtpEHLO(text *textproto.Conn, ehloDomain string) (map[string]bool, error) {

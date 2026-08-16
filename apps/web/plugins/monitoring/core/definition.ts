@@ -2,7 +2,7 @@ import type { ComponentType } from "react";
 import type { UseFormReturn } from "react-hook-form";
 
 import type { AppIcon } from "@/shared/ui/icons";
-import type { MonitorFormValues } from "@/features/monitor-management/schemas/schemas";
+import type { MonitorFormValues } from "@/entities/monitor/model/form-values";
 import type { Monitor, MonitorType } from "@/entities/monitor/model/types";
 import type { ProbeLocation } from "@/entities/probe/model/types";
 import type { MonitorMetrics, ProbeResult } from "@/entities/monitor/model/result";

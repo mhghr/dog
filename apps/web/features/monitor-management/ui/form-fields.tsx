@@ -14,7 +14,7 @@ import {
 } from "@/shared/ui/select";
 import { Switch } from "@/shared/ui/switch";
 import { cn } from "@/shared/utils/cn";
-import type { MonitorFormValues } from "@/features/monitor-management/schemas/schemas";
+import type { MonitorFormValues } from "@/entities/monitor/model/form-values";
 
 type MonitorForm = UseFormReturn<MonitorFormValues>;
 type FieldName = Path<MonitorFormValues>;

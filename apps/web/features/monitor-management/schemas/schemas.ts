@@ -2,16 +2,23 @@ import { z } from "zod";
 
 import { getMonitorDefinition } from "@/plugins/monitoring/core/registry";
 import { MONITOR_TYPE_VALUES, type CreateMonitorInput, type Monitor, type MonitorType } from "@/entities/monitor/model/types";
+import type { MonitorFormValues } from "@/entities/monitor/model/form-values";
+
+export type { MonitorFormValues };
 
 type Translator = (key: string, values?: Record<string, string | number>) => string;
 
+// isEmptyInput treats blank or NaN input as "no value provided" so optional
+// numeric fields can be left empty in the form.
+const isEmptyInput = (value: unknown): boolean =>
+  value === "" ||
+  value === null ||
+  value === undefined ||
+  (typeof value === "number" && Number.isNaN(value));
+
 const optionalInt = (min: number, max: number) =>
   z.preprocess(
-    (value) =>
-      value === "" || value === null || value === undefined ||
-      (typeof value === "number" && Number.isNaN(value))
-        ? undefined
-        : value,
+    (value) => (isEmptyInput(value) ? undefined : value),
     z.coerce.number().int().min(min).max(max).optional(),
   );
 
@@ -135,8 +142,6 @@ export function createMonitorFormSchema(t: Translator) {
       }
     });
 }
-
-export type MonitorFormValues = z.infer<ReturnType<typeof createMonitorFormSchema>>;
 
 export function defaultFormValues(type: MonitorType = "http"): MonitorFormValues {
   const definition = getMonitorDefinition(type);
@@ -266,9 +271,16 @@ const TYPE_FIELDS: Record<string, FieldDef[]> = {
 };
 
 function isEmptyValue(value: unknown): boolean {
-  return value === undefined || value === null || value === "" ||
-    (Array.isArray(value) && value.length === 0) ||
-    (typeof value === "object" && !Array.isArray(value) && Object.keys(value as object).length === 0);
+  if (value === undefined || value === null || value === "") {
+    return true;
+  }
+  if (Array.isArray(value)) {
+    return value.length === 0;
+  }
+  if (typeof value === "object") {
+    return Object.keys(value as object).length === 0;
+  }
+  return false;
 }
 
 function applyTransform(value: unknown, transform: FieldDef["transform"]): unknown {
@@ -294,7 +306,7 @@ export function buildProbeConfig(values: MonitorFormValues): Record<string, unkn
 
   const fields = TYPE_FIELDS[values.type] ?? [];
   for (const f of fields) {
-    const raw = (values as Record<string, unknown>)[f.formKey];
+    const raw = (values as unknown as Record<string, unknown>)[f.formKey];
     if (f.optional && raw === undefined) continue;
     const transformed = f.transform ? applyTransform(raw, f.transform) : raw;
     set(f.configKey, transformed);
@@ -359,13 +371,13 @@ export function monitorToFormValues(monitor: Monitor): MonitorFormValues {
     if (raw == null) continue;
 
     if (f.optional && typeof raw === "boolean") {
-      (values as Record<string, unknown>)[f.formKey] = bool(f.configKey) ?? (values as Record<string, unknown>)[f.formKey];
+      (values as unknown as Record<string, unknown>)[f.formKey] = bool(f.configKey) ?? (values as unknown as Record<string, unknown>)[f.formKey];
       continue;
     }
 
     const result = applyReverseTransform(raw, f);
     if (result !== undefined) {
-      (values as Record<string, unknown>)[f.formKey] = result;
+      (values as unknown as Record<string, unknown>)[f.formKey] = result;
     }
   }
 

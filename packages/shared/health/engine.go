@@ -247,38 +247,16 @@ func (e *Engine) EvaluateParameter(ctx context.Context, monitorID, paramKey stri
 }
 
 func evaluateHigherIsWorse(recentValues []float64, rule *ParameterRule, catDef ParameterDefinition, repo Repository, ctx context.Context, monitorID, paramKey string) HealthState {
-	if len(recentValues) == 0 {
-		return evaluateMissingData(rule, repo, ctx, monitorID, paramKey)
-	}
-
-	aggValue := aggregateValues(recentValues, rule.Aggregation)
-	newState := HealthOK
-
-	if rule.ErrorValue != nil {
-		if compareValue(aggValue, *rule.ErrorValue, rule.ErrorOperator) {
-			newState = HealthError
-		}
-	}
-
-	if rule.WarningValue != nil && newState == HealthOK {
-		if compareValue(aggValue, *rule.WarningValue, rule.WarningOperator) {
-			newState = HealthWarning
-		}
-	}
-
-	if rule.RecoveryValue != nil {
-		previousState, err := repo.GetHealthState(ctx, monitorID, paramKey)
-		if err == nil && previousState.CurrentState != HealthOK && previousState.CurrentState != HealthUnknown {
-			if !compareValue(aggValue, *rule.RecoveryValue, rule.WarningOperator) {
-				newState = HealthOK
-			}
-		}
-	}
-
-	return persistAndReturn(repo, ctx, monitorID, paramKey, newState, aggValue)
+	return evaluateDirectional(recentValues, rule, catDef, repo, ctx, monitorID, paramKey, compareValue)
 }
 
 func evaluateLowerIsWorse(recentValues []float64, rule *ParameterRule, catDef ParameterDefinition, repo Repository, ctx context.Context, monitorID, paramKey string) HealthState {
+	return evaluateDirectional(recentValues, rule, catDef, repo, ctx, monitorID, paramKey, compareValueLower)
+}
+
+// evaluateDirectional applies threshold rules whose direction (higher vs lower
+// is worse) is encoded in the compare function.
+func evaluateDirectional(recentValues []float64, rule *ParameterRule, catDef ParameterDefinition, repo Repository, ctx context.Context, monitorID, paramKey string, compare func(value, threshold float64, op string) bool) HealthState {
 	if len(recentValues) == 0 {
 		return evaluateMissingData(rule, repo, ctx, monitorID, paramKey)
 	}
@@ -287,13 +265,13 @@ func evaluateLowerIsWorse(recentValues []float64, rule *ParameterRule, catDef Pa
 	newState := HealthOK
 
 	if rule.ErrorValue != nil {
-		if compareValueLower(aggValue, *rule.ErrorValue, rule.ErrorOperator) {
+		if compare(aggValue, *rule.ErrorValue, rule.ErrorOperator) {
 			newState = HealthError
 		}
 	}
 
 	if rule.WarningValue != nil && newState == HealthOK {
-		if compareValueLower(aggValue, *rule.WarningValue, rule.WarningOperator) {
+		if compare(aggValue, *rule.WarningValue, rule.WarningOperator) {
 			newState = HealthWarning
 		}
 	}
@@ -301,7 +279,7 @@ func evaluateLowerIsWorse(recentValues []float64, rule *ParameterRule, catDef Pa
 	if rule.RecoveryValue != nil {
 		previousState, err := repo.GetHealthState(ctx, monitorID, paramKey)
 		if err == nil && previousState.CurrentState != HealthOK && previousState.CurrentState != HealthUnknown {
-			if !compareValueLower(aggValue, *rule.RecoveryValue, rule.WarningOperator) {
+			if !compare(aggValue, *rule.RecoveryValue, rule.WarningOperator) {
 				newState = HealthOK
 			}
 		}

@@ -14,24 +14,6 @@ import {
 } from "@/shared/ui/icons";
 import { cn } from "@/shared/utils/cn";
 
-export function statusTone(status: string): string {
-  switch (status) {
-    case "active":
-    case "up":
-    case "ok":
-      return "border-transparent bg-success/12 text-success";
-    case "warning":
-    case "degraded":
-      return "border-transparent bg-warning/15 text-warning";
-    case "down":
-    case "error":
-    case "failed":
-      return "border-transparent bg-destructive/12 text-destructive";
-    default:
-      return "border-transparent bg-muted text-muted-foreground";
-  }
-}
-
 const MONITOR_TYPE_ICONS: Record<string, typeof Pulse> = {
   ping: Broadcast,
   "http check": Globe,

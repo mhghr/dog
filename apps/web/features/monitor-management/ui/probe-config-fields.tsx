@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { Activity, Radio, Waves, Gauge } from "lucide-react";
 
 import { NumberField, SelectField, TextField } from "@/features/monitor-management/ui/form-fields";
-import type { MonitorFormValues } from "@/features/monitor-management/schemas/schemas";
+import type { MonitorFormValues } from "@/entities/monitor/model/form-values";
 import { Label } from "@/shared/ui/label";
 import { cn } from "@/shared/utils/cn";
 

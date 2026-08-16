@@ -115,6 +115,24 @@ func toResourceResponse(res domain.Resource) resourceResponse {
 	}
 }
 
+// loadResource parses the resourceID URL param, validates it, and loads the
+// resource. It writes the error response and returns ok=false on failure.
+func (h *Handler) loadResource(w http.ResponseWriter, r *http.Request) (domain.Resource, bool) {
+	resourceID := chi.URLParam(r, "resourceID")
+	if _, err := uuid.Parse(resourceID); err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_id", "resource id must be a valid UUID", nil)
+		return domain.Resource{}, false
+	}
+
+	res, err := h.deps.ResourceRepo.GetByID(r.Context(), resourceID)
+	if err != nil {
+		writeDomainError(w, r, err)
+		return domain.Resource{}, false
+	}
+
+	return res, true
+}
+
 func (h *Handler) listResources(w http.ResponseWriter, r *http.Request) {
 	orgID, ok := domain.OrgIDFromContext(r.Context())
 	if !ok {
@@ -232,15 +250,8 @@ func (h *Handler) createResource(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getResource(w http.ResponseWriter, r *http.Request) {
-	resourceID := chi.URLParam(r, "resourceID")
-	if _, err := uuid.Parse(resourceID); err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_id", "resource id must be a valid UUID", nil)
-		return
-	}
-
-	res, err := h.deps.ResourceRepo.GetByID(r.Context(), resourceID)
-	if err != nil {
-		writeDomainError(w, r, err)
+	res, ok := h.loadResource(w, r)
+	if !ok {
 		return
 	}
 
@@ -252,19 +263,12 @@ func (h *Handler) getResource(w http.ResponseWriter, r *http.Request) {
 // each monitor. The frontend consumes this with one request to render every
 // Metric Card on the resource overview, instead of one request per metric.
 func (h *Handler) getResourceOverview(w http.ResponseWriter, r *http.Request) {
-	resourceID := chi.URLParam(r, "resourceID")
-	if _, err := uuid.Parse(resourceID); err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_id", "resource id must be a valid UUID", nil)
+	res, ok := h.loadResource(w, r)
+	if !ok {
 		return
 	}
 
-	res, err := h.deps.ResourceRepo.GetByID(r.Context(), resourceID)
-	if err != nil {
-		writeDomainError(w, r, err)
-		return
-	}
-
-	monitors, err := h.deps.MonitorRepo.ListByResource(r.Context(), resourceID)
+	monitors, err := h.deps.MonitorRepo.ListByResource(r.Context(), res.ID)
 	if err != nil {
 		h.deps.Logger.Error("overview: list monitors failed", "error", err)
 		writeDomainError(w, r, err)
@@ -364,15 +368,8 @@ func toFloat(value any) (float64, bool) {
 }
 
 func (h *Handler) updateResource(w http.ResponseWriter, r *http.Request) {
-	resourceID := chi.URLParam(r, "resourceID")
-	if _, err := uuid.Parse(resourceID); err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_id", "resource id must be a valid UUID", nil)
-		return
-	}
-
-	res, err := h.deps.ResourceRepo.GetByID(r.Context(), resourceID)
-	if err != nil {
-		writeDomainError(w, r, err)
+	res, ok := h.loadResource(w, r)
+	if !ok {
 		return
 	}
 
@@ -388,6 +385,25 @@ func (h *Handler) updateResource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	applyResourceUpdate(&res, input)
+
+	if err := h.deps.ResourceRepo.Update(r.Context(), &res); err != nil {
+		writeDomainError(w, r, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, toResourceResponse(res))
+}
+
+// applyResourceUpdate overwrites resource fields that were provided in the
+// request body. Empty string fields and nil metadata are left untouched.
+func applyResourceUpdate(res *domain.Resource, input struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Target      string         `json:"target"`
+	Status      string         `json:"status"`
+	Metadata    map[string]any `json:"metadata"`
+}) {
 	if input.Name != "" {
 		res.Name = input.Name
 	}
@@ -403,23 +419,15 @@ func (h *Handler) updateResource(w http.ResponseWriter, r *http.Request) {
 	if input.Metadata != nil {
 		res.Metadata = input.Metadata
 	}
-
-	if err := h.deps.ResourceRepo.Update(r.Context(), &res); err != nil {
-		writeDomainError(w, r, err)
-		return
-	}
-
-	writeJSON(w, http.StatusOK, toResourceResponse(res))
 }
 
 func (h *Handler) deleteResource(w http.ResponseWriter, r *http.Request) {
-	resourceID := chi.URLParam(r, "resourceID")
-	if _, err := uuid.Parse(resourceID); err != nil {
-		writeError(w, r, http.StatusBadRequest, "invalid_id", "resource id must be a valid UUID", nil)
+	res, ok := h.loadResource(w, r)
+	if !ok {
 		return
 	}
 
-	if err := h.deps.ResourceRepo.Delete(r.Context(), resourceID); err != nil {
+	if err := h.deps.ResourceRepo.Delete(r.Context(), res.ID); err != nil {
 		writeDomainError(w, r, err)
 		return
 	}

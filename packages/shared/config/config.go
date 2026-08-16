@@ -162,55 +162,32 @@ func Load() *Config {
 	}
 }
 
-func (c *Config) Require(keys ...string) error {
-	missing := make([]string, 0)
+// requiredEnvValues maps environment variable names to the values that must be
+// non-empty for the process to start. Require uses it to validate the subset
+// of configuration this binary needs.
+func (c *Config) requiredEnvValues() map[string]string {
+	return map[string]string{
+		"DATABASE_URL":                c.DatabaseURL,
+		"REDIS_ADDRESS":               c.RedisAddress,
+		"WORKER_TOKEN":                c.WorkerToken,
+		"API_BASE_URL":                c.APIBaseURL,
+		"VICTORIA_URL":                c.VictoriaURL,
+		"GATEWAY_ADDRESS":             c.GatewayAddress,
+		"AGENT_CONTROL_PLANE":         c.AgentControlPlane,
+		"AGENT_GATEWAY":               c.AgentGateway,
+		"OTEL_INGEST_ADDRESS":         c.OTELIngestAddress,
+		"NATS_URL":                    c.NATSURL,
+		"AGENT_SECRET_ENCRYPTION_KEY": c.AgentSecretEncryptionKey,
+	}
+}
 
+func (c *Config) Require(keys ...string) error {
+	values := c.requiredEnvValues()
+
+	missing := make([]string, 0)
 	for _, key := range keys {
-		switch key {
-		case "DATABASE_URL":
-			if c.DatabaseURL == "" {
-				missing = append(missing, key)
-			}
-		case "REDIS_ADDRESS":
-			if c.RedisAddress == "" {
-				missing = append(missing, key)
-			}
-		case "WORKER_TOKEN":
-			if c.WorkerToken == "" {
-				missing = append(missing, key)
-			}
-		case "API_BASE_URL":
-			if c.APIBaseURL == "" {
-				missing = append(missing, key)
-			}
-		case "VICTORIA_URL":
-			if c.VictoriaURL == "" {
-				missing = append(missing, key)
-			}
-		case "GATEWAY_ADDRESS":
-			if c.GatewayAddress == "" {
-				missing = append(missing, key)
-			}
-		case "AGENT_CONTROL_PLANE":
-			if c.AgentControlPlane == "" {
-				missing = append(missing, key)
-			}
-		case "AGENT_GATEWAY":
-			if c.AgentGateway == "" {
-				missing = append(missing, key)
-			}
-		case "OTEL_INGEST_ADDRESS":
-			if c.OTELIngestAddress == "" {
-				missing = append(missing, key)
-			}
-		case "NATS_URL":
-			if c.NATSURL == "" {
-				missing = append(missing, key)
-			}
-		case "AGENT_SECRET_ENCRYPTION_KEY":
-			if c.AgentSecretEncryptionKey == "" {
-				missing = append(missing, key)
-			}
+		if value, ok := values[key]; ok && value == "" {
+			missing = append(missing, key)
 		}
 	}
 

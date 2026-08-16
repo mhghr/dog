@@ -8,7 +8,7 @@ import { smtpMonitorDefinition } from "@/plugins/monitoring/smtp/definition";
 import { tcpMonitorDefinition } from "@/plugins/monitoring/tcp/definition";
 import { tlsMonitorDefinition } from "@/plugins/monitoring/tls/definition";
 import type { MonitorType } from "@/entities/monitor/model/types";
-import type { MonitorFormValues } from "@/features/monitor-management/schemas/schemas";
+import type { MonitorFormValues } from "@/entities/monitor/model/form-values";
 
 const definitions = [
   httpMonitorDefinition, tcpMonitorDefinition, dnsMonitorDefinition,
