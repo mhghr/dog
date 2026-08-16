@@ -1359,7 +1359,7 @@ describe("toDownMarkArea", () => {
 Run: `pnpm --filter web test -- tests/ping-chart.test.ts`
 Expected: FAIL — `toDownMarkArea` not exported.
 
-- [ ] **Step 3: Add the `downIntervals` prop and `toDownMarkArea` to `PingMetricChart.tsx`**
+- [ ] **Step 3: Add the `statusSeries` prop and `toDownMarkArea` to `PingMetricChart.tsx`**
 
 Add to the props type:
 
@@ -1369,7 +1369,7 @@ export interface PingMetricChartProps {
   unit: "ms" | "%";
   series: PingChartSeries[];
   thresholds: MetricThreshold;
-  downIntervals?: DownInterval[];
+  statusSeries?: PingChartSeries[];
   isLoading: boolean;
   isError: boolean;
   onRetry?: () => void;
@@ -1384,7 +1384,7 @@ export function PingMetricChart({
   unit,
   series,
   thresholds,
-  downIntervals = [],
+  statusSeries = [],
   isLoading,
   isError,
   onRetry,
@@ -1394,7 +1394,8 @@ export function PingMetricChart({
 Add the import:
 
 ```ts
-import type { DownInterval } from "./ping-metrics";
+import type { PingChartSeries, DownInterval } from "./ping-metrics";
+import { buildDownIntervals } from "./ping-metrics";
 ```
 
 Add the exported helper at the end of the file:
@@ -1413,9 +1414,23 @@ export function toDownMarkArea(
 }
 ```
 
-- [ ] **Step 4: Wire `markArea` into the chart series**
+- [ ] **Step 4: Derive `downIntervals` from the VISIBLE status series and wire `markArea`**
 
-Inside the `option` useMemo, after the `markLine` declaration (line 71), add:
+The location filter must scope the down shading to the selected probe — down periods from other probes must never bleed into a filtered view. Derive intervals inside the chart from the same `visible` filter applied to `statusSeries`. After the existing `visible` useMemo (which filters `series` by `selected`), add:
+
+```ts
+  const visibleStatus = useMemo(
+    () =>
+      selected === "all"
+        ? statusSeries
+        : statusSeries.filter((s) => s.location === selected),
+    [statusSeries, selected],
+  );
+
+  const downIntervals = useMemo(() => buildDownIntervals(visibleStatus), [visibleStatus]);
+```
+
+Inside the `option` useMemo, after the `markLine` declaration, add:
 
 ```ts
     const markArea = {
@@ -1448,17 +1463,33 @@ Add `downIntervals` to the dependency array:
   }, [visible, locale, thresholds.warning, thresholds.critical, downIntervals]);
 ```
 
-- [ ] **Step 5: Run tests + type check**
+- [ ] **Step 5: Wire `statusSeries` from the view into `PingMetricChart`**
+
+In `PingMonitoringView.tsx`, `statusSeries` is already computed (Task 8). Update the `<PingMetricChart ...>` usage to pass it, and remove the now-unused `downIntervals` memo + `void downIntervals;` reference:
+
+```tsx
+          <PingMetricChart
+            title={t("Latency over time", "تأخیر در طول زمان")}
+            unit="ms"
+            series={latencySeries}
+            thresholds={config.thresholds.latency}
+            statusSeries={statusSeries}
+            isLoading={latencyQuery.isPending}
+            isError={latencyQuery.isError}
+          />
+```
+
+- [ ] **Step 6: Run tests + type check**
 
 Run: `pnpm --filter web test -- tests/ping-chart.test.ts`
 Expected: PASS.
 Run: `pnpm --filter web exec tsc --noEmit`
 Expected: no type errors.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add apps/web/entities/resource/ui/monitoring/ping/PingMetricChart.tsx apps/web/tests/ping-chart.test.ts
+git add apps/web/entities/resource/ui/monitoring/ping/PingMetricChart.tsx apps/web/entities/resource/ui/monitoring/ping/PingMonitoringView.tsx apps/web/tests/ping-chart.test.ts
 git commit -m "feat(web): shade down periods on ping latency chart from status series"
 ```
 
