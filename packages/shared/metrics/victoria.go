@@ -169,6 +169,13 @@ func buildLines(result *domain.ProbeResult, monitorType, locationCode string) []
 		}
 	}
 
+	if monitorType == string(domain.MonitorPing) {
+		lines = append(lines, fmt.Sprintf(
+			`monitor_ping_status{%s} %d %d`,
+			labels, successValue, timestamp,
+		))
+	}
+
 	for key, raw := range result.Metrics {
 		if key == "total_duration_ms" {
 			continue
