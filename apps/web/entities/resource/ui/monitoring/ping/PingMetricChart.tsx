@@ -8,7 +8,7 @@ import { makeGrid, makeTimeXAxis, makeTooltip } from "@/shared/ui/charts/chart-c
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader } from "@/shared/ui/card";
 import { Skeleton } from "@/shared/ui/skeleton";
-import type { PingChartSeries } from "./ping-metrics";
+import type { PingChartSeries, DownInterval } from "./ping-metrics";
 import type { MetricThreshold } from "./ping-config";
 
 const PALETTE = ["#4F66F0", "#0D9464", "#DC3035", "#F59E0B", "#8B5CF6", "#06B6D4", "#EC4899", "#84CC16"];
@@ -16,23 +16,27 @@ const PALETTE = ["#4F66F0", "#0D9464", "#DC3035", "#F59E0B", "#8B5CF6", "#06B6D4
 // Font used for the canvas-rendered chart text (axis numbers, legend).
 const CHART_FONT = "'bakh', 'estedad', ui-sans-serif, system-ui, sans-serif";
 
+export interface PingMetricChartProps {
+  title: string;
+  unit: "ms" | "%";
+  series: PingChartSeries[];
+  thresholds: MetricThreshold;
+  downIntervals?: DownInterval[];
+  isLoading: boolean;
+  isError: boolean;
+  onRetry?: () => void;
+}
+
 export function PingMetricChart({
   title,
   unit,
   series,
   thresholds,
+  downIntervals = [],
   isLoading,
   isError,
   onRetry,
-}: {
-  title: string;
-  unit: "ms" | "%";
-  series: PingChartSeries[];
-  thresholds: MetricThreshold;
-  isLoading: boolean;
-  isError: boolean;
-  onRetry?: () => void;
-}) {
+}: PingMetricChartProps) {
   const locale = useLocale();
   const isFa = locale === "fa";
   const palette = useChartPalette();
@@ -90,6 +94,11 @@ export function PingMetricChart({
       });
     }
 
+    const markArea = {
+      silent: true,
+      data: toDownMarkArea(downIntervals),
+    };
+
     return {
       animation: false,
       grid: makeGrid({ top: 16, right: 16, bottom: 56, left: 48 }),
@@ -121,11 +130,12 @@ export function PingMetricChart({
         itemStyle: { color: PALETTE[i % PALETTE.length] },
         areaStyle: { color: "transparent" },
         data: s.points.map((p) => [p.time, p.value]),
+        markArea: markArea.data.length > 0 ? markArea : undefined,
         markLine: i === 0 && markLine.data.length > 0 ? markLine : undefined,
       })),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, locale, thresholds.warning, thresholds.critical]);
+  }, [visible, locale, thresholds.warning, thresholds.critical, downIntervals]);
 
   return (
     <Card variant="bordered" className="h-full">
@@ -182,4 +192,16 @@ export function PingMetricChart({
       </CardContent>
     </Card>
   );
+}
+
+// Converts down intervals into the echarts markArea data shape so the latency
+// chart can shade downtime from the explicit status signal (not from gaps).
+export function toDownMarkArea(
+  downIntervals: DownInterval[],
+): Array<{ name: string; xAxis: [string, string]; itemStyle: { color: string } }> {
+  return downIntervals.map((interval) => ({
+    name: "Down",
+    xAxis: [interval.start, interval.end],
+    itemStyle: { color: "rgba(220,48,53,0.08)" },
+  }));
 }
