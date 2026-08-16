@@ -21,7 +21,6 @@ import {
   summarize,
   toProbeStats,
   toChartSeries,
-  buildDownIntervals,
   formatPingKpiValue,
   formatPingKpiValueWithUnit,
   type PingProbeStat,
@@ -61,7 +60,6 @@ export function PingMonitoringView({
     () => toChartSeries(statusQuery.data?.series ?? [], "status"),
     [statusQuery.data?.series],
   );
-  const downIntervals = useMemo(() => buildDownIntervals(statusSeries), [statusSeries]);
   const lastSuccessAt = statusQuery.data?.last_success_at ?? null;
 
   const latest = useMemo(() => latencyQuery.data?.latest ?? [], [latencyQuery.data?.latest]);
@@ -156,7 +154,7 @@ export function PingMonitoringView({
             unit="ms"
             series={latencySeries}
             thresholds={config.thresholds.latency}
-            downIntervals={downIntervals}
+            statusSeries={statusSeries}
             isLoading={latencyQuery.isPending}
             isError={latencyQuery.isError}
           />

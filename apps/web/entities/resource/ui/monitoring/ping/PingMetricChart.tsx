@@ -8,7 +8,7 @@ import { makeGrid, makeTimeXAxis, makeTooltip } from "@/shared/ui/charts/chart-c
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader } from "@/shared/ui/card";
 import { Skeleton } from "@/shared/ui/skeleton";
-import type { PingChartSeries, DownInterval } from "./ping-metrics";
+import { buildDownIntervals, type PingChartSeries, type DownInterval } from "./ping-metrics";
 import type { MetricThreshold } from "./ping-config";
 
 const PALETTE = ["#4F66F0", "#0D9464", "#DC3035", "#F59E0B", "#8B5CF6", "#06B6D4", "#EC4899", "#84CC16"];
@@ -21,7 +21,7 @@ export interface PingMetricChartProps {
   unit: "ms" | "%";
   series: PingChartSeries[];
   thresholds: MetricThreshold;
-  downIntervals?: DownInterval[];
+  statusSeries?: PingChartSeries[];
   isLoading: boolean;
   isError: boolean;
   onRetry?: () => void;
@@ -32,7 +32,7 @@ export function PingMetricChart({
   unit,
   series,
   thresholds,
-  downIntervals = [],
+  statusSeries = [],
   isLoading,
   isError,
   onRetry,
@@ -52,6 +52,16 @@ export function PingMetricChart({
     () => (selected === "all" ? series : series.filter((s) => s.location === selected)),
     [series, selected],
   );
+
+  const visibleStatus = useMemo(
+    () =>
+      selected === "all"
+        ? statusSeries
+        : statusSeries.filter((s) => s.location === selected),
+    [statusSeries, selected],
+  );
+
+  const downIntervals = useMemo(() => buildDownIntervals(visibleStatus), [visibleStatus]);
 
   const formatter = (value: unknown) =>
     typeof value === "number"
