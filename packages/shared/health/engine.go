@@ -315,7 +315,7 @@ func evaluateBooleanFailure(recentValues []float64, rule *ParameterRule) HealthS
 		return HealthUnknown
 	}
 
-	if recentValues[len(recentValues)-1] >= 1.0 {
+	if recentValues[len(recentValues)-1] < 1.0 {
 		return HealthError
 	}
 	return HealthOK
