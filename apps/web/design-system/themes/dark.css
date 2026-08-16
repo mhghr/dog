@@ -10,6 +10,8 @@
   --foreground: #E8EDF4;
   --card: #0B1220;
   --card-foreground: var(--foreground);
+  --surface: #0F1628;
+  --surface-foreground: var(--foreground);
   --popover: #0F1628;
   --popover-foreground: var(--foreground);
 
@@ -46,6 +48,9 @@
   --sidebar-accent-foreground: var(--foreground);
   --sidebar-border: rgb(255 255 255 / 5%);
   --sidebar-ring: var(--ring);
+
+  --shadow-panel: 0 1px 0 rgba(255,255,255,0.03) inset, 0 12px 40px rgba(0,0,0,0.45);
+  --shadow-glow: 0 0 0 1px rgba(34,211,238,0.55), 0 10px 40px rgba(34,211,238,0.25);
 
   color-scheme: dark;
 }

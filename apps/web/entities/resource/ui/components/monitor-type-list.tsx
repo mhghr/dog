@@ -82,15 +82,19 @@ export function MonitorTypeList({
     );
   }
 
+  const sorted = [...displayTypes].sort((a, b) => {
+    const isPing = (t: typeof a) => t.title === "Ping" || t.title === "پینگ" || t.titleFa === "پینگ";
+    if (isPing(a)) return -1;
+    if (isPing(b)) return 1;
+    return 0;
+  });
+
   return (
     <div className="panel flex h-full flex-col p-5">
       <h2 className="text-lg font-semibold">{fa ? "انواع مانیتورینگ" : "Monitor Types"}</h2>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {fa ? "فعال‌سازی و پیکربندی انواع مانیتورینگ" : "Enable and configure monitoring types for this resource."}
-      </p>
 
       <ul className="mt-5 space-y-3">
-        {displayTypes.map(({ id, title, description, icon: Icon, tone }) => {
+        {sorted.map(({ id, title, description, icon: Icon, tone }) => {
           const m = monitors.find((x) => x.monitor_type_id === id);
           const active = m?.enabled ?? (toggles[id] ?? false);
           return (

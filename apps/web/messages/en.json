@@ -816,7 +816,21 @@
     "disk": "Disk",
     "upgrade": "Upgrade",
     "restart": "Restart",
-    "remove": "Remove"
+    "remove": "Remove",
+    "installTitle": "Install a Probe Agent",
+    "installDesc": "Create a token, then run the installer on the server you want to monitor.",
+    "installStep1": "Create an enrollment token",
+    "installStep2": "Run this command on the target server:",
+    "installStep3": "The agent enrolls and appears in the list below.",
+    "copyCommand": "Copy command",
+    "commandCopied": "Command copied",
+    "ip": "IP Address",
+    "runningJobs": "Jobs",
+    "delete": "Delete",
+    "deleted": "Agent deleted",
+    "addProbe": "Add Probe",
+    "total": "Total Probes",
+    "active": "Active"
   },
   "monitoring": {
     "totalProbes": "Total Probes",

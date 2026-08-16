@@ -5,6 +5,7 @@ import type {
   ResourceInput,
   ResourceType,
   MonitorTypeDef,
+  ResourceOverview,
 } from "@/entities/resource/model/types";
 import type { Monitor, MonitorInput } from "@/entities/resource/hooks/types";
 import type { ProbeResult } from "@/entities/monitor/model/result";
@@ -36,6 +37,10 @@ export const resourcesApi = {
 
   getById(id: string) {
     return apiRequest<Resource>(endpoints.resource.byId(id));
+  },
+
+  overviewById(id: string) {
+    return apiRequest<ResourceOverview>(endpoints.resource.overviewById(id));
   },
 
   create(input: ResourceInput) {
@@ -83,6 +88,7 @@ export interface ProbeSeries {
   probe_id: string;
   probe_name: string;
   location: string;
+  metric_key?: string;
   points: Array<{ timestamp: string; value: number }>;
   values: Array<{ timestamp: string; value: number }>;
 }
@@ -93,4 +99,6 @@ export interface MonitorMetricsResponse {
   step_seconds: number;
   from: string;
   to: string;
+  metric_key?: string;
+  monitor_type?: string;
 }

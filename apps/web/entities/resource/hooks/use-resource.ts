@@ -5,8 +5,24 @@ import { resourcesApi } from "@/entities/resource/api/resource.api";
 import type { ResourceInput } from "@/entities/resource/model/types";
 import type { ProbeResult } from "@/entities/monitor/model/result";
 import type { MonitorInput, Monitor } from "@/entities/resource/hooks/types";
+import {
+  buildMetricsQueryString,
+  resourceListQueryString,
+  resourceMonitorMetricsQueryKey,
+  type MetricsRange,
+  type ResourceListParams,
+} from "@/entities/resource/hooks/resource-query";
 
 export { type Monitor, type MonitorInput };
+export {
+  RANGE_MILLIS,
+  buildMetricsQueryString,
+  isPingMonitor,
+  resourceListQueryString,
+  resourceMonitorMetricsQueryKey,
+  type MetricsRange,
+  type ResourceListParams,
+} from "@/entities/resource/hooks/resource-query";
 
 export function useResourceTypes() {
   return useQuery({
@@ -21,6 +37,20 @@ export function useResourceOverview() {
     queryKey: ["resources", "overview"],
     queryFn: () => resourcesApi.overview(),
     refetchInterval: 30_000,
+  });
+}
+
+// Single data source for a resource's overview snapshot — status, current
+// metric values and sparkline trends in one request. All Metric Cards on the
+// page consume this one query instead of firing a request per metric.
+export function useResourceOverviewById(resourceId: string | undefined) {
+  return useQuery({
+    queryKey: ["resources", resourceId, "overview"],
+    queryFn: () => resourcesApi.overviewById(resourceId!),
+    enabled: Boolean(resourceId),
+    staleTime: 10_000,
+    gcTime: 300_000,
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -40,22 +70,8 @@ export function useCreateResource() {
   });
 }
 
-export interface ResourceListParams {
-  page?: number;
-  pageSize?: number;
-  search?: string;
-  status?: string;
-  resourceTypeId?: string;
-}
-
 export function useResources(params: ResourceListParams) {
-  const query = new URLSearchParams();
-  query.set("page", String(params.page ?? 1));
-  query.set("page_size", String(params.pageSize ?? 20));
-  if (params.search) query.set("search", params.search);
-  if (params.status) query.set("status", params.status);
-  if (params.resourceTypeId) query.set("resource_type_id", params.resourceTypeId);
-  const queryString = query.toString();
+  const queryString = resourceListQueryString(params);
 
   return useQuery({
     queryKey: ["resources", "list", queryString],
@@ -137,34 +153,20 @@ export function useResourceMonitorResults(resourceId: string | undefined, monito
   });
 }
 
-export type MetricsRange = "15m" | "1h" | "6h" | "24h" | "7d" | "30d";
-
-const RANGE_MILLIS: Record<MetricsRange, number> = {
-  "15m": 15 * 60 * 1000,
-  "1h": 60 * 60 * 1000,
-  "6h": 6 * 60 * 60 * 1000,
-  "24h": 24 * 60 * 60 * 1000,
-  "7d": 7 * 24 * 60 * 60 * 1000,
-  "30d": 30 * 24 * 60 * 60 * 1000,
-};
-
 export function useResourceMonitorMetrics(
   resourceId: string | undefined,
   monitorId: string | undefined,
   range: MetricsRange,
+  metric?: string,
 ) {
   return useQuery({
-    queryKey: ["resources", resourceId, "monitors", monitorId, "metrics", range],
-    queryFn: () => {
-      const to = new Date();
-      const from = new Date(to.getTime() - RANGE_MILLIS[range]);
-      const query = new URLSearchParams({
-        from: from.toISOString(),
-        to: to.toISOString(),
-        step: "auto",
-      });
-      return resourcesApi.getMonitorMetrics(resourceId!, monitorId!, query.toString());
-    },
+    queryKey: resourceMonitorMetricsQueryKey(resourceId, monitorId, range, metric),
+    queryFn: () =>
+      resourcesApi.getMonitorMetrics(
+        resourceId!,
+        monitorId!,
+        buildMetricsQueryString(range, metric),
+      ),
     enabled: Boolean(resourceId) && Boolean(monitorId),
     refetchInterval: range === "15m" || range === "1h" ? 15_000 : 60_000,
     placeholderData: (prev) => prev,

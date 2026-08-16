@@ -19,6 +19,21 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool}
 }
 
+// probeAgentColumns is the shared SELECT column list for probe_agents rows.
+// Columns that are nullable in the actual schema (or are Postgres enums) are
+// COALESCE'd / cast so scanning into non-pointer struct fields never fails on
+// NULL or an unexpected type.
+const probeAgentColumns = `
+	id, COALESCE(location_id, '00000000-0000-0000-0000-000000000000'), COALESCE(name, ''),
+	COALESCE(hostname, ''), COALESCE(machine_fingerprint, ''), COALESCE(public_key, ''),
+	COALESCE(certificate_serial, ''), COALESCE(agent_gateway_cert, ''), COALESCE(agent_secret, ''),
+	COALESCE(version, ''), COALESCE(operating_system, ''),
+	COALESCE(architecture, ''), COALESCE(public_ip::text, ''), COALESCE(private_ips, '{}')::text[],
+	COALESCE(capabilities, '{}')::text[], COALESCE(max_concurrency, 0), status::text,
+	approved_by, approved_at, last_seen_at, revoked_at, enrollment_token_id,
+	created_at, updated_at, latitude, longitude, COALESCE(city, ''), COALESCE(country, '')
+`
+
 func (r *Repository) CreateEnrollmentToken(ctx context.Context, params CreateTokenParams) (*EnrollmentToken, error) {
 	hash := sha256.Sum256([]byte(params.Token))
 
@@ -96,14 +111,7 @@ func (r *Repository) CreateAgentWithToken(ctx context.Context, rawToken string, 
 			capabilities, max_concurrency, status, agent_secret, enrollment_token_id,
 			latitude, longitude, city, country
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending', $13, $14, $15, $16, $17, $18)
-		RETURNING id, COALESCE(location_id, '00000000-0000-0000-0000-000000000000'), name, hostname, machine_fingerprint,
-			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_gateway_cert, ''), agent_secret,
-			version, operating_system,
-			architecture, COALESCE(public_ip::text, ''), COALESCE(private_ips, '{}')::text[], capabilities,
-			max_concurrency, status, approved_by, approved_at,
-			last_seen_at, revoked_at, enrollment_token_id, created_at, updated_at,
-			latitude, longitude, city, country
-	`,
+		RETURNING `+probeAgentColumns,
 		requestedLocationID, params.Name, params.Hostname, params.MachineFingerprint, params.PublicKey,
 		params.Version, params.OperatingSystem, params.Architecture, params.PublicIP, params.PrivateIPs,
 		params.Capabilities, params.MaxConcurrency, params.AgentSecret, tokenID,
@@ -137,14 +145,7 @@ func (r *Repository) CreateAgent(ctx context.Context, params CreateAgentParams) 
 			capabilities, max_concurrency, status, agent_secret,
 			latitude, longitude, city, country
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending', $13, $14, $15, $16, $17)
-		RETURNING id, COALESCE(location_id, '00000000-0000-0000-0000-000000000000'), name, hostname, machine_fingerprint,
-			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_gateway_cert, ''), agent_secret,
-			version, operating_system,
-			architecture, COALESCE(public_ip::text, ''), COALESCE(private_ips, '{}')::text[], capabilities,
-			max_concurrency, status, approved_by, approved_at,
-			last_seen_at, revoked_at, enrollment_token_id, created_at, updated_at,
-			latitude, longitude, city, country
-	`,
+		RETURNING `+probeAgentColumns,
 		params.LocationID, params.Name, params.Hostname, params.MachineFingerprint, params.PublicKey,
 		params.Version, params.OperatingSystem, params.Architecture, params.PublicIP, params.PrivateIPs,
 		params.Capabilities, params.MaxConcurrency, params.AgentSecret,
@@ -167,13 +168,7 @@ func (r *Repository) CreateAgent(ctx context.Context, params CreateAgentParams) 
 func (r *Repository) GetAgent(ctx context.Context, id uuid.UUID) (*ProbeAgent, error) {
 	var agent ProbeAgent
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, COALESCE(location_id, '00000000-0000-0000-0000-000000000000'), name, hostname, machine_fingerprint,
-			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_gateway_cert, ''), COALESCE(agent_secret, ''),
-			version, operating_system,
-			architecture, COALESCE(public_ip::text, ''), COALESCE(private_ips, '{}')::text[], capabilities,
-			max_concurrency, status, approved_by, approved_at,
-			last_seen_at, revoked_at, enrollment_token_id, created_at, updated_at,
-			latitude, longitude, city, country
+		SELECT `+probeAgentColumns+`
 		FROM probe_agents WHERE id = $1
 	`, id).Scan(
 		&agent.ID, &agent.LocationID, &agent.Name, &agent.Hostname, &agent.MachineFingerprint,
@@ -196,13 +191,7 @@ func (r *Repository) GetAgent(ctx context.Context, id uuid.UUID) (*ProbeAgent, e
 func (r *Repository) GetAgentByIDAndSecret(ctx context.Context, id uuid.UUID, secret string) (*ProbeAgent, error) {
 	var agent ProbeAgent
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, COALESCE(location_id, '00000000-0000-0000-0000-000000000000'), name, hostname, machine_fingerprint,
-			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_gateway_cert, ''), COALESCE(agent_secret, ''),
-			version, operating_system,
-			architecture, COALESCE(public_ip::text, ''), COALESCE(private_ips, '{}')::text[], capabilities,
-			max_concurrency, status, approved_by, approved_at,
-			last_seen_at, revoked_at, enrollment_token_id, created_at, updated_at,
-			latitude, longitude, city, country
+		SELECT `+probeAgentColumns+`
 		FROM probe_agents WHERE id = $1 AND agent_secret = $2
 	`, id, secret).Scan(
 		&agent.ID, &agent.LocationID, &agent.Name, &agent.Hostname, &agent.MachineFingerprint,
@@ -224,13 +213,12 @@ func (r *Repository) GetAgentByIDAndSecret(ctx context.Context, id uuid.UUID, se
 
 func (r *Repository) ListAgents(ctx context.Context, params ListAgentsParams) ([]ProbeAgent, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, COALESCE(location_id, '00000000-0000-0000-0000-000000000000'), name, hostname, machine_fingerprint,
-			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_gateway_cert, ''), COALESCE(agent_secret, ''),
-			version, operating_system,
-			architecture, COALESCE(public_ip::text, ''), COALESCE(private_ips, '{}')::text[], capabilities,
-			max_concurrency, status, approved_by, approved_at,
-			last_seen_at, revoked_at, enrollment_token_id, created_at, updated_at,
-			latitude, longitude, city, country
+		SELECT `+probeAgentColumns+`,
+			COALESCE((
+				SELECT COUNT(*) FROM monitor_jobs
+				WHERE probe_id = probe_agents.id
+				  AND status IN ('pending', 'running')
+			), 0) AS running_jobs
 		FROM probe_agents
 		WHERE ($1::probe_agent_status IS NULL OR status = $1)
 		ORDER BY created_at DESC
@@ -251,7 +239,7 @@ func (r *Repository) ListAgents(ctx context.Context, params ListAgentsParams) ([
 			&a.Architecture, &a.PublicIP, &a.PrivateIPs, &a.Capabilities,
 			&a.MaxConcurrency, &a.Status, &a.ApprovedBy, &a.ApprovedAt,
 			&a.LastSeenAt, &a.RevokedAt, &a.EnrollmentTokenID, &a.CreatedAt, &a.UpdatedAt,
-			&a.Latitude, &a.Longitude, &a.City, &a.Country,
+			&a.Latitude, &a.Longitude, &a.City, &a.Country, &a.RunningJobs,
 		); err != nil {
 			return nil, err
 		}
@@ -417,18 +405,28 @@ func (r *Repository) UpdateCapacity(ctx context.Context, agentID uuid.UUID, runn
 
 func (r *Repository) GetActiveAgentsForLocation(ctx context.Context, locationID uuid.UUID) ([]ProbeAgent, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, COALESCE(location_id, '00000000-0000-0000-0000-000000000000'), name, hostname, machine_fingerprint,
-			public_key, COALESCE(certificate_serial, ''), COALESCE(agent_gateway_cert, ''), COALESCE(agent_secret, ''),
-			version, operating_system,
-			architecture, COALESCE(public_ip::text, ''), COALESCE(private_ips, '{}')::text[], capabilities,
-			max_concurrency, COALESCE(running_jobs, 0), COALESCE(spool_bytes, 0),
-			status, approved_by, approved_at,
+		SELECT id, COALESCE(location_id, '00000000-0000-0000-0000-000000000000'), COALESCE(name, ''),
+			COALESCE(hostname, ''), COALESCE(machine_fingerprint, ''), COALESCE(public_key, ''),
+			COALESCE(certificate_serial, ''), COALESCE(agent_gateway_cert, ''), COALESCE(agent_secret, ''),
+			COALESCE(version, ''), COALESCE(operating_system, ''),
+			COALESCE(architecture, ''), COALESCE(public_ip::text, ''), COALESCE(private_ips, '{}')::text[],
+			COALESCE(capabilities, '{}')::text[], COALESCE(max_concurrency, 0),
+			COALESCE((
+				SELECT COUNT(*) FROM monitor_jobs
+				WHERE probe_id = probe_agents.id
+				  AND status IN ('pending', 'running')
+			), 0), 0,
+			status::text, approved_by, approved_at,
 			last_seen_at, revoked_at, enrollment_token_id, created_at, updated_at,
-			latitude, longitude, city, country
+			latitude, longitude, COALESCE(city, ''), COALESCE(country, '')
 		FROM probe_agents
 		WHERE location_id = $1
 		  AND status IN ('active', 'draining', 'updating')
-		ORDER BY running_jobs ASC
+		ORDER BY COALESCE((
+			SELECT COUNT(*) FROM monitor_jobs
+			WHERE probe_id = probe_agents.id
+			  AND status IN ('pending', 'running')
+		), 0) ASC
 	`, locationID)
 	if err != nil {
 		return nil, err

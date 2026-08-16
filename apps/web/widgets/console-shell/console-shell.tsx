@@ -24,14 +24,15 @@ import {
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
 import type { AuthUser } from "@/shared/types/auth";
-import { useLogout, useMe } from "@/platform/auth/use-auth";
+import { useAuth } from "@/platform/auth/auth-provider";
+import { useLogout } from "@/platform/auth/use-auth";
 import { useLiveResults } from "@/platform/realtime/use-live-results";
 import { Link, usePathname, useRouter } from "@/i18n/navigation";
 import { cn } from "@/shared/utils/cn";
 import {
+  Broadcast,
   Browser,
   GearSix,
-  MapPin,
   Monitor,
   SignOut,
   SquaresFour,
@@ -60,7 +61,7 @@ const NAV_ITEMS = {
     { href: "/resources",   labelKey: "resources" as const,   icon: Monitor },
     { href: "/alerts",      labelKey: "alerts" as const,      icon: Warning },
     { href: "/status-pages",labelKey: "statusPages" as const, icon: Browser },
-    { href: "/locations",   labelKey: "locations" as const,   icon: MapPin },
+    { href: "/probes",      labelKey: "probes" as const,      icon: Broadcast },
   ],
   workspace: [
     { href: "/settings/members",     labelKey: "members" as const,      icon: GearSix },
@@ -94,16 +95,24 @@ function ToggleIcon({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-function AuthGate({ isSuccess, isError }: { isSuccess: boolean; isError: boolean }) {
+function AuthGate({
+  isLoaded,
+  isSignedIn,
+}: {
+  isLoaded: boolean;
+  isSignedIn: boolean;
+}) {
   const router = useRouter();
-  useLiveResults(isSuccess);
+  useLiveResults(isSignedIn);
   useEffect(() => {
-    if (isError) router.replace("/login");
-  }, [isError, router]);
+    if (isLoaded && !isSignedIn) {
+      router.replace("/login");
+    }
+  }, [isLoaded, isSignedIn, router]);
   return null;
 }
 
-function UserMenuComp({ user: userProp }: { user: AuthUser | undefined }) {
+function UserMenuComp({ user: userProp }: { user: AuthUser | null }) {
   const tAuth = useTranslations("auth");
   const router = useRouter();
   const logoutMutation = useLogout();
@@ -293,7 +302,7 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
   const isRtl = locale === "fa";
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const meQuery = useMe();
+  const { isLoaded, isSignedIn, user } = useAuth();
 
   const toggle = useCallback(() => setCollapsed((c) => !c), []);
   const sidebarCtx = useMemo(
@@ -308,7 +317,7 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
         dir={isRtl ? "rtl" : "ltr"}
         style={{ scrollbarGutter: "auto" }}
       >
-        <AuthGate isSuccess={meQuery.isSuccess} isError={meQuery.isError} />
+        <AuthGate isLoaded={isLoaded} isSignedIn={isSignedIn} />
 
         <aside
           style={{ fontFamily: "var(--font-bakh), var(--font-estedad), ui-sans-serif, system-ui, sans-serif", fontWeight: 500 }}
@@ -342,7 +351,7 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
 
         <div
           className={cn(
-            "relative flex min-w-0 flex-1 flex-col bg-white dark:bg-[#060B14]",
+            "relative flex min-w-0 flex-1 flex-col bg-white bg-[radial-gradient(1200px_600px_at_85%_-10%,rgba(79,93,224,0.05),transparent),radial-gradient(800px_500px_at_-10%_20%,rgba(13,148,136,0.04),transparent)] dark:bg-[#060B14] dark:bg-[radial-gradient(1200px_600px_at_85%_-10%,rgba(79,93,224,0.08),transparent),radial-gradient(800px_500px_at_-10%_20%,rgba(13,148,136,0.05),transparent)]",
           )}
         >
           <header className="sticky top-0 z-sticky flex h-14 items-center gap-2 border-b border-border bg-white/70 px-4 backdrop-blur-xl dark:bg-[#060B14]/70 dark:border-primary/10">
@@ -387,7 +396,7 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
               <span className="mx-1 h-5 w-px bg-border/70" aria-hidden />
               <ThemeToggle />
               <span className="mx-1 h-5 w-px bg-border/70" aria-hidden />
-              <UserMenuComp user={meQuery.data?.user} />
+              <UserMenuComp user={user} />
             </div>
           </header>
 

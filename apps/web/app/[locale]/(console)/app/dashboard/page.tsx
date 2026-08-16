@@ -1,26 +1,36 @@
-"use client";
+import { redirect } from "@/i18n/navigation";
+import { getAuth } from "@/platform/auth/server";
+import { serverApiRequest } from "@/shared/api/server";
+import type { Workspace } from "@/entities/workspace/model/types";
 
-import { useEffect } from "react";
-import { useRouter } from "@/i18n/navigation";
-import { useWorkspaces } from "@/entities/workspace/hooks/use-workspace";
+// Server-side entry into the console. Resolves the authenticated user and the
+// first workspace from the request and redirects immediately — no client-side
+// "Loading..." screen, no Login → Console flash.
+export default async function DashboardRedirect({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const { locale } = await params;
 
-export default function DashboardRedirect() {
-  const router = useRouter();
-  const { data: workspacesData } = useWorkspaces();
+  const { isSignedIn } = await getAuth();
+  if (!isSignedIn) {
+    redirect({ href: "/login", locale });
+  }
 
-  useEffect(() => {
-    if (!workspacesData) return;
-    const workspaces = workspacesData.items ?? [];
-    if (workspaces.length > 0) {
-      router.replace(`/console/w/${workspaces[0].slug}/dashboard`);
-    } else {
-      router.replace("/login");
-    }
-  }, [workspacesData, router]);
+  let workspaces: Workspace[] = [];
+  try {
+    const data =
+      await serverApiRequest<{ items: Workspace[] }>("/api/workspaces");
+    workspaces = data.items ?? [];
+  } catch {
+    workspaces = [];
+  }
 
-  return (
-    <div className="flex min-h-screen items-center justify-center">
-      <p className="text-sm text-muted-foreground">Loading...</p>
-    </div>
-  );
+  const first = workspaces[0];
+  if (first) {
+    redirect({ href: `/console/w/${first.slug}/dashboard`, locale });
+  }
+
+  redirect({ href: "/login", locale });
 }

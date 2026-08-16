@@ -44,6 +44,20 @@ export function useLiveResults(enabled = true) {
       invalidateActive(queryClient, ["monitors", "list"]);
       invalidateActive(queryClient, ["dashboard"]);
       invalidateActive(queryClient, ["monitors", payload.monitor_id]);
+
+      // Resource-scoped monitor queries (["resources", <id>, "monitors", ...])
+      // share the legacy monitor id; invalidate the active per-monitor metrics/
+      // results queries so live probe results flow into the monitoring view
+      // without a full page reload.
+      void queryClient.invalidateQueries({
+        predicate: (query) => {
+          const key = query.queryKey;
+          if (!Array.isArray(key) || key.length < 3) return false;
+          if (key[0] !== "resources" || key[2] !== "monitors") return false;
+          return key.length === 3 || key.includes(payload.monitor_id);
+        },
+        refetchType: "active",
+      });
     });
 
     return () => {

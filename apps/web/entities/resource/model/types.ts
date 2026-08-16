@@ -45,6 +45,27 @@ export interface Resource {
   updated_at: string;
 }
 
+// A single consolidated snapshot for a resource overview, returned by
+// GET /api/resources/{id}/overview. One request powers every Metric Card on
+// the page so no per-metric requests are made.
+export interface ResourceOverview {
+  id: string;
+  name: string;
+  target: string;
+  status: string;
+  health_status: string;
+  last_checked_at: string;
+  metrics: Record<string, ResourceMetricSnapshot>;
+}
+
+export interface ResourceMetricSnapshot {
+  success: boolean;
+  probe_count: number;
+  last_checked_at?: string;
+  trend: number[];
+  [metricKey: string]: number | boolean | string | number[] | undefined;
+}
+
 export interface ResourceInput {
   workspace_id?: string | null;
   resource_type_id: string;

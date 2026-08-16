@@ -9,13 +9,17 @@ import type {
   OTPRequestResponse,
 } from "@/shared/types/auth";
 
-export function useMe(opts?: { enabled?: boolean }) {
+export function useMe(opts?: {
+  enabled?: boolean;
+  initialData?: { user: AuthUser };
+}) {
   return useQuery({
     queryKey: ["auth", "me"],
     queryFn: () => apiRequest<{ user: AuthUser }>("/api/auth/me"),
     retry: false,
     staleTime: 60_000,
     enabled: opts?.enabled !== false,
+    initialData: opts?.initialData,
   });
 }
 

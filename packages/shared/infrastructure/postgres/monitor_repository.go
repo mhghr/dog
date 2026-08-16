@@ -41,6 +41,28 @@ const monitorColumns = `
 	m.updated_at
 `
 
+// monitorInsertColumns is the same projection without the table alias, for
+// use in INSERT ... RETURNING (Postgres has no alias to prefix there).
+const monitorInsertColumns = `
+	id::text,
+	resource_id::text,
+	monitor_type_id::text,
+	health_profile_id::text,
+	created_by::text,
+	name,
+	enabled,
+	config,
+	severity,
+	interval_seconds,
+	timeout_millis,
+	retries,
+	last_status::text,
+	last_checked_at,
+	next_run_at,
+	created_at,
+	updated_at
+`
+
 func scanMonitor(row pgx.Row) (domain.Monitor, error) {
 	var m domain.Monitor
 	var healthProfileID, createdBy *string
@@ -96,7 +118,7 @@ func (r *MonitorRepository) Create(ctx context.Context, monitor *domain.Monitor)
 			interval_seconds, timeout_millis, retries, last_status, next_run_at
 		)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-		RETURNING `+monitorColumns,
+		RETURNING `+monitorInsertColumns,
 		monitor.ResourceID, monitor.MonitorTypeID, monitor.HealthProfileID, monitor.CreatedBy,
 		monitor.Name, monitor.Enabled, configJSON, monitor.Severity, monitor.ResourceTarget,
 		monitor.IntervalSeconds, monitor.TimeoutMillis, monitor.Retries,
@@ -119,7 +141,7 @@ func (r *MonitorRepository) GetByID(ctx context.Context, id string) (domain.Moni
 		FROM monitors m
 		JOIN resources res ON res.id = m.resource_id
 		JOIN monitor_types mt ON mt.id = m.monitor_type_id
-		WHERE m.id = $1::uuid`)
+		WHERE m.id = $1::uuid`, id)
 
 	var m domain.Monitor
 	var healthProfileID, createdBy *string
@@ -245,7 +267,8 @@ func (r *MonitorRepository) ClaimDue(ctx context.Context, batchSize int, fn func
 		var m domain.Monitor
 		var healthProfileID, createdBy *string
 		var configJSON []byte
-		var target, workspaceID, typeName string
+		var target, typeName string
+		var workspaceID *string
 		var lastChecked *time.Time
 
 		if err := rows.Scan(&m.ID, &m.ResourceID, &m.MonitorTypeID, &healthProfileID, &createdBy,
@@ -261,9 +284,7 @@ func (r *MonitorRepository) ClaimDue(ctx context.Context, batchSize int, fn func
 		m.LastCheckedAt = lastChecked
 		json.Unmarshal(configJSON, &m.Configuration)
 		m.ResourceTarget = target
-		if workspaceID != "" {
-			m.WorkspaceID = &workspaceID
-		}
+		m.WorkspaceID = workspaceID
 		m.ProbeType = domain.MonitorTypeCode(typeName)
 
 		claimedAll = append(claimedAll, claimed{monitor: m, code: m.ProbeType})

@@ -4,6 +4,8 @@ import { hasLocale, NextIntlClientProvider } from "next-intl";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import { AppProviders } from "@/platform/providers/providers";
+import { AuthProvider } from "@/platform/auth/auth-provider";
+import { getAuth } from "@/platform/auth/server";
 import { routing } from "@/i18n/routing";
 import { bakh, estedad, inter, plasma } from "@/shared/ui/fonts";
 
@@ -47,6 +49,11 @@ export default async function LocaleLayout({
 
   setRequestLocale(locale);
 
+  // Resolve the authenticated user from the request cookies against the Go
+  // API once per request. The result seeds the client AuthProvider so server
+  // HTML and client hydration agree on the authentication state.
+  const auth = await getAuth();
+
   return (
     <html
       lang={locale}
@@ -56,7 +63,9 @@ export default async function LocaleLayout({
     >
       <body className="min-h-screen bg-background font-sans text-foreground antialiased">
         <NextIntlClientProvider>
-          <AppProviders>{children}</AppProviders>
+          <AppProviders>
+            <AuthProvider initialAuth={auth}>{children}</AuthProvider>
+          </AppProviders>
         </NextIntlClientProvider>
       </body>
     </html>

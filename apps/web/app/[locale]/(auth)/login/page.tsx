@@ -16,6 +16,7 @@ import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { Separator } from "@/shared/ui/separator";
 import { useRequestOtp, useVerifyOtp } from "@/platform/auth/use-auth";
+import { useAuth } from "@/platform/auth/auth-provider";
 import { useRouter } from "@/i18n/navigation";
 import { ApiError } from "@/shared/api";
 
@@ -54,6 +55,14 @@ export default function LoginPage() {
 
   const requestOtp = useRequestOtp();
   const verifyOtp = useVerifyOtp();
+  const { isSignedIn } = useAuth();
+
+  // An already-authenticated visitor never sees the login form.
+  useEffect(() => {
+    if (isSignedIn) {
+      router.replace("/app/dashboard");
+    }
+  }, [isSignedIn, router]);
 
   // Surface OAuth callback failures (?error=oauth) once.
   useEffect(() => {
@@ -117,7 +126,7 @@ export default function LoginPage() {
 
     try {
       await verifyOtp.mutateAsync({ phone: phone.trim(), code: code.trim() });
-      router.replace("/console");
+      router.replace("/app/dashboard");
     } catch {
       toast.error(t("invalidCode"));
     }

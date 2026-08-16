@@ -1,18 +1,204 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useLocale } from "next-intl";
-import { MoreHorizontal } from "lucide-react";
+import { Loader2, MapPin, MoreHorizontal } from "lucide-react";
+import { toast } from "sonner";
+
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Skeleton } from "@/shared/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/shared/ui/dialog";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
 import { cn } from "@/shared/utils/cn";
-import { useResource } from "@/entities/resource/hooks/use-resource";
+import { useResource, useUpdateResource } from "@/entities/resource/hooks/use-resource";
+import type { Resource } from "@/entities/resource/model/types";
+import { probeApi } from "@/entities/probe/api/probe.api";
+import { apiErrorMessage } from "@/shared/api/error-message";
 import { getResourceIcon } from "@/design-system/icons";
+
+interface ResourceLocation {
+  country?: string;
+  city?: string;
+  lat?: number;
+  lon?: number;
+}
+
+// Shows the resource's location below the address. Uses the saved location
+// when present, otherwise auto-detects it from the target IP via the geo-IP
+// API so the location is always visible.
+function ResourceLocationLine({ resource, fa }: { resource: Resource; fa: boolean }) {
+  const [loc, setLoc] = useState<{ city?: string; country?: string }>(() => {
+    const meta = (resource.metadata ?? {}) as { location?: { city?: string; country?: string } };
+    return meta.location ?? {};
+  });
+
+  useEffect(() => {
+    if (loc.city || loc.country) return;
+    const ip = resource.target?.trim();
+    if (!ip || !/^[\d.:]+$/.test(ip)) return;
+
+    let cancelled = false;
+    probeApi
+      .geoIpLookup(ip)
+      .then((res) => {
+        if (!cancelled && (res.city || res.country)) {
+          setLoc({ city: res.city, country: res.country });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [resource.target, loc.city, loc.country]);
+
+  const label = [loc.city, loc.country].filter(Boolean).join(", ");
+
+  return (
+    <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+      <MapPin className="size-3 shrink-0" />
+      <span dir="auto">{label || (fa ? "نامشخص" : "Unknown")}</span>
+    </p>
+  );
+}
+
+function EditResourceDialog({
+  resource,
+  onOpenChange,
+}: {
+  resource: Resource;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const locale = useLocale();
+  const fa = locale === "fa";
+  const [name, setName] = useState(resource.name);
+  const [target, setTarget] = useState(resource.target ?? "");
+  const [location, setLocation] = useState<ResourceLocation>(() => {
+    const meta = (resource.metadata ?? {}) as { location?: ResourceLocation };
+    return meta.location ?? {};
+  });
+  const [detecting, setDetecting] = useState(false);
+  const [pending, setPending] = useState(false);
+  const update = useUpdateResource(resource.id);
+
+  // When the target (IP/address) changes, auto-detect the location from the
+  // entered IP via the geo-IP API.
+  useEffect(() => {
+    const ip = target.trim();
+    if (!ip) return;
+
+    const isIpLike = /^[\d.:]+$/.test(ip);
+    if (!isIpLike) return;
+
+    const handle = window.setTimeout(() => {
+      setDetecting(true);
+      probeApi
+        .geoIpLookup(ip)
+        .then((loc) => {
+          if (loc.city || loc.country) {
+            setLocation({ city: loc.city, country: loc.country, lat: loc.lat, lon: loc.lon });
+          }
+        })
+        .catch(() => {
+          // Private/undetected IP — leave the current location as-is.
+        })
+        .finally(() => setDetecting(false));
+    }, 600);
+
+    return () => window.clearTimeout(handle);
+  }, [target]);
+
+  const locationLabel = [location.city, location.country].filter(Boolean).join(", ");
+
+  const submit = async () => {
+    setPending(true);
+    try {
+      const metadata = { ...resource.metadata, location };
+      await update.mutateAsync({ name: name.trim(), target: target.trim(), metadata });
+      toast.success(fa ? "ذخیره شد" : "Saved");
+      onOpenChange(false);
+    } catch (err) {
+      const msg = apiErrorMessage(err, fa);
+      toast.error(msg.title, { description: msg.description });
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{fa ? "ویرایش ریسورس" : "Edit resource"}</DialogTitle>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="res-name">{fa ? "نام" : "Name"}</Label>
+            <Input
+              id="res-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              dir="auto"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="res-target">{fa ? "آدرس / IP" : "Address / IP"}</Label>
+            <Input
+              id="res-target"
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              dir="ltr"
+            />
+            {detecting ? (
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Loader2 className="size-3 animate-spin" />
+                {fa ? "در حال تشخیص لوکیشن..." : "Detecting location..."}
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {fa ? "لوکیشن: " : "Location: "}
+                <span dir="auto">{locationLabel || (fa ? "نامشخص" : "Unknown")}</span>
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={pending}
+              onClick={() => onOpenChange(false)}
+            >
+              {fa ? "انصراف" : "Cancel"}
+            </Button>
+            <Button
+              size="sm"
+              disabled={pending || !name.trim()}
+              onClick={() => void submit()}
+            >
+              {pending ? (fa ? "در حال ذخیره..." : "Saving...") : (fa ? "ذخیره" : "Save")}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export function ResourceHeader({ resourceId }: { resourceId: string }) {
   const locale = useLocale();
   const fa = locale === "fa";
   const { data: r, isPending } = useResource(resourceId);
+  const [editOpen, setEditOpen] = useState(false);
 
   if (isPending) return <div className="space-y-4"><Skeleton className="h-7 w-64 rounded-lg" /><Skeleton className="h-4 w-96 rounded-lg" /></div>;
   if (!r) return null;
@@ -37,12 +223,6 @@ export function ResourceHeader({ resourceId }: { resourceId: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-end gap-3">
-        <Button variant="outline" size="icon" className="size-8" aria-label={fa ? "بیشتر" : "More"}>
-          <MoreHorizontal className="size-4" />
-        </Button>
-      </div>
-
       <div className="flex flex-wrap items-start justify-between gap-6" dir="ltr">
         <dl className="grid shrink-0 grid-cols-2 gap-3 xl:grid-cols-4 xl:w-[36rem]">
           {stats.map((st) => (
@@ -71,6 +251,15 @@ export function ResourceHeader({ resourceId }: { resourceId: string }) {
               <Badge className={cn("rounded-md border text-[11px] font-semibold uppercase tracking-wider px-2.5 py-0.5",
                 r.status === "active" ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-500" : "border-muted bg-muted/40 text-muted-foreground"
               )}>{fa ? "فعال" : r.status}</Badge>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8 text-muted-foreground hover:text-foreground"
+                aria-label={fa ? "ویرایش" : "Edit"}
+                onClick={() => setEditOpen(true)}
+              >
+                <MoreHorizontal className="size-4" />
+              </Button>
             </div>
             <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
               <a href={r.target?.startsWith("http") ? r.target : `https://${r.target}`}
@@ -79,9 +268,12 @@ export function ResourceHeader({ resourceId }: { resourceId: string }) {
                 {r.target}
               </a>
             </p>
+            <ResourceLocationLine resource={r} fa={fa} />
           </div>
         </div>
       </div>
+
+      {editOpen && <EditResourceDialog resource={r} onOpenChange={setEditOpen} />}
     </div>
   );
 }

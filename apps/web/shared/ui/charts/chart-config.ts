@@ -19,12 +19,15 @@ export function makeGrid(
 export function makeTimeXAxis(
   locale: string,
   palette: ChartPalette,
+  fontFamily = "inherit",
 ): NonNullable<EChartsCoreOption["xAxis"]> {
   return {
     type: "time" as const,
-    axisLine: { lineStyle: { color: palette.axis } },
+    axisLine: { show: false },
+    axisTick: { show: false },
     axisLabel: {
       color: palette.text,
+      fontFamily,
       hideOverlap: true,
       formatter: (value: number) =>
         new Intl.DateTimeFormat(locale, {

@@ -7,7 +7,7 @@
 ```text
 Web (Next.js)  ──REST/SSE──▶  API (Go/chi)
                                 │        ▲
-                                ▼        │ POST /internal/v1/results
+                                 ▼        │ POST /internal/results
                             PostgreSQL   │
                                          │
 Scheduler (Go) ──XADD──▶ Redis Streams ──XREADGROUP──▶ Worker (Go)
@@ -47,7 +47,7 @@ docker compose up --build
 نمونه ساخت Monitor:
 
 ```bash
-curl -X POST http://localhost:5000/api/v1/monitors \
+curl -X POST http://localhost:5000/api/monitors \
   -H 'Content-Type: application/json' \
   -d '{
     "name": "Example Website",
@@ -83,26 +83,26 @@ pnpm dev                # Web :2000 + API :5000 + scheduler + worker
 
 ```text
 GET    /health/live | /health/ready | /metrics
-POST   /api/v1/auth/google/exchange   (وب: تبادل code — بدون auth)
-POST   /api/v1/auth/google/mobile     (موبایل: ارسال id_token گوگل)
-POST   /api/v1/auth/otp/request       (ارسال کد یکبارمصرف به موبایل)
-POST   /api/v1/auth/otp/verify        (تایید کد و ورود)
-POST   /api/v1/auth/refresh           (چرخش رفرش‌توکن)
-POST   /api/v1/auth/logout
-GET    /api/v1/auth/me                (نیازمند auth)
-GET    /api/v1/dashboard/summary                       (auth)
-GET    /api/v1/monitors?page=&page_size=&type=&status=&search=&sort=&order=   (auth)
-POST   /api/v1/monitors                                (auth)
-GET    /api/v1/monitors/{id}                           (auth)
-PUT    /api/v1/monitors/{id}                           (auth)
-DELETE /api/v1/monitors/{id}                           (auth)
-POST   /api/v1/monitors/{id}/pause | /resume           (auth)
-GET    /api/v1/monitors/{id}/results?limit=&page=      (auth)
-GET    /api/v1/monitors/{id}/metrics?from=&to=&step=auto  (auth)
-GET    /api/v1/probe-locations                         (auth)
-GET    /api/v1/system/health                           (auth)
-GET    /events/v1/stream            (SSE — auth با کوکی)
-POST   /internal/v1/results         (Bearer WORKER_TOKEN)
+POST   /api/auth/google/exchange   (وب: تبادل code — بدون auth)
+POST   /api/auth/google/mobile     (موبایل: ارسال id_token گوگل)
+POST   /api/auth/otp/request       (ارسال کد یکبارمصرف به موبایل)
+POST   /api/auth/otp/verify        (تایید کد و ورود)
+POST   /api/auth/refresh           (چرخش رفرش‌توکن)
+POST   /api/auth/logout
+GET    /api/auth/me                (نیازمند auth)
+GET    /api/dashboard/summary                       (auth)
+GET    /api/monitors?page=&page_size=&type=&status=&search=&sort=&order=   (auth)
+POST   /api/monitors                                (auth)
+GET    /api/monitors/{id}                           (auth)
+PUT    /api/monitors/{id}                           (auth)
+DELETE /api/monitors/{id}                           (auth)
+POST   /api/monitors/{id}/pause | /resume           (auth)
+GET    /api/monitors/{id}/results?limit=&page=      (auth)
+GET    /api/monitors/{id}/metrics?from=&to=&step=auto  (auth)
+GET    /api/probe-locations                         (auth)
+GET    /api/system/health                           (auth)
+GET    /events/stream            (SSE — auth با کوکی)
+POST   /internal/results         (Bearer WORKER_TOKEN)
 ```
 
 فرمت خطا (بخش ۳۹.۳۴ سند):
@@ -120,7 +120,7 @@ POST   /internal/v1/results         (Bearer WORKER_TOKEN)
 1. **گوگل (وب)** — Authorization Code Flow:
    - `GET /api/auth/google/start` (روی وب، پورت 2000) → ریدایرکت به گوگل با `state` امضاشده در کوکی
    - گوگل → `GET /api/auth/callback/google` (مطابق کنسول گوگل) → تبادل code توسط API گو (secret فقط سمت API) → ست‌شدن کوکی‌ها → ریدایرکت به داشبورد
-2. **گوگل (موبایل/Native)** — اپ id_token گوگل را به `POST /api/v1/auth/google/mobile` می‌فرستد و توکن‌ها را در بدنه JSON می‌گیرد.
+2. **گوگل (موبایل/Native)** — اپ id_token گوگل را به `POST /api/auth/google/mobile` می‌فرستد و توکن‌ها را در بدنه JSON می‌گیرد.
 3. **موبایل (OTP)** — `otp/request` کد ۶ رقمی می‌سازد (TTL پنج دقیقه، حداکثر ۵ تلاش، Rate Limit: هر ۶۰ ثانیه یک‌بار و ۵ بار در ساعت). ارسال SMS پشت interface `SMSSender` است (پیش‌فرض `log`؛ در حالت توسعه کد در پاسخ برمی‌گردد و در UI نمایش داده می‌شود). شماره‌ها به E.164 نرمال می‌شوند (پشتیبانی ارقام فارسی و `09... → +989...`).
 
 ### توکن‌ها

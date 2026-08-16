@@ -30,6 +30,7 @@ export const endpoints = {
     overview: `${api}/resources/overview`,
     list: `${api}/resources`,
     byId: (id: string) => `${api}/resources/${id}`,
+    overviewById: (id: string) => `${api}/resources/${id}/overview`,
     monitors: (resourceId: string) => `${api}/resources/${resourceId}/monitors`,
     monitor: (resourceId: string, monitorId: string) =>
       `${api}/resources/${resourceId}/monitors/${monitorId}`,
@@ -66,6 +67,8 @@ export const endpoints = {
   probe: {
     locations: `${api}/probe-locations`,
   },
+
+  geoip: (ip: string) => `${api}/geoip?ip=${encodeURIComponent(ip)}`,
 
   agent: {
     list: (params: string) => `/api/admin/probe-agents${params}`,

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { MoreHorizontal, Pause, Pencil, Play, Trash2 } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 import {
@@ -16,6 +16,7 @@ import {
   AlertDialogTitle,
 } from "@/shared/ui/alert-dialog";
 import { Button } from "@/shared/ui/button";
+import { apiErrorMessage } from "@/shared/api/error-message";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,6 +43,8 @@ export function MonitorActions({
   const t = useTranslations("monitors");
   const tCommon = useTranslations("common");
   const tValidation = useTranslations("validation");
+  const locale = useLocale();
+  const isFa = locale === "fa";
   const router = useRouter();
   const base = useConsoleBase();
 
@@ -50,6 +53,11 @@ export function MonitorActions({
   const pauseMutation = usePauseMonitor();
   const resumeMutation = useResumeMonitor();
   const deleteMutation = useDeleteMonitor();
+
+  const showError = (err: unknown) => {
+    const msg = apiErrorMessage(err, isFa);
+    toast.error(msg.title, { description: msg.description });
+  };
 
   const handlePauseToggle = async () => {
     try {
@@ -60,8 +68,8 @@ export function MonitorActions({
         await resumeMutation.mutateAsync(monitor.id);
         toast.success(tValidation("resumeSuccess"));
       }
-    } catch {
-      toast.error(tValidation("genericError"));
+    } catch (err) {
+      showError(err);
     }
   };
 
@@ -73,8 +81,8 @@ export function MonitorActions({
       if (afterDeleteHref) {
         router.push(afterDeleteHref);
       }
-    } catch {
-      toast.error(tValidation("genericError"));
+    } catch (err) {
+      showError(err);
     }
   };
 

@@ -34,11 +34,20 @@ func (e *PingExecutor) Execute(ctx context.Context, job domain.ProbeJob) domain.
 	pinger := probing.New(job.Target)
 	pinger.SetIPAddr(&net.IPAddr{IP: ips[0]})
 
-	packetCount := intConfig(job.Config, "packet_count", 4)
+	// The UI schema stores these as "count"/"packet_size"; keep the legacy
+	// "packet_count" key working as a fallback.
+	packetCount := intConfig(job.Config, "count", 0)
+	if packetCount < 1 {
+		packetCount = intConfig(job.Config, "packet_count", 4)
+	}
 	if packetCount < 1 {
 		packetCount = 1
 	}
 	pinger.Count = packetCount
+
+	if size := intConfig(job.Config, "packet_size", 56); size > 0 {
+		pinger.Size = size
+	}
 
 	intervalMillis := intConfig(job.Config, "packet_interval_millis", 200)
 	if intervalMillis >= 10 {

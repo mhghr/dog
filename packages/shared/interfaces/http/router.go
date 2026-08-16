@@ -144,6 +144,7 @@ func NewRouter(deps Deps) http.Handler {
 			r.Get("/probe-locations", handler.listLocations)
 			r.Post("/probe-locations", handler.createLocation)
 			r.Get("/system/health", handler.systemHealth)
+			r.Get("/geoip", handler.geoIpLookup)
 
 			r.Get("/monitor-types", handler.listMonitorTypesAll)
 			r.Get("/monitor-types/{type}/parameters", handler.listMonitorTypeParameters)
@@ -158,11 +159,12 @@ func NewRouter(deps Deps) http.Handler {
 				r.Get("/overview", handler.resourceOverview)
 				r.Post("/", handler.createResource)
 
-				r.Route("/{resourceID}", func(r chi.Router) {
-					r.Get("/", handler.getResource)
-					r.Put("/", handler.updateResource)
-					r.Delete("/", handler.deleteResource)
-					r.Get("/tags", handler.listResourceTags)
+			r.Route("/{resourceID}", func(r chi.Router) {
+				r.Get("/", handler.getResource)
+				r.Put("/", handler.updateResource)
+				r.Delete("/", handler.deleteResource)
+				r.Get("/overview", handler.getResourceOverview)
+				r.Get("/tags", handler.listResourceTags)
 					r.Post("/tags", handler.attachResourceTag)
 					r.Delete("/tags/{tagID}", handler.removeResourceTag)
 

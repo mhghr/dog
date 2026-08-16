@@ -3,18 +3,26 @@
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/shared/ui/button";
-import { useMe } from "@/platform/auth/use-auth";
+import { useAuth } from "@/platform/auth/auth-provider";
 import { Link } from "@/i18n/navigation";
 
-export function AuthButton({ hasToken }: { hasToken?: boolean }) {
+export function AuthButton() {
   const t = useTranslations("navigation");
-  const meQuery = useMe({ enabled: hasToken });
+  const { isLoaded, isSignedIn } = useAuth();
 
-  // hasToken = cookie exists; meQuery confirms validity.
-  // Fall through to login when cookie is missing or token is invalid.
-  const isAuthenticated = hasToken && meQuery.isSuccess && meQuery.data;
+  // The root layout resolves the session server-side, so isLoaded is normally
+  // true in the very first render. The skeleton only appears when the server
+  // genuinely could not determine the auth state (no provider, static
+  // fallback) — it never hides a real Login/Console state.
+  if (!isLoaded) {
+    return (
+      <Button asChild size="sm" variant="outline" aria-hidden>
+        <span>{t("login")}</span>
+      </Button>
+    );
+  }
 
-  if (isAuthenticated) {
+  if (isSignedIn) {
     return (
       <Button asChild size="sm">
         <Link href="/app/dashboard">{t("console")}</Link>

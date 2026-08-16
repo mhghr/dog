@@ -1,14 +1,17 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"monitoring-platform/packages/shared/domain"
+	"monitoring-platform/packages/shared/geoip"
 )
 
 // ── Monitor Types ─────────────────────────────────────────────
@@ -24,6 +27,33 @@ func (h *Handler) listMonitorTypesAll(w http.ResponseWriter, r *http.Request) {
 		types = []domain.MonitorTypeDef{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": types})
+}
+
+// ── GeoIP ─────────────────────────────────────────────────────
+
+// geoIpLookup resolves an IP address to its geographic location using the
+// geoip provider. Used by the web UI to auto-fill a resource location from
+// its target IP. Returns empty country/city for private/undetected ranges.
+func (h *Handler) geoIpLookup(w http.ResponseWriter, r *http.Request) {
+	ip := r.URL.Query().Get("ip")
+	if ip == "" {
+		writeError(w, r, http.StatusBadRequest, "invalid_ip", "ip is required", nil)
+		return
+	}
+
+	loc, err := geoip.Lookup(ip)
+	if err != nil {
+		h.deps.Logger.Warn("geoip lookup failed", "ip", ip, "error", err)
+		writeError(w, r, http.StatusBadGateway, "geoip_failed", "geo location lookup failed", nil)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"country": loc.Country,
+		"city":    loc.City,
+		"lat":     loc.Lat,
+		"lon":     loc.Lon,
+	})
 }
 
 // ── Resource Types ────────────────────────────────────────────
@@ -215,6 +245,122 @@ func (h *Handler) getResource(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, toResourceResponse(res))
+}
+
+// getResourceOverview returns a single consolidated snapshot for a resource —
+// status, health, and current metric values with a short sparkline trend for
+// each monitor. The frontend consumes this with one request to render every
+// Metric Card on the resource overview, instead of one request per metric.
+func (h *Handler) getResourceOverview(w http.ResponseWriter, r *http.Request) {
+	resourceID := chi.URLParam(r, "resourceID")
+	if _, err := uuid.Parse(resourceID); err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_id", "resource id must be a valid UUID", nil)
+		return
+	}
+
+	res, err := h.deps.ResourceRepo.GetByID(r.Context(), resourceID)
+	if err != nil {
+		writeDomainError(w, r, err)
+		return
+	}
+
+	monitors, err := h.deps.MonitorRepo.ListByResource(r.Context(), resourceID)
+	if err != nil {
+		h.deps.Logger.Error("overview: list monitors failed", "error", err)
+		writeDomainError(w, r, err)
+		return
+	}
+
+	metrics := make(map[string]any, len(monitors))
+	trendWindow := time.Now().UTC().Add(-1 * time.Hour)
+
+	for _, m := range monitors {
+		latest, err := h.deps.Results.LatestResultsByProbe(r.Context(), m.ID)
+		if err != nil || len(latest) == 0 {
+			if err != nil {
+				h.deps.Logger.Warn("overview: latest results failed", "monitor_id", m.ID, "error", err)
+			}
+			continue
+		}
+
+		entry := monitorOverviewEntry(latest)
+		entry["last_checked_at"] = latest[0].FinishedAt
+		entry["trend"] = h.sparklineTrend(r.Context(), m.ID, trendWindow)
+
+		key := string(m.Type)
+		if key == "" {
+			key = m.ID
+		}
+		metrics[key] = entry
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id":              res.ID,
+		"name":            res.Name,
+		"target":          res.Target,
+		"status":          res.Status,
+		"health_status":   res.HealthStatus,
+		"last_checked_at": res.UpdatedAt,
+		"metrics":         metrics,
+	})
+}
+
+// monitorOverviewEntry aggregates the latest per-probe results into a flat
+// map of current metric values (average across probes). The keys are the
+// raw probe metric keys (rtt_ms, packet_loss_percent, ...) plus success.
+func monitorOverviewEntry(latest []domain.ProbeResult) map[string]any {
+	entry := map[string]any{}
+	success := 0
+	for _, result := range latest {
+		if result.Success {
+			success++
+		}
+		for key, value := range result.Metrics {
+			if number, ok := toFloat(value); ok {
+				if existing, seen := entry[key].(float64); seen {
+					entry[key] = (existing + number) / 2
+				} else {
+					entry[key] = number
+				}
+			}
+		}
+	}
+	entry["success"] = success > 0 && success == len(latest)
+	entry["probe_count"] = len(latest)
+	return entry
+}
+
+// sparklineTrend returns a short series of averaged values for the monitor's
+// primary metric (rtt_ms) over the last hour, suitable for a tiny sparkline.
+func (h *Handler) sparklineTrend(ctx context.Context, monitorID string, from time.Time) []float64 {
+	series, err := h.deps.Results.SeriesByProbeMetric(ctx, monitorID, "rtt_ms", from, time.Now().UTC(), 60)
+	if err != nil || len(series) == 0 {
+		return nil
+	}
+
+	values := make([]float64, 0, len(series[0].Points))
+	for _, point := range series[0].Points {
+		values = append(values, point.Value)
+	}
+	return values
+}
+
+func toFloat(value any) (float64, bool) {
+	switch v := value.(type) {
+	case float64:
+		return v, true
+	case float32:
+		return float64(v), true
+	case int:
+		return float64(v), true
+	case int64:
+		return float64(v), true
+	case json.Number:
+		if f, err := v.Float64(); err == nil {
+			return f, true
+		}
+	}
+	return 0, false
 }
 
 func (h *Handler) updateResource(w http.ResponseWriter, r *http.Request) {

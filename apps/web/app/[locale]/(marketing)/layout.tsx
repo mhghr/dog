@@ -1,5 +1,4 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
-import { cookies } from "next/headers";
 
 import { AuthButton } from "@/platform/auth/auth-button";
 import { BrandMark } from "@/shared/ui/brand-mark";
@@ -20,9 +19,6 @@ export default async function MarketingLayout({
   const t = await getTranslations({ locale, namespace: "navigation" });
   const tCommon = await getTranslations({ locale, namespace: "common" });
   const tLanding = await getTranslations({ locale, namespace: "landing" });
-
-  const cookieStore = await cookies();
-  const hasToken = cookieStore.has("mp_at");
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -55,7 +51,7 @@ export default async function MarketingLayout({
           <LanguageSwitcher />
           <ThemeToggle />
 
-          <AuthButton hasToken={hasToken} />
+          <AuthButton />
         </div>
       </header>
 

@@ -801,7 +801,21 @@
     "disk": "دیسک",
     "upgrade": "ارتقا",
     "restart": "راه‌اندازی مجدد",
-    "remove": "حذف"
+    "remove": "حذف",
+    "installTitle": "نصب Probe Agent",
+    "installDesc": "ابتدا یک توکن بسازید، سپس نصب‌کننده را روی سرور موردنظر اجرا کنید.",
+    "installStep1": "یک توکن ثبت‌نام بسازید",
+    "installStep2": "این دستور را روی سرور هدف اجرا کنید:",
+    "installStep3": "Agent ثبت‌نام می‌شود و در فهرست زیر ظاهر می‌شود.",
+    "copyCommand": "کپی دستور",
+    "commandCopied": "دستور کپی شد",
+    "ip": "آدرس IP",
+    "runningJobs": "تعداد جاب‌ها",
+    "delete": "حذف",
+    "deleted": "Agent حذف شد",
+    "addProbe": "افزودن پراب",
+    "total": "کل پراب‌ها",
+    "active": "فعال"
   },
   "monitoring": {
     "totalProbes": "کل پراب‌ها",

@@ -16,8 +16,10 @@ export type AgentColumnKey =
   | "name"
   | "hostname"
   | "location"
-  | "version"
+  | "publicIp"
   | "status"
+  | "runningJobs"
+  | "version"
   | "lastSeen";
 
 export interface AgentColumn<T = unknown> {

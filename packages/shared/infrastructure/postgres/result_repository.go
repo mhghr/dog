@@ -423,6 +423,7 @@ func (r *ResultRepository) SeriesByProbe(ctx context.Context, monitorID string, 
 		FROM probe_results pr
 		LEFT JOIN probe_locations pl ON pl.id = pr.probe_location_id
 		WHERE pr.monitor_id = $1::uuid
+		  AND pr.success = TRUE
 		  AND pr.started_at >= $2
 		  AND pr.started_at < $3
 		GROUP BY pl.id, pl.name, pl.code, bucket
@@ -490,6 +491,7 @@ func (r *ResultRepository) SeriesByProbeMetric(ctx context.Context, monitorID, m
 		FROM probe_results pr
 		LEFT JOIN probe_locations pl ON pl.id = pr.probe_location_id
 		WHERE pr.monitor_id = $1::uuid
+		  AND pr.success = TRUE
 		  AND pr.started_at >= $2
 		  AND pr.started_at < $3
 		  AND pr.metrics->>$5 IS NOT NULL
