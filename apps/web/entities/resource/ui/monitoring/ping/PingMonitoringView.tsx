@@ -29,6 +29,7 @@ import {
 import { PingMonitorHeader } from "./PingMonitorHeader";
 import { PingKpiCard, type PingKpiRow } from "./PingKpiCard";
 import { PingMetricChart } from "./PingMetricChart";
+import { PingAvailabilityChart } from "./PingAvailabilityChart";
 
 function isDataStale(
   lastCheckedAt: string | null | undefined,
@@ -157,6 +158,14 @@ export function PingMonitoringView({
             statusSeries={statusSeries}
             isLoading={latencyQuery.isPending}
             isError={latencyQuery.isError}
+          />
+
+          {/* Availability chart */}
+          <PingAvailabilityChart
+            title={t("Availability over time", "دسترس‌پذیری در طول زمان")}
+            series={statusSeries}
+            isLoading={statusQuery.isPending}
+            isError={statusQuery.isError}
           />
         </>
       )}
