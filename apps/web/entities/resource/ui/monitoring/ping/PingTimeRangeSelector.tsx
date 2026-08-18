@@ -40,7 +40,7 @@ export function PingTimeRangeSelector({
             className={cn(
               "h-7 rounded-full px-2.5 text-xs font-medium transition-colors",
               active
-                ? "bg-muted text-foreground"
+                ? "bg-primary/12 text-primary dark:bg-primary/15 dark:text-primary dark:shadow-[0_0_12px_-2px_var(--primary)]"
                 : "text-muted-foreground hover:bg-transparent hover:text-foreground",
             )}
             onClick={() => onChange(r)}

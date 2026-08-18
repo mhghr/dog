@@ -15,25 +15,25 @@ const STATE_META: Record<PingHealthState, { dot: string; text: string; ring: str
   healthy: {
     dot: "bg-emerald-500",
     text: "text-emerald-700 dark:text-emerald-300",
-    ring: "border-emerald-500/20 bg-emerald-500/[0.06]",
+    ring: "border-emerald-500/20 bg-emerald-500/[0.06] dark:shadow-[0_0_16px_-4px_var(--success)]",
     icon: "text-emerald-500",
   },
   warning: {
     dot: "bg-amber-500",
     text: "text-amber-700 dark:text-amber-300",
-    ring: "border-amber-500/20 bg-amber-500/[0.06]",
+    ring: "border-amber-500/20 bg-amber-500/[0.06] dark:shadow-[0_0_16px_-4px_var(--warning)]",
     icon: "text-amber-500",
   },
   critical: {
     dot: "bg-rose-500",
     text: "text-rose-700 dark:text-rose-300",
-    ring: "border-rose-500/20 bg-rose-500/[0.06]",
+    ring: "border-rose-500/20 bg-rose-500/[0.06] dark:shadow-[0_0_16px_-4px_var(--destructive)]",
     icon: "text-rose-500",
   },
   down: {
     dot: "bg-rose-500",
     text: "text-rose-700 dark:text-rose-300",
-    ring: "border-rose-500/25 bg-rose-500/[0.07]",
+    ring: "border-rose-500/25 bg-rose-500/[0.07] dark:shadow-[0_0_20px_-4px_var(--destructive)]",
     icon: "text-rose-500",
   },
   unknown: {
@@ -78,8 +78,7 @@ export function PingStatusSummary({
             meta.dot,
           )}
         />
-      </span>
-      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+      </span>      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
         <span className={cn("text-sm font-semibold", meta.text)}>
           {isFa ? label.fa : label.en}
         </span>

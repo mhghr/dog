@@ -106,7 +106,7 @@ export function MonitorForm({
                       onClick={() => selectType(availableType)}
                       aria-pressed={selected}
                       className={cn(
-                        "relative flex items-center gap-2.5 rounded-xl border px-3.5 py-3 text-start transition-all duration-150",
+                        "relative flex items-center gap-2.5 rounded-xl border px-3.5 py-3 text-start transition-[border-color,background-color,box-shadow] duration-150",
                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                         selected
                           ? "border-primary/60 bg-primary/[0.06] shadow-sm shadow-primary/5"

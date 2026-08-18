@@ -29,40 +29,40 @@ import {
 } from "@phosphor-icons/react/dist/ssr";
 
 // Design-system icon source of truth. The SSR entrypoint is context-free, so
-// these components are safe in both server and client components; the filled
+// these components are safe in both server and client components; the regular
 // weight is baked in here instead of a client-only IconContext.
-function filled(Base: Icon): Icon {
-  function FilledIcon(props: IconProps) {
-    return <Base weight="fill" {...props} />;
+function regular(Base: Icon): Icon {
+  function RegularIcon(props: IconProps) {
+    return <Base weight="regular" {...props} />;
   }
-  return FilledIcon as Icon;
+  return RegularIcon as Icon;
 }
 
-export const Broadcast = filled(BroadcastBase);
-export const Browser = filled(BrowserBase);
-export const CalendarCheck = filled(CalendarCheckBase);
-export const CaretLeft = filled(CaretLeftBase);
-export const Clock = filled(ClockBase);
-export const EnvelopeSimple = filled(EnvelopeSimpleBase);
-export const Gauge = filled(GaugeBase);
-export const GearSix = filled(GearSixBase);
-export const Globe = filled(GlobeBase);
-export const List = filled(ListBase);
-export const MagnifyingGlass = filled(MagnifyingGlassBase);
-export const MapPin = filled(MapPinBase);
-export const Monitor = filled(MonitorBase);
-export const Moon = filled(MoonBase);
-export const PlugsConnected = filled(PlugsConnectedBase);
-export const Pulse = filled(PulseBase);
-export const ShieldCheck = filled(ShieldCheckBase);
-export const ShieldWarning = filled(ShieldWarningBase);
-export const SignOut = filled(SignOutBase);
-export const SquaresFour = filled(SquaresFourBase);
-export const Sun = filled(SunBase);
-export const Timer = filled(TimerBase);
-export const Tray = filled(TrayBase);
-export const TreeStructure = filled(TreeStructureBase);
-export const UserCircle = filled(UserCircleBase);
-export const Warning = filled(WarningBase);
+export const Broadcast = regular(BroadcastBase);
+export const Browser = regular(BrowserBase);
+export const CalendarCheck = regular(CalendarCheckBase);
+export const CaretLeft = regular(CaretLeftBase);
+export const Clock = regular(ClockBase);
+export const EnvelopeSimple = regular(EnvelopeSimpleBase);
+export const Gauge = regular(GaugeBase);
+export const GearSix = regular(GearSixBase);
+export const Globe = regular(GlobeBase);
+export const List = regular(ListBase);
+export const MagnifyingGlass = regular(MagnifyingGlassBase);
+export const MapPin = regular(MapPinBase);
+export const Monitor = regular(MonitorBase);
+export const Moon = regular(MoonBase);
+export const PlugsConnected = regular(PlugsConnectedBase);
+export const Pulse = regular(PulseBase);
+export const ShieldCheck = regular(ShieldCheckBase);
+export const ShieldWarning = regular(ShieldWarningBase);
+export const SignOut = regular(SignOutBase);
+export const SquaresFour = regular(SquaresFourBase);
+export const Sun = regular(SunBase);
+export const Timer = regular(TimerBase);
+export const Tray = regular(TrayBase);
+export const TreeStructure = regular(TreeStructureBase);
+export const UserCircle = regular(UserCircleBase);
+export const Warning = regular(WarningBase);
 
 export type { Icon as AppIcon } from "@phosphor-icons/react";

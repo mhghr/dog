@@ -3,7 +3,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { resourcesApi } from "@/entities/resource/api/resource.api";
 import type { ResourceInput } from "@/entities/resource/model/types";
-import type { ProbeResult } from "@/entities/monitor/model/result";
 import type { MonitorInput, Monitor } from "@/entities/resource/hooks/types";
 import {
   buildMetricsQueryString,
@@ -29,28 +28,6 @@ export function useResourceTypes() {
     queryKey: ["resource-types"],
     queryFn: () => resourcesApi.listTypes(),
     staleTime: 300_000,
-  });
-}
-
-export function useResourceOverview() {
-  return useQuery({
-    queryKey: ["resources", "overview"],
-    queryFn: () => resourcesApi.overview(),
-    refetchInterval: 30_000,
-  });
-}
-
-// Single data source for a resource's overview snapshot — status, current
-// metric values and sparkline trends in one request. All Metric Cards on the
-// page consume this one query instead of firing a request per metric.
-export function useResourceOverviewById(resourceId: string | undefined) {
-  return useQuery({
-    queryKey: ["resources", resourceId, "overview"],
-    queryFn: () => resourcesApi.overviewById(resourceId!),
-    enabled: Boolean(resourceId),
-    staleTime: 10_000,
-    gcTime: 300_000,
-    placeholderData: (previous) => previous,
   });
 }
 
@@ -101,14 +78,6 @@ export function useUpdateResource(id: string) {
   });
 }
 
-export function useDeleteResource() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => resourcesApi.delete(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["resources"] }); },
-  });
-}
-
 export function useResourceMonitors(resourceId: string | undefined) {
   return useQuery({
     queryKey: ["resources", resourceId, "monitors"],
@@ -135,24 +104,6 @@ export function useUpdateResourceMonitor(resourceId: string) {
   });
 }
 
-export function useDeleteResourceMonitor(resourceId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => resourcesApi.deleteMonitor(resourceId, id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["resources", resourceId, "monitors"] }); },
-  });
-}
-
-export function useResourceMonitorResults(resourceId: string | undefined, monitorId: string | undefined) {
-  return useQuery({
-    queryKey: ["resources", resourceId, "monitors", monitorId, "results"],
-    queryFn: () => resourcesApi.getMonitorResults(resourceId!, monitorId!),
-    enabled: Boolean(resourceId) && Boolean(monitorId),
-    refetchInterval: 15_000,
-    select: (data): ProbeResult | null => data.items[0] ?? null,
-  });
-}
-
 export function useResourceMonitorMetrics(
   resourceId: string | undefined,
   monitorId: string | undefined,
@@ -168,6 +119,7 @@ export function useResourceMonitorMetrics(
         buildMetricsQueryString(range, metric),
       ),
     enabled: Boolean(resourceId) && Boolean(monitorId),
+	staleTime: 15_000,
     refetchInterval: range === "15m" || range === "1h" ? 15_000 : 60_000,
     placeholderData: (prev) => prev,
   });

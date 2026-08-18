@@ -89,10 +89,8 @@ export function MonitorGrid({ monitors }: { monitors: Monitor[] }) {
       {nodes.map((node) => (
         <article
           key={node.key}
-          className="group relative min-w-0 overflow-hidden rounded-xl border border-border/70 bg-gradient-to-br from-card to-card/50 shadow-sm shadow-foreground/[0.02] transition-all duration-200 hover:shadow-md hover:shadow-foreground/5 hover:border-primary/20"
+          className="group relative min-w-0 overflow-hidden rounded-xl border border-border/70 bg-card transition-[border-color,box-shadow] duration-200 hover:border-border hover:shadow-card-hover"
         >
-          <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-primary/20 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
-
           <Link
             href={`${base}/monitors/${(node.monitors.find((m) => m.enabled) ?? node.monitors[0]).id}`}
             className="block min-w-0 px-4 py-3.5 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
@@ -129,7 +127,7 @@ export function MonitorGrid({ monitors }: { monitors: Monitor[] }) {
                     href={`${base}/monitors/${monitor.id}`}
                     title={monitor.name}
                     className={cn(
-                      "inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-md border px-2 text-[11px] font-medium outline-none transition-all hover:brightness-110 active:translate-y-px focus-visible:ring-2 focus-visible:ring-ring",
+                      "inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-md border px-2 text-[11px] font-medium outline-none transition-[filter] hover:brightness-110 active:translate-y-px focus-visible:ring-2 focus-visible:ring-ring",
                       monitorBadgeTone(monitor),
                     )}
                   >

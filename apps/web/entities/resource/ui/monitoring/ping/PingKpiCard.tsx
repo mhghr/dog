@@ -2,35 +2,25 @@
 
 import { Card, CardContent } from "@/shared/ui/card";
 import { cn } from "@/shared/utils/cn";
+import { Sparkline, type SparklineSeries } from "@/shared/ui/charts/sparkline";
 import type { PingHealthState } from "./ping-health";
 
-export interface PingKpiRow {
-  label: string;
-  value: string;
-  tone?: "success" | "warning" | "destructive" | "muted";
-}
-
-const STATE_ACCENT: Record<PingHealthState, string> = {
-  healthy: "from-emerald-400/70 to-teal-400/0",
-  warning: "from-amber-400/70 to-amber-400/0",
-  critical: "from-rose-400/70 to-rose-400/0",
-  down: "from-rose-500/80 to-rose-500/0",
-  unknown: "from-zinc-300/70 to-zinc-300/0",
-};
-
+// Neon status mapping — every state carries its own glow. The stripe uses
+// `bg-current` + `neon-glow-current` so the glow follows the state color.
 const STATE_TEXT: Record<PingHealthState, string> = {
-  healthy: "text-emerald-600 dark:text-emerald-400",
-  warning: "text-amber-600 dark:text-amber-400",
-  critical: "text-rose-600 dark:text-rose-400",
-  down: "text-rose-600 dark:text-rose-400",
+  healthy: "text-success",
+  warning: "text-warning",
+  critical: "text-destructive",
+  down: "text-destructive",
   unknown: "text-muted-foreground",
 };
 
-const ROW_TONE_TEXT: Record<string, string> = {
-  success: "text-emerald-600 dark:text-emerald-400",
-  warning: "text-amber-600 dark:text-amber-400",
-  destructive: "text-rose-600 dark:text-rose-400",
-  muted: "text-foreground/70",
+const STATE_GLOW: Record<PingHealthState, string> = {
+  healthy: "dark:neon-glow-current dark:text-success",
+  warning: "dark:neon-glow-current dark:text-warning",
+  critical: "dark:neon-glow-current dark:text-destructive",
+  down: "dark:neon-glow-current dark:text-destructive",
+  unknown: "dark:text-muted-foreground",
 };
 
 export function PingKpiCard({
@@ -38,68 +28,79 @@ export function PingKpiCard({
   value,
   unit,
   state,
-  rows,
+  spark,
+  colors,
+  sparkLabel,
 }: {
   label: string;
   value: string;
   unit?: string;
   state: PingHealthState;
-  rows: PingKpiRow[];
+  spark?: SparklineSeries[];
+  colors?: string[];
+  sparkLabel?: string;
 }) {
+  const stateText = STATE_TEXT[state];
+  const stateGlow = STATE_GLOW[state];
+
   return (
     <Card
       variant="bordered"
-      className="group relative h-full overflow-hidden border border-border/40 bg-white/70 shadow-[var(--shadow-panel)] backdrop-blur-xl transition-all duration-200 hover:border-border/60 hover:shadow-[0_4px_20px_rgba(0,0,0,0.06)] dark:bg-white/[0.03] dark:hover:bg-white/[0.05]"
+      className={cn(
+        "group relative h-full overflow-hidden bg-card shadow-subtle transition-[border-color,box-shadow] duration-300",
+        "hover:border-border/70 hover:shadow-card-hover dark:hover:border-primary/50 dark:hover:shadow-glow",
+      )}
     >
-      {/* health accent line */}
+      {/* faint state-tinted radial bloom behind the value */}
       <span
         aria-hidden
         className={cn(
-          "pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r",
-          STATE_ACCENT[state],
+          "pointer-events-none absolute -top-10 right-0 size-36 rounded-full bg-current opacity-[0.07] blur-3xl dark:opacity-[0.12]",
+          stateText,
         )}
       />
 
-      <CardContent className="flex h-full flex-col gap-1.5 p-3">
+      <CardContent className="relative flex h-full flex-col gap-3 p-3.5">
         <div className="flex items-center justify-between gap-2">
-          <p className="truncate text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-            {label}
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span
+              className={cn(
+                "size-1.5 shrink-0 rounded-full bg-current",
+                stateText,
+                stateGlow,
+              )}
+              aria-hidden
+            />
+            <p className="truncate text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+              {label}
+            </p>
+          </div>
+
+          <p
+            className={cn(
+              "shrink-0 text-3xl font-bold leading-none tracking-tight tabular-nums",
+              stateText,
+              state === "unknown" ? "" : "dark:neon-text-current",
+            )}
+            dir="ltr"
+          >
+            {value}
+            {unit ? (
+              <span className="ms-1 text-xs font-medium text-muted-foreground">{unit}</span>
+            ) : null}
           </p>
-          <span
-            className={cn("size-1.5 shrink-0 rounded-full", STATE_TEXT[state], "bg-current")}
-            aria-hidden
-          />
         </div>
 
-        <p className={cn("text-lg font-semibold tracking-tight tabular-nums", STATE_TEXT[state])} dir="ltr">
-          {value}
-          {unit ? (
-            <span className="ms-1 text-xs font-medium text-muted-foreground">{unit}</span>
-          ) : null}
-        </p>
-
-        {rows.length > 0 && (
-          <dl className="mt-0.5 space-y-0.5 border-t border-border/50 pt-2">
-            {rows.map((row) => (
-              <div
-                key={row.label}
-                className="flex items-center justify-between gap-2 text-[11px] leading-tight"
-              >
-                <dt className="truncate text-muted-foreground" dir="auto">
-                  {row.label}
-                </dt>
-                <dd
-                  dir="ltr"
-                  className={cn(
-                    "shrink-0 font-medium tabular-nums",
-                    ROW_TONE_TEXT[row.tone ?? "muted"],
-                  )}
-                >
-                  {row.value}
-                </dd>
-              </div>
-            ))}
-          </dl>
+        {spark && spark.length > 0 && (
+          <div className="mt-auto pt-1">
+            <Sparkline
+              series={spark}
+              colors={colors ?? []}
+              height={40}
+              className="-mx-0.5 h-10"
+              ariaLabel={sparkLabel}
+            />
+          </div>
         )}
       </CardContent>
     </Card>

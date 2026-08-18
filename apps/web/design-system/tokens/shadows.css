@@ -7,6 +7,7 @@
 @theme inline {
   --shadow-subtle: var(--shadow-xs);
   --shadow-card: var(--shadow-sm);
+  --shadow-card-hover: var(--shadow-md);
   --shadow-dropdown: var(--shadow-md);
   --shadow-popover: var(--shadow-lg);
   --shadow-modal: var(--shadow-2xl);

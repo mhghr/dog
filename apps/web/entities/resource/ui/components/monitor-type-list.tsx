@@ -105,7 +105,7 @@ export function MonitorTypeList({
                 onClick={() => onSelect(id)}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(id); } }}
                 className={cn(
-                  "flex w-full cursor-pointer items-center gap-2 rounded-xl border bg-surface/60 p-3 transition-all hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "flex w-full cursor-pointer items-center gap-2 rounded-xl border bg-surface/60 p-3 transition-[border-color,background-color,box-shadow] hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   selectedId === id ? "border-primary shadow-glow" : "border-border",
                 )}
               >

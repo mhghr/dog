@@ -27,14 +27,14 @@ export interface ThemeTokens {
 export const defaultTheme: ThemeTokens = {
   name: "default",
   colors: {
-    primary: "#4F66F0",
-    background: "#FFFFFF",
-    surface: "#F8F9FC",
-    border: "#E2E4EC",
-    success: "#0D9464",
+    primary: "#3072F4",
+    background: "#F7F8FB",
+    surface: "#EEF1F7",
+    border: "#E1E5EF",
+    success: "#10B981",
     warning: "#F59E0B",
-    destructive: "#DC3035",
-    info: "#06B6D4",
+    destructive: "#EF4444",
+    info: "#0EA5E9",
   },
   radius: {
     sm: "0.5rem",

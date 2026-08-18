@@ -22,7 +22,7 @@ function StatCard({
   color: string;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-border/70 bg-card/60 px-4 py-3">
+    <div className="flex items-center gap-3 rounded-xl bg-card px-4 py-3.5 shadow-subtle ring-1 ring-foreground/5">
       <span className={cn("grid size-9 place-items-center rounded-lg", color)}>
         <Icon className="size-4" aria-hidden />
       </span>
@@ -49,7 +49,7 @@ export default function DashboardPage() {
   const { stats, loading } = useMonitoring();
 
   return (
-    <div className="-mx-1">
+    <div>
       {loading ? <StatsSkeleton /> : (
         <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatCard

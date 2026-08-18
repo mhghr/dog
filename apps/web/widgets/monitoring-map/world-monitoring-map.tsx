@@ -23,7 +23,7 @@ export function WorldMonitoringMap({ className }: { className?: string }) {
   const { probes, userNodes, connections } = useMonitoring();
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
-  const bgColor = isDark ? "#060B14" : "#ffffff";
+  const bgColor = isDark ? "#020617" : "#ffffff";
 
   const map = useMemo(
     () => new DottedMap({ height: 100, grid: "diagonal" }),

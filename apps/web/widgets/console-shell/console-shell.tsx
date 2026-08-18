@@ -229,7 +229,7 @@ function SidebarContent({
               onClick={onNav}
               data-active={active}
               className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-all duration-150 active:scale-[0.98] hover:bg-accent hover:text-foreground",
+                "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-[background-color,color] duration-150 hover:bg-accent hover:text-foreground",
                 active && "bg-accent text-foreground",
                 collapsed && "justify-center px-0",
               )}
@@ -237,10 +237,10 @@ function SidebarContent({
             >
               <span
                 className={cn(
-                  "flex size-7 shrink-0 items-center justify-center rounded-full transition-all duration-150",
+                  "flex size-7 shrink-0 items-center justify-center rounded-lg transition-[background-color,color] duration-150",
                   active
-                    ? "bg-primary text-primary-foreground shadow-sm shadow-primary/25"
-                    : "bg-muted text-muted-foreground",
+                    ? "bg-primary/10 text-primary group-hover:text-primary"
+                    : "bg-transparent text-muted-foreground group-hover:text-foreground",
                 )}
               >
                 <Icon className="size-4" aria-hidden />
@@ -268,7 +268,7 @@ function SidebarContent({
               onClick={onNav}
               data-active={active}
               className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-all duration-150 active:scale-[0.98] hover:bg-accent hover:text-foreground",
+                "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-[background-color,color] duration-150 hover:bg-accent hover:text-foreground",
                 active && "bg-accent text-foreground",
                 collapsed && "justify-center px-0",
               )}
@@ -276,10 +276,10 @@ function SidebarContent({
             >
               <span
                 className={cn(
-                  "flex size-7 shrink-0 items-center justify-center rounded-full transition-all duration-150",
+                  "flex size-7 shrink-0 items-center justify-center rounded-lg transition-[background-color,color] duration-150",
                   active
-                    ? "bg-primary text-primary-foreground shadow-sm shadow-primary/25"
-                    : "bg-muted text-muted-foreground",
+                    ? "bg-primary/10 text-primary group-hover:text-primary"
+                    : "bg-transparent text-muted-foreground group-hover:text-foreground",
                 )}
               >
                 <Icon className="size-4" aria-hidden />
@@ -322,7 +322,7 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
         <aside
           style={{ fontFamily: "var(--font-bakh), var(--font-estedad), ui-sans-serif, system-ui, sans-serif", fontWeight: 500 }}
           className={cn(
-            "hidden shrink-0 flex-col bg-white dark:bg-[#040912] lg:flex",
+            "hidden shrink-0 flex-col border-e border-[var(--sidebar-border)] bg-sidebar dark:bg-transparent lg:flex",
             collapsed ? "w-[4.5rem]" : "w-64",
           )}
         >
@@ -337,7 +337,7 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
             />
             <aside
               className={cn(
-                "absolute inset-y-0 flex w-64 flex-col bg-white dark:bg-[#040912] shadow-xl",
+                "absolute inset-y-0 flex w-64 flex-col bg-sidebar shadow-modal",
                 isRtl ? "right-0" : "left-0",
               )}
             >
@@ -351,10 +351,10 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
 
         <div
           className={cn(
-            "relative flex min-w-0 flex-1 flex-col bg-white bg-[radial-gradient(1200px_600px_at_85%_-10%,rgba(79,93,224,0.05),transparent),radial-gradient(800px_500px_at_-10%_20%,rgba(13,148,136,0.04),transparent)] dark:bg-[#060B14] dark:bg-[radial-gradient(1200px_600px_at_85%_-10%,rgba(79,93,224,0.08),transparent),radial-gradient(800px_500px_at_-10%_20%,rgba(13,148,136,0.05),transparent)]",
+            "relative flex min-w-0 flex-1 flex-col",
           )}
         >
-          <header className="sticky top-0 z-sticky flex h-14 items-center gap-2 border-b border-border bg-white/70 px-4 backdrop-blur-xl dark:bg-[#060B14]/70 dark:border-primary/10">
+          <header className="sticky top-0 z-sticky flex h-14 items-center gap-2 border-b border-[var(--header-border)] bg-[var(--header-background)] px-4 backdrop-blur-xl">
             <button
               type="button"
               onClick={() => setMobileOpen(true)}
@@ -400,7 +400,7 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
             </div>
           </header>
 
-          <main className="flex-1 overflow-auto px-6 py-6 lg:px-10">
+          <main className="mx-auto w-full max-w-[1440px] flex-1 overflow-auto px-6 py-6 lg:px-10">
             {children}
           </main>
         </div>

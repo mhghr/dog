@@ -19,13 +19,15 @@ function readToken(variableName: string): string {
 }
 
 const FALLBACK_PALETTE = {
-  text: "#7A82A0",
-  axis: "#E2E4EC",
-  primary: "#4F66F0",
-  success: "#0D9464",
-  danger: "#DC3035",
+  text: "#6B6E8C",
+  axis: "#D8DAE8",
+  primary: "#3072F4",
+  success: "#10B981",
+  warning: "#F59E0B",
+  danger: "#EF4444",
   tooltipBg: "#FFFFFF",
-  tooltipText: "#151829",
+  tooltipText: "#11121C",
+  series: ["#3072F4", "#0EA5E9", "#8B5CF6", "#10B981", "#F59E0B"],
 };
 
 export function useChartPalette() {
@@ -33,14 +35,23 @@ export function useChartPalette() {
 
   if (typeof document === "undefined") return FALLBACK_PALETTE;
 
+  const read = (name: string, fallback: string) => {
+    const value = readToken(name);
+    return value || fallback;
+  };
+
   return {
-    text: readToken("--muted-foreground"),
-    axis: readToken("--border"),
-    primary: readToken("--chart-1"),
-    success: readToken("--success"),
-    danger: readToken("--destructive"),
-    tooltipBg: readToken("--card"),
-    tooltipText: readToken("--card-foreground"),
+    text: read("--muted-foreground", FALLBACK_PALETTE.text),
+    axis: read("--border", FALLBACK_PALETTE.axis),
+    primary: read("--chart-1", FALLBACK_PALETTE.primary),
+    success: read("--success", FALLBACK_PALETTE.success),
+    warning: read("--warning", FALLBACK_PALETTE.warning),
+    danger: read("--destructive", FALLBACK_PALETTE.danger),
+    tooltipBg: read("--card", FALLBACK_PALETTE.tooltipBg),
+    tooltipText: read("--card-foreground", FALLBACK_PALETTE.tooltipText),
+    series: ["--chart-1", "--chart-2", "--chart-3", "--chart-4", "--chart-5"].map(
+      (name, index) => read(name, FALLBACK_PALETTE.series[index]!),
+    ),
   };
 }
 
@@ -75,7 +86,7 @@ export function EChart({ option, className, ariaLabel }: EChartProps) {
   }, []);
 
   useEffect(() => {
-    chartRef.current?.setOption(serializedOption, { notMerge: true });
+    chartRef.current?.setOption(serializedOption, { notMerge: true, lazyUpdate: true });
   }, [serializedOption]);
 
   return (

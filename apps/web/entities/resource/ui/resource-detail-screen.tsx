@@ -20,17 +20,17 @@ import { MonitorConfig } from "./components/monitor-config";
 import { PingMonitoringView } from "./monitoring/ping/PingMonitoringView";
 
 const TAB_ICONS = {
-  monitoring: "text-emerald-500",
+  monitoring: "text-primary",
   metrics: "text-blue-500",
   alerts: "text-amber-500",
   settings: "text-violet-500",
 } as const;
 
 const TABS = [
-  { v: "monitoring", l: "Monitoring",   lFa: "مانیتورینگ", i: null },
-  { v: "metrics",    l: "Metrics",      lFa: "متریک‌ها",   i: BarChart3 },
-  { v: "alerts",     l: "Alerts",       lFa: "هشدارها",    i: Bell },
-  { v: "settings",   l: "Settings",     lFa: "تنظیمات",    i: Settings },
+  { v: "monitoring", l: "Monitoring",   lFa: "??????????", i: null },
+  { v: "metrics",    l: "Metrics",      lFa: "????????",   i: BarChart3 },
+  { v: "alerts",     l: "Alerts",       lFa: "???????",    i: Bell },
+  { v: "settings",   l: "Settings",     lFa: "???????",    i: Settings },
 ] as const;
 
 export function ResourceDetailScreen({ resourceId }: { resourceId: string }) {
@@ -44,9 +44,9 @@ export function ResourceDetailScreen({ resourceId }: { resourceId: string }) {
       <ResourceHeader resourceId={resourceId} />
 
       <Tabs defaultValue="monitoring">
-        <TabsList className="!inline-flex w-full gap-1 rounded-[10px] bg-muted/70 p-1 sm:w-fit dark:bg-zinc-800/70">
+        <TabsList className="!inline-flex w-full gap-1 rounded-[10px] bg-muted/70 p-1 sm:w-fit">
           {TABS.map((t) => (
-            <TabsTrigger key={t.v} value={t.v} className="group relative flex-1 gap-2 rounded-lg px-4 py-1.5 text-[13px] font-medium cursor-pointer text-muted-foreground transition-all duration-200 hover:text-foreground data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-[0_1px_2px_rgba(0,0,0,0.06)] dark:text-zinc-400 dark:hover:text-zinc-100 dark:data-[state=active]:bg-zinc-700 dark:data-[state=active]:text-white sm:flex-none after:!hidden">
+            <TabsTrigger key={t.v} value={t.v} className="group relative flex-1 gap-2 rounded-lg px-4 py-1.5 text-[13px] font-medium cursor-pointer text-muted-foreground transition-[color,background-color,box-shadow] duration-200 hover:text-foreground data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-subtle data-[state=active]:dark:text-primary data-[state=active]:dark:shadow-[0_0_14px_-3px_var(--primary)] sm:flex-none after:!hidden">
               {t.i && <t.i className={`size-3.5 ${TAB_ICONS[t.v as keyof typeof TAB_ICONS]}`} />}
               <span>{fa ? t.lFa : t.l}</span>
             </TabsTrigger>
@@ -58,10 +58,10 @@ export function ResourceDetailScreen({ resourceId }: { resourceId: string }) {
             <MonitoringPanel resourceId={resourceId} />
           </TabsContent>
           <TabsContent value="metrics">
-            <p className="text-sm text-muted-foreground py-12 text-center">{fa ? "متریک‌ها به زودی" : "Metrics coming soon"}</p>
+            <p className="text-sm text-muted-foreground py-12 text-center">{fa ? "???????? ?? ????" : "Metrics coming soon"}</p>
           </TabsContent>
           <TabsContent value="alerts">
-            <p className="text-sm text-muted-foreground py-12 text-center">{fa ? "هشدارها به زودی" : "Alerts coming soon"}</p>
+            <p className="text-sm text-muted-foreground py-12 text-center">{fa ? "??????? ?? ????" : "Alerts coming soon"}</p>
           </TabsContent>
           <TabsContent value="settings">
             <SettingsPanel resourceId={resourceId} monitors={monitors} />
@@ -95,7 +95,7 @@ function SettingsPanel({ resourceId, monitors }: { resourceId: string; monitors:
           <MonitorConfig resourceId={resourceId} type={st} monitor={sm} isFa={isFa} />
         ) : (
           <div className="panel flex items-center justify-center py-20">
-            <p className="text-sm text-muted-foreground">{isFa ? "یک نوع مانیتور را از سمت چپ انتخاب کنید" : "Select a monitor type from the left to configure it."}</p>
+            <p className="text-sm text-muted-foreground">{isFa ? "?? ??? ??????? ?? ?? ??? ?? ?????? ????" : "Select a monitor type from the left to configure it."}</p>
           </div>
         )}
       </div>
@@ -138,10 +138,10 @@ function MonitoringPanel({ resourceId }: { resourceId: string }) {
   if (pingMonitors.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-border/50 py-20">
-        <p className="text-sm font-medium">{fa ? "مانیتور پینگ پیکربندی نشده" : "No Ping monitor configured"}</p>
+        <p className="text-sm font-medium">{fa ? "??????? ???? ???????? ????" : "No Ping monitor configured"}</p>
         <p className="text-sm text-muted-foreground">
           {fa
-            ? "از تب تنظیمات یک مانیتور پینگ فعال و ذخیره کنید."
+            ? "?? ?? ??????? ?? ??????? ???? ???? ? ????? ????."
             : "Enable and save a Ping monitor from the Settings tab."}
         </p>
       </div>

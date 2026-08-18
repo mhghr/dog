@@ -49,7 +49,7 @@ export function MetricCard({
   return (
     <Card
       variant="bordered"
-      className={cn("h-full border-border/40 bg-white/70 backdrop-blur-xl dark:bg-white/[0.03]", className)}
+      className={cn("h-full shadow-subtle", className)}
     >
       <CardContent className="flex h-full flex-col gap-1.5 p-4">
         <div className="flex items-center justify-between gap-2">

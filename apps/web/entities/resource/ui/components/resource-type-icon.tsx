@@ -63,23 +63,3 @@ export function ResourceTypeIcon({
   const Icon = RESOURCE_TYPE_ICONS[type.toLowerCase()] ?? Pulse;
   return <Icon className={cn("shrink-0", className)} aria-hidden />;
 }
-
-function statusTone(status: string): string {
-  switch (status) {
-    case "active":
-    case "up":
-    case "ok":
-    case "healthy":
-      return "border-transparent bg-success/12 text-success";
-    case "warning":
-    case "degraded":
-      return "border-transparent bg-warning/15 text-warning";
-    case "down":
-    case "error":
-    case "failed":
-    case "critical":
-      return "border-transparent bg-destructive/12 text-destructive";
-    default:
-      return "border-transparent bg-muted text-muted-foreground";
-  }
-}

@@ -8,7 +8,7 @@ const cardVariants = cva(
   {
     variants: {
       variant: {
-        glass: "glass ring-1 ring-foreground/10",
+        glass: "glass shadow-card ring-1 ring-foreground/10",
         bordered: "border border-border/40 bg-card",
         ghost: "bg-transparent",
       },

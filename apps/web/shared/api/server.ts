@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 
 import type { AuthSessionInfo, AuthUser } from "@/shared/types/auth";
+import { readSetCookies } from "@/shared/api/set-cookie";
 
 // Server-side API client. Runs only in the Next.js server runtime and
 // mirrors the browser client (shared/api/client.ts) so both resolve the same
@@ -29,76 +30,30 @@ async function buildHeaders(): Promise<HeadersInit> {
   return headers;
 }
 
-interface ParsedCookie {
-  name: string;
-  value: string;
-  maxAge?: number;
-  path?: string;
-  domain?: string;
-  secure?: boolean;
-  httpOnly?: boolean;
-  sameSite?: "lax" | "strict" | "none";
-}
-
-function parseSetCookie(value: string): ParsedCookie | null {
-  const parts = value.split(";").map((part) => part.trim());
-  const [nameValue, ...attributes] = parts;
-  const separator = nameValue.indexOf("=");
-  if (separator <= 0) {
-    return null;
+// Next.js only allows cookie mutation inside Server Actions and Route
+// Handlers. Server Component render passes a read-only store, so any attempt
+// to rotate the session there must be skipped — the middleware (proxy.ts)
+// refreshes the access token before the page renders instead.
+async function canWriteCookies(): Promise<boolean> {
+  const store = await cookies();
+  try {
+    // Probe with a no-op: set-and-delete the same cookie. In a writable
+    // context this is harmless; during render it throws immediately.
+    store.set("__probe__", "", { maxAge: 0, path: "/" });
+    store.delete("__probe__");
+    return true;
+  } catch {
+    return false;
   }
-
-  const cookie: ParsedCookie = {
-    name: nameValue.slice(0, separator),
-    value: nameValue.slice(separator + 1),
-  };
-
-  for (const attribute of attributes) {
-    const [rawKey, rawValue = ""] = attribute.split("=");
-    const key = rawKey.toLowerCase();
-    const value = rawValue.trim();
-
-    switch (key) {
-      case "max-age":
-        cookie.maxAge = Number.parseInt(value, 10);
-        break;
-      case "path":
-        cookie.path = value;
-        break;
-      case "domain":
-        cookie.domain = value;
-        break;
-      case "secure":
-        cookie.secure = true;
-        break;
-      case "httponly":
-        cookie.httpOnly = true;
-        break;
-      case "samesite":
-        cookie.sameSite = value.toLowerCase() as ParsedCookie["sameSite"];
-        break;
-    }
-  }
-
-  return cookie;
 }
 
 // Applies cookies the backend set during a server-side refresh to the
 // outgoing Next.js response so the browser keeps a valid session.
 async function applySetCookies(response: Response): Promise<void> {
   const store = await cookies();
-  const raw = (
-    typeof response.headers.getSetCookie === "function"
-      ? response.headers.getSetCookie()
-      : response.headers.get("set-cookie")?.split(",") ?? []
-  ) as string[];
+  const raw = readSetCookies(response);
 
-  for (const header of raw) {
-    const parsed = parseSetCookie(header);
-    if (!parsed) {
-      continue;
-    }
-
+  for (const parsed of raw) {
     if (parsed.maxAge !== undefined && parsed.maxAge <= 0) {
       store.delete(parsed.name);
       continue;
@@ -181,6 +136,14 @@ async function fetchCurrentUser(): Promise<AuthUser | null> {
 }
 
 async function refreshSession(): Promise<boolean> {
+  // Rotating the refresh token in a Server Component render would invalidate
+  // the browser's copy without persisting the replacement — the next refresh
+  // attempt would be rejected as token reuse and revoke the whole session.
+  // Skip it here; the middleware already refreshes before render.
+  if (!(await canWriteCookies())) {
+    return false;
+  }
+
   const response = await fetch(`${API_INTERNAL_URL}/api/auth/refresh`, {
     method: "POST",
     headers: await buildHeaders(),

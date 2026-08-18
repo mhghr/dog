@@ -96,6 +96,7 @@ export interface ProbeSeries {
 export interface MonitorMetricsResponse {
   series: ProbeSeries[];
   latest: ProbeResult[];
+  series_limit?: number;
   step_seconds: number;
   from: string;
   to: string;

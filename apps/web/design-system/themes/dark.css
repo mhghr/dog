@@ -1,56 +1,89 @@
 /* ════════════════════════════════════════════════════════════════
-   THEME: Dark — Neon Cyber. Deep navy with electric cyan glow.
+   THEME: Dark — Neon Cobalt. Deep navy surfaces with a luminous
+   cobalt primary that reads like a live signal. Fonts stay
+   app-owned.
    ════════════════════════════════════════════════════════════════ */
 
 .dark {
-  --brand-accent: #22D3EE;
-  --glass-opacity: 48%;
+  --brand-accent: oklch(0.7600 0.1300 250.0);
+  --brand-accent-foreground: oklch(0.1500 0.0400 265.0);
+  --glass-opacity: 46%;
 
-  --background: #060B14;
-  --foreground: #E8EDF4;
-  --card: #0B1220;
+  --background: oklch(0.1288 0.0406 264.6952);
+  --foreground: oklch(0.9842 0.0034 247.8575);
+  --card: oklch(0.2077 0.0398 265.7549);
   --card-foreground: var(--foreground);
-  --surface: #0F1628;
+  --surface: oklch(0.1600 0.0400 265.0);
   --surface-foreground: var(--foreground);
-  --popover: #0F1628;
+  --popover: oklch(0.2077 0.0398 265.7549);
   --popover-foreground: var(--foreground);
 
   --primary: var(--brand-accent);
-  --primary-foreground: #060B14;
+  --primary-foreground: oklch(0.1500 0.0400 265.0);
 
-  --secondary: #111830;
-  --secondary-foreground: var(--foreground);
-  --muted: #0E1528;
-  --muted-foreground: #8896B4;
-  --accent: #152040;
-  --accent-foreground: var(--foreground);
+  --secondary: oklch(0.2795 0.0368 260.0310);
+  --secondary-foreground: oklch(0.9842 0.0034 247.8575);
+  --muted: oklch(0.2795 0.0368 260.0310);
+  --muted-foreground: oklch(0.7107 0.0351 256.7878);
+  --accent: oklch(0.3000 0.0600 260.0);
+  --accent-foreground: oklch(0.7600 0.1300 250.0);
 
-  --destructive: #F87171;
-  --success: #4ADE80;
-  --warning: #FBBF24;
-  --info: #38BDF8;
+  --destructive: oklch(0.4437 0.1613 26.8994);
+  --destructive-foreground: oklch(1.0000 0 0);
+  --success: oklch(0.7500 0.1600 150.0);
+  --warning: oklch(0.8200 0.1400 85.0);
+  --info: oklch(0.7500 0.1300 245.0);
 
-  --border: rgb(255 255 255 / 8%);
-  --input: rgb(255 255 255 / 11%);
-  --ring: #22D3EE;
+  --border: oklch(0.2795 0.0368 260.0310);
+  --input: oklch(0.2795 0.0368 260.0310);
+  --ring: oklch(0.7600 0.1300 250.0);
 
-  --chart-1: var(--brand-accent);
-  --chart-2: #4ADE80;
-  --chart-3: #38BDF8;
-  --chart-4: #FBBF24;
-  --chart-5: #F87171;
+  --chart-1: oklch(0.7600 0.1300 250.0);
+  --chart-2: oklch(0.6231 0.1880 259.8145);
+  --chart-3: oklch(0.7227 0.1920 149.5793);
+  --chart-4: oklch(0.6268 0.2325 303.9004);
+  --chart-5: oklch(0.7686 0.1647 70.0804);
 
-  --sidebar: #040912;
+  --sidebar: oklch(0.1288 0.0406 264.6952);
   --sidebar-foreground: var(--foreground);
   --sidebar-primary: var(--primary);
-  --sidebar-primary-foreground: var(--primary-foreground);
-  --sidebar-accent: #0E1628;
+  --sidebar-primary-foreground: oklch(0.1500 0.0400 265.0);
+  --sidebar-accent: oklch(0.2795 0.0368 260.0310);
   --sidebar-accent-foreground: var(--foreground);
-  --sidebar-border: rgb(255 255 255 / 5%);
-  --sidebar-ring: var(--ring);
+  --sidebar-border: oklch(0.2795 0.0368 260.0310);
+  --sidebar-ring: oklch(0.7600 0.1300 250.0);
 
-  --shadow-panel: 0 1px 0 rgba(255,255,255,0.03) inset, 0 12px 40px rgba(0,0,0,0.45);
-  --shadow-glow: 0 0 0 1px rgba(34,211,238,0.55), 0 10px 40px rgba(34,211,238,0.25);
+  --radius: 1rem;
+
+  --header-background: rgba(13, 16, 26, 0.8);
+  --header-border: oklch(0.2795 0.0368 260.0310 / 0.6);
+
+  /* ── Shadow scale ──────────────────────────────────────────── */
+
+  --shadow-2xs: 0px 10px 25px 0px hsl(0 0% 0% / 0.20);
+  --shadow-xs: 0px 10px 25px 0px hsl(0 0% 0% / 0.20);
+  --shadow-sm:
+    0px 10px 25px 0px hsl(0 0% 0% / 0.40),
+    0px 1px 2px -1px hsl(0 0% 0% / 0.40);
+  --shadow:
+    0px 10px 25px 0px hsl(0 0% 0% / 0.40),
+    0px 1px 2px -1px hsl(0 0% 0% / 0.40);
+  --shadow-md:
+    0px 10px 25px 0px hsl(0 0% 0% / 0.40),
+    0px 2px 4px -1px hsl(0 0% 0% / 0.40);
+  --shadow-lg:
+    0px 10px 25px 0px hsl(0 0% 0% / 0.40),
+    0px 4px 6px -1px hsl(0 0% 0% / 0.40);
+  --shadow-xl:
+    0px 10px 25px 0px hsl(0 0% 0% / 0.40),
+    0px 8px 10px -1px hsl(0 0% 0% / 0.40);
+  --shadow-2xl: 0px 10px 25px 0px hsl(0 0% 0% / 1.00);
+
+  --shadow-panel: var(--shadow-sm);
+  --shadow-glow:
+    0 0 0 1px oklch(0.7600 0.1300 250.0 / 0.28),
+    0 0 24px oklch(0.7600 0.1300 250.0 / 0.16),
+    0 10px 44px oklch(0.7600 0.1300 250.0 / 0.12);
 
   color-scheme: dark;
 }

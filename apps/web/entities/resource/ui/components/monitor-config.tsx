@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Activity, Clock, Info } from "lucide-react";
 import { Slider as SliderPrimitive, Direction } from "radix-ui";
@@ -74,6 +74,8 @@ const INPUT_HINTS: Record<string, { en: string; fa: string }> = {
   retries: { en: "Retry attempts on failure", fa: "تلاش مجدد در صورت خطا" },
 };
 
+const MIN_INTERVAL_SECONDS = 3;
+
 function tLabel(isFa: boolean, en: string, fa: string): string { return isFa ? fa : en; }
 function tTypeName(isFa: boolean, name: string): string { return isFa && TYPE_NAME_FA[name] ? TYPE_NAME_FA[name] : name; }
 
@@ -131,7 +133,7 @@ function HealthSlider({ isFa, value, max, step, unit, showReadout, onValueChange
           onValueChange={(v) => { const [a, b] = v; onValueChange(Math.min(a, b), Math.max(a, b)); }}
           className="relative flex w-full touch-none items-center select-none py-0.5"
         >
-          <SliderPrimitive.Track className="relative h-3.5 grow rounded-full bg-zinc-300 dark:bg-zinc-300">
+          <SliderPrimitive.Track className="relative h-3.5 grow rounded-full bg-muted">
             <div className="absolute inset-x-1 top-1/2 h-2 -translate-y-1/2 overflow-hidden rounded-full">
               <div className="absolute inset-y-0 left-0 rounded-l-full transition-[width] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]" style={{ width: `${wp}%`, background: HEALTH_GREEN }} />
               <div className="absolute inset-y-0 transition-[left,width] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]" style={{ left: `${wp}%`, width: `${cp - wp}%`, background: HEALTH_AMBER }} />
@@ -140,11 +142,11 @@ function HealthSlider({ isFa, value, max, step, unit, showReadout, onValueChange
           </SliderPrimitive.Track>
           <SliderPrimitive.Thumb
             aria-label={tLabel(isFa, "Warning threshold", "آستانه هشدار")}
-            className="block size-3.5 rounded-full border-[1.5px] border-white bg-white shadow-[0_1px_3px_rgba(0,0,0,0.2),0_0_0_2.5px_#7BD88F] transition-all duration-150 ease-out hover:shadow-[0_1px_3px_rgba(0,0,0,0.25),0_0_0_4px_#7BD88F] active:scale-90 focus-visible:shadow-[0_1px_3px_rgba(0,0,0,0.25),0_0_0_4px_#7BD88F] focus-visible:outline-none"
+            className="block size-3.5 rounded-full border-[1.5px] border-white bg-white shadow-[0_1px_3px_rgba(0,0,0,0.2),0_0_0_2.5px_#7BD88F] transition-[box-shadow,scale] duration-150 ease-out hover:shadow-[0_1px_3px_rgba(0,0,0,0.25),0_0_0_4px_#7BD88F] active:scale-[0.96] focus-visible:shadow-[0_1px_3px_rgba(0,0,0,0.25),0_0_0_4px_#7BD88F] focus-visible:outline-none"
           />
           <SliderPrimitive.Thumb
             aria-label={tLabel(isFa, "Critical threshold", "آستانه بحرانی")}
-            className="block size-3.5 rounded-full border-[1.5px] border-white bg-white shadow-[0_1px_3px_rgba(0,0,0,0.2),0_0_0_2.5px_#FF8A8A] transition-all duration-150 ease-out hover:shadow-[0_1px_3px_rgba(0,0,0,0.25),0_0_0_4px_#FF8A8A] active:scale-90 focus-visible:shadow-[0_1px_3px_rgba(0,0,0,0.25),0_0_0_4px_#FF8A8A] focus-visible:outline-none"
+            className="block size-3.5 rounded-full border-[1.5px] border-white bg-white shadow-[0_1px_3px_rgba(0,0,0,0.2),0_0_0_2.5px_#FF8A8A] transition-[box-shadow,scale] duration-150 ease-out hover:shadow-[0_1px_3px_rgba(0,0,0,0.25),0_0_0_4px_#FF8A8A] active:scale-[0.96] focus-visible:shadow-[0_1px_3px_rgba(0,0,0,0.25),0_0_0_4px_#FF8A8A] focus-visible:outline-none"
           />
         </SliderPrimitive.Root>
       </Direction.Provider>
@@ -228,7 +230,7 @@ export function MonitorConfig({ resourceId, type, monitor, isFa }: Props) {
   };
 
   return (
-    <div className="flex h-full flex-col rounded-xl border border-border/40 bg-white dark:bg-zinc-900">
+    <div className="flex h-full flex-col rounded-xl border border-border/40 bg-card shadow-subtle">
       {/* Header row */}
       <div className="flex items-center justify-between px-12 pb-3.5 pt-5">
         <div className="flex min-w-0 items-center gap-3">
@@ -262,7 +264,7 @@ export function MonitorConfig({ resourceId, type, monitor, isFa }: Props) {
               {tLabel(isFa, "Execution Settings", "تنظیمات اجرا")}
             </h3>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-              <NumInput label={tLabel(isFa, "Interval (s)", "بازه (ثانیه)")} hint={tHint(isFa, "interval")} v={iv} onChange={setIv} min={10} />
+              <NumInput label={tLabel(isFa, "Interval (s)", "بازه (ثانیه)")} hint={tHint(isFa, "interval")} v={iv} onChange={setIv} min={MIN_INTERVAL_SECONDS} error={tLabel(isFa, `Interval must be at least ${MIN_INTERVAL_SECONDS} seconds.`, `فاصله باید حداقل ${MIN_INTERVAL_SECONDS} ثانیه باشد.`)} />
               <NumInput label={tLabel(isFa, "Timeout (ms)", "تایم‌اوت (میلی‌ثانیه)")} hint={tHint(isFa, "timeout")} v={to} onChange={setTo} min={100} max={60000} />
               <NumInput label={tLabel(isFa, "Retries", "تلاش مجدد")} hint={tHint(isFa, "retries")} v={rt} onChange={setRt} min={0} max={5} />
               {Object.entries(schema.properties ?? {}).map(([k, p]) =>
@@ -328,16 +330,25 @@ export function MonitorConfig({ resourceId, type, monitor, isFa }: Props) {
   );
 }
 
-function NumInput({ label, hint, v, onChange, min, max }: {
-  label: string; hint?: string; v: number; onChange: (v: number) => void; min?: number; max?: number;
+function NumInput({ label, hint, v, onChange, min, max, error }: {
+  label: string; hint?: string; v: number; onChange: (v: number) => void; min?: number; max?: number; error?: string;
 }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    const outOfRange = (min != null && v < min) || (max != null && v > max);
+    el.setCustomValidity(error && outOfRange ? error : "");
+  }, [v, min, max, error]);
+
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center gap-1">
         <Label className="text-[11px] text-muted-foreground">{label}</Label>
         {hint && <InfoTip hint={hint} />}
       </div>
-      <Input type="number" min={min} max={max} value={v} onChange={(e) => onChange(Number(e.target.value))} dir="ltr" />
+      <Input ref={inputRef} type="number" min={min} max={max} value={v} onChange={(e) => onChange(Number(e.target.value))} dir="ltr" />
     </div>
   );
 }

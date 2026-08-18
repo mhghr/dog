@@ -29,7 +29,7 @@ function locationHealth(stat: PingProbeStat, thresholds: PingThresholds): PingHe
   });
 }
 
-const CELL = "shrink-0 tabular-nums text-[13px]";
+const NUM_CELL = "shrink-0 tabular-nums text-[13px] text-muted-foreground dark:text-foreground/80";
 
 export function PingProbeLocations({
   stats,
@@ -46,14 +46,14 @@ export function PingProbeLocations({
   return (
     <Card
       variant="bordered"
-      className="border-border/70 bg-white/70 shadow-[var(--shadow-panel)] backdrop-blur-xl dark:bg-white/[0.03]"
+      className="shadow-subtle transition-[border-color,box-shadow] duration-300 dark:hover:border-primary/40 dark:hover:shadow-glow"
     >
       <CardHeader className="px-5 pt-4">
-        <CardTitle className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-          {isFa ? "موقعیت‌های پراب" : "Probe locations"}
+        <CardTitle className="text-sm font-semibold text-foreground">
+          {isFa ? "موقعیت پراب‌ها" : "Probe locations"}
         </CardTitle>
       </CardHeader>
-      <CardContent className="px-5 pb-4">
+      <CardContent className="overflow-x-auto px-5 pb-4">
         {isLoading ? (
           <div className="space-y-2">
             {Array.from({ length: 3 }).map((_, i) => (
@@ -62,45 +62,67 @@ export function PingProbeLocations({
           </div>
         ) : stats.length === 0 ? (
           <p className="py-4 text-sm text-muted-foreground">
-            {isFa ? "هیچ پرابی داده ندارد" : "No probe has recent data"}
+            {isFa ? "هیچ پرابی داده اخیر ندارد" : "No probe has recent data"}
           </p>
         ) : (
-          <div className="flex flex-col">
-            {stats.map((stat) => {
-              const state = locationHealth(stat, thresholds);
-              const label = STATE_LABEL[state];
-              return (
-                <div
-                  key={stat.probeId}
-                  className="flex flex-wrap items-center justify-between gap-3 border-b border-border/50 py-2.5 transition-colors last:border-0 hover:bg-muted/30"
-                >
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    <span className="min-w-0 truncate text-sm font-medium" dir="auto">
+          <table className="w-full min-w-[560px] border-collapse text-left">
+            <thead>
+              <tr className="border-b border-border/60 text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
+                <th className="px-1 pb-2.5 font-semibold">{isFa ? "موقعیت" : "Location"}</th>
+                <th className="px-1 pb-2.5 font-semibold">{isFa ? "وضعیت" : "Status"}</th>
+                <th className="px-1 pb-2.5 text-right font-semibold" dir="ltr">
+                  {isFa ? "تأخیر" : "Latency"}
+                </th>
+                <th className="px-1 pb-2.5 text-right font-semibold" dir="ltr">
+                  {isFa ? "افت بسته" : "Packet loss"}
+                </th>
+                <th className="px-1 pb-2.5 text-right font-semibold" dir="ltr">
+                  {isFa ? "نوسان" : "Jitter"}
+                </th>
+                <th className="px-1 pb-2.5 text-right font-semibold">
+                  {isFa ? "آخرین بررسی" : "Last check"}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {stats.map((stat) => {
+                const state = locationHealth(stat, thresholds);
+                const label = STATE_LABEL[state];
+                return (
+                  <tr
+                    key={stat.probeId}
+                    className="border-b border-border/40 transition-colors last:border-0 hover:bg-muted/30"
+                  >
+                    <td className="px-1 py-2.5 text-sm font-medium" dir="auto">
                       {stat.location}
-                    </span>
-                    <StatusBadge tone={pingHealthTone(state)} label={isFa ? label.fa : label.en} />
-                  </div>
-                  <div className="flex shrink-0 items-center gap-4">
-                    <span className={cn(CELL, "text-muted-foreground")} dir="ltr">
+                    </td>
+                    <td className="px-1 py-2.5">
+                      <StatusBadge tone={pingHealthTone(state)} label={isFa ? label.fa : label.en} />
+                    </td>
+                    <td className={cn(NUM_CELL, "text-right", state === "healthy" && "dark:neon-text-current dark:text-emerald-300")} dir="ltr">
                       {stat.latency == null ? "—" : `${Math.round(stat.latency)} ms`}
-                    </span>
-                    <span
-                      className={cn(CELL, "text-muted-foreground", stat.packetLoss != null && stat.packetLoss > 0 && "text-amber-600 dark:text-amber-400")}
+                    </td>
+                    <td
+                      className={cn(
+                        NUM_CELL,
+                        "text-right",
+                        stat.packetLoss != null && stat.packetLoss > 0 && "text-warning dark:text-warning",
+                      )}
                       dir="ltr"
                     >
-                      {stat.packetLoss == null ? "—" : `${stat.packetLoss.toFixed(1)}% loss`}
-                    </span>
-                    <span className={cn(CELL, "hidden text-muted-foreground sm:inline")} dir="ltr">
+                      {stat.packetLoss == null ? "—" : `${stat.packetLoss.toFixed(1)}%`}
+                    </td>
+                    <td className={cn(NUM_CELL, "text-right")} dir="ltr">
                       {stat.jitter == null ? "—" : `${Math.round(stat.jitter)} ms`}
-                    </span>
-                    <span className="hidden text-xs text-muted-foreground md:inline">
+                    </td>
+                    <td className="px-1 py-2.5 text-right text-xs text-muted-foreground">
                       {formatRelativeTime(stat.lastCheckedAt, locale)}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         )}
       </CardContent>
     </Card>

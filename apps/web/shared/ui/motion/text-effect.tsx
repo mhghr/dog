@@ -63,7 +63,7 @@ export function TextEffect({
           key={i}
           aria-hidden={!inView}
           className={cn(
-            "inline-block transition-all ease-out",
+            "inline-block transition-[opacity,transform,filter] ease-out",
             per === "line" && "block",
             inView
               ? cn(

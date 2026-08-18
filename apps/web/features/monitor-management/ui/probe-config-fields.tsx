@@ -78,7 +78,7 @@ function ThresholdSlot({
   return (
     <div
       className={cn(
-        "flex flex-col gap-1.5 rounded-xl border p-3.5 transition-all",
+        "flex flex-col gap-1.5 rounded-xl border p-3.5 transition-[border-color,background-color,box-shadow]",
         "focus-within:ring-[3px]",
         colors.color,
         colors.ring,

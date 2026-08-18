@@ -1,15 +1,19 @@
-"use client";
+﻿"use client";
 
 import { useMemo } from "react";
 import { useLocale } from "next-intl";
 
 import { EChart, useChartPalette } from "@/shared/ui/charts/echart";
-import { makeGrid, makeTimeXAxis, makeTooltip } from "@/shared/ui/charts/chart-config";
-import { Card, CardContent } from "@/shared/ui/card";
+import {
+  hexToRgba,
+  makeGrid,
+  makeTimeXAxis,
+  makeTooltip,
+} from "@/shared/ui/charts/chart-config";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Skeleton } from "@/shared/ui/skeleton";
+import { cn } from "@/shared/utils/cn";
 import type { PingChartSeries } from "./ping-metrics";
-
-const PALETTE = ["#4F66F0", "#0D9464", "#DC3035", "#F59E0B", "#8B5CF6", "#06B6D4", "#EC4899", "#84CC16"];
 
 // Font used for the canvas-rendered chart text.
 const CHART_FONT = "'bakh', 'estedad', ui-sans-serif, system-ui, sans-serif";
@@ -32,7 +36,7 @@ export function PingAvailabilityChart({
   const option = useMemo(() => {
     return {
       animation: false,
-      grid: makeGrid({ top: 16, right: 16, bottom: 32, left: 40 }),
+      grid: makeGrid({ top: 24, right: 16, bottom: 40, left: 48 }),
       tooltip: {
         ...makeTooltip(palette, (value: unknown) =>
           typeof value === "number" ? `${Math.round(value * 100)}%` : String(value),
@@ -44,7 +48,6 @@ export function PingAvailabilityChart({
         type: "value" as const,
         min: 0,
         max: 1,
-        name: isFa ? "دسترس‌پذیری" : "availability",
         axisLabel: {
           color: palette.text,
           fontFamily: CHART_FONT,
@@ -53,60 +56,77 @@ export function PingAvailabilityChart({
         },
         axisLine: { show: false },
         axisTick: { show: false },
-        splitLine: { show: false },
-      },
-      legend: {
-        type: "scroll" as const,
-        bottom: 0,
-        itemWidth: 16,
-        itemHeight: 8,
-        icon: "roundRect",
-        textStyle: { color: palette.text, fontSize: 11, fontFamily: CHART_FONT },
+        splitLine: { lineStyle: { color: palette.axis, opacity: 0.35 } },
       },
       series: series.map((s, i) => {
-        const color = PALETTE[i % PALETTE.length];
+        const color = palette.series[i % palette.series.length];
+        const area =
+          series.length <= 8
+            ? {
+                color: {
+                  type: "linear" as const,
+                  x: 0,
+                  y: 0,
+                  x2: 0,
+                  y2: 1,
+                  colorStops: [
+                    { offset: 0, color: hexToRgba(color, 0.25) },
+                    { offset: 0.35, color: hexToRgba(color, 0.08) },
+                    { offset: 1, color: hexToRgba(color, 0) },
+                  ],
+                },
+              }
+            : undefined;
         return {
           type: "line" as const,
           name: s.probeName || s.location || `probe-${i + 1}`,
           showSymbol: false,
-          smooth: 0.2,
-          step: "end" as const,
-          lineStyle: { width: 2, color },
+          sampling: "lttb" as const,
+          progressive: 500,
+          progressiveThreshold: 2000,
+          lineStyle: {
+            width: 1.5,
+            color,
+          },
           itemStyle: { color },
-          areaStyle: { color: hexToRgba(color, 0.12) },
+          emphasis: {
+            focus: "none",
+            lineStyle: {
+              width: 1.5,
+              color,
+            },
+            areaStyle: area,
+          },
+          areaStyle: area,
           data: s.points.map((p) => [p.time, p.value]),
         };
       }),
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [series, locale, palette]);
 
   return (
-    <Card variant="bordered" className="h-full">
-      <CardContent className="pt-1">
+    <Card
+      variant="bordered"
+      className="h-full shadow-subtle transition-[border-color,box-shadow] duration-300 dark:hover:border-primary/40 dark:hover:shadow-glow"
+    >
+      <CardHeader className="px-5 pt-4">
+        <CardTitle className="text-sm font-semibold text-foreground">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className={cn("px-1 pb-3 pt-1 sm:px-2")}>
         {isLoading ? (
-          <Skeleton className="h-40 w-full rounded-lg" />
+          <Skeleton className="h-60 w-full rounded-lg" />
         ) : isError ? (
-          <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
-            {isFa ? "خطا در دریافت داده" : "Unable to load data"}
+          <div className="flex h-60 items-center justify-center text-sm text-muted-foreground">
+            {isFa ? "??? ?? ?????? ????" : "Unable to load data"}
           </div>
         ) : series.length === 0 ? (
-          <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
-            {isFa ? "داده‌ای برای نمایش نیست" : "No data to display"}
+          <div className="flex h-60 items-center justify-center text-sm text-muted-foreground">
+            {isFa ? "??????? ???? ????? ????" : "No data to display"}
           </div>
         ) : (
-          <EChart option={option} className="h-40 w-full" ariaLabel={title} />
+          <EChart option={option} className="h-60 w-full" ariaLabel={title} />
         )}
       </CardContent>
     </Card>
   );
-}
-
-// Converts a #RRGGBB hex color to an rgba() string with the given alpha.
-function hexToRgba(hex: string, alpha: number): string {
-  const value = hex.replace("#", "");
-  const r = parseInt(value.slice(0, 2), 16);
-  const g = parseInt(value.slice(2, 4), 16);
-  const b = parseInt(value.slice(4, 6), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
 }

@@ -1,17 +1,21 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useState } from "react";
 import { useLocale } from "next-intl";
 
 import { EChart, useChartPalette } from "@/shared/ui/charts/echart";
-import { makeGrid, makeTimeXAxis, makeTooltip } from "@/shared/ui/charts/chart-config";
+import {
+  hexToRgba,
+  makeGrid,
+  makeTimeXAxis,
+  makeTooltip,
+} from "@/shared/ui/charts/chart-config";
 import { Button } from "@/shared/ui/button";
-import { Card, CardContent, CardHeader } from "@/shared/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Skeleton } from "@/shared/ui/skeleton";
+import { cn } from "@/shared/utils/cn";
 import { buildDownIntervals, type PingChartSeries, type DownInterval } from "./ping-metrics";
 import type { MetricThreshold } from "./ping-config";
-
-const PALETTE = ["#4F66F0", "#0D9464", "#DC3035", "#F59E0B", "#8B5CF6", "#06B6D4", "#EC4899", "#84CC16"];
 
 // Font used for the canvas-rendered chart text (axis numbers, legend).
 const CHART_FONT = "'bakh', 'estedad', ui-sans-serif, system-ui, sans-serif";
@@ -70,7 +74,7 @@ export function PingMetricChart({
         : `${value.toFixed(2)}%`
       : String(value);
 
-  // Axis ticks show plain numbers — the unit lives in the axis name.
+  // Axis ticks show plain numbers — the unit lives in the tooltip.
   const axisFormatter = (value: unknown) =>
     typeof value === "number"
       ? Number.isInteger(value)
@@ -78,14 +82,11 @@ export function PingMetricChart({
         : value.toFixed(1)
       : String(value);
 
-  const unitLabel = unit === "ms" ? (isFa ? "میلی‌ثانیه" : "milliseconds") : (isFa ? "درصد" : "percent");
-  const timeLabel = isFa ? "زمان" : "time";
-
   const option = useMemo(() => {
     const markLine = {
       silent: true,
       symbol: "none",
-      label: { show: true, position: "insideEndTop", color: palette.text, fontSize: 11 },
+      label: { show: true, position: "insideEndTop" as const, color: palette.text, fontSize: 11 },
       data: [] as Array<{ yAxis: number; name?: string; lineStyle?: { color: string; type: "dashed" } }>,
     };
 
@@ -93,65 +94,97 @@ export function PingMetricChart({
       markLine.data.push({
         yAxis: thresholds.warning,
         name: `warn ${thresholds.warning}`,
-        lineStyle: { color: "#F59E0B", type: "dashed" },
+        lineStyle: { color: palette.warning, type: "dashed" },
       });
     }
     if (thresholds.critical != null) {
       markLine.data.push({
         yAxis: thresholds.critical,
         name: `crit ${thresholds.critical}`,
-        lineStyle: { color: "#DC3035", type: "dashed" },
+        lineStyle: { color: palette.danger, type: "dashed" },
       });
     }
 
     const markArea = {
       silent: true,
-      data: toDownMarkArea(downIntervals),
+      data: toDownMarkArea(downIntervals, palette.danger),
     };
 
     return {
       animation: false,
-      grid: makeGrid({ top: 16, right: 16, bottom: 56, left: 48 }),
+      grid: makeGrid({ top: 24, right: 16, bottom: 40, left: 48 }),
       tooltip: { ...makeTooltip(palette, formatter), textStyle: { color: palette.tooltipText, fontSize: 12, fontFamily: CHART_FONT } },
-      xAxis: { ...makeTimeXAxis(locale, palette, CHART_FONT), name: timeLabel, nameTextStyle: { color: palette.axis, fontFamily: CHART_FONT, fontSize: 11, padding: [0, 0, 0, 8] } },
+      xAxis: { ...makeTimeXAxis(locale, palette, CHART_FONT) },
       yAxis: {
         type: "value" as const,
-        name: unitLabel,
-        nameTextStyle: { color: palette.axis, fontFamily: CHART_FONT, fontSize: 11, padding: [0, 0, 6, 0] },
         axisLabel: { color: palette.text, fontFamily: CHART_FONT, formatter: axisFormatter },
         axisLine: { show: false },
         axisTick: { show: false },
-        splitLine: { show: false },
+        splitLine: { lineStyle: { color: palette.axis, opacity: 0.35 } },
       },
-      legend: {
-        type: "scroll" as const,
-        bottom: 0,
-        itemWidth: 16,
-        itemHeight: 8,
-        icon: "roundRect",
-        textStyle: { color: palette.text, fontSize: 11, fontFamily: CHART_FONT },
-      },
-      series: visible.map((s, i) => ({
-        type: "line" as const,
-        name: s.probeName || s.location || `probe-${i + 1}`,
-        showSymbol: false,
-        smooth: 0.2,
-        lineStyle: { width: 2, color: PALETTE[i % PALETTE.length] },
-        itemStyle: { color: PALETTE[i % PALETTE.length] },
-        areaStyle: { color: "transparent" },
-        data: s.points.map((p) => [p.time, p.value]),
-        markArea: markArea.data.length > 0 ? markArea : undefined,
-        markLine: i === 0 && markLine.data.length > 0 ? markLine : undefined,
-      })),
+      series: visible.map((s, i) => {
+        const color = palette.series[i % palette.series.length];
+        const area =
+          visible.length <= 8
+            ? {
+                color: {
+                  type: "linear" as const,
+                  x: 0,
+                  y: 0,
+                  x2: 0,
+                  y2: 1,
+                  colorStops: [
+                    { offset: 0, color: hexToRgba(color, 0.25) },
+                    { offset: 0.35, color: hexToRgba(color, 0.08) },
+                    { offset: 1, color: hexToRgba(color, 0) },
+                  ],
+                },
+              }
+            : undefined;
+        return {
+          type: "line" as const,
+          name: s.probeName || s.location || `probe-${i + 1}`,
+          showSymbol: false,
+          sampling: "lttb" as const,
+          progressive: 500,
+          progressiveThreshold: 2000,
+          lineStyle: {
+            width: 1.5,
+            color,
+          },
+          itemStyle: { color },
+          // Explicit emphasis keeps the line visible and unchanged on hover —
+          // without it ECharts re-renders the emphasized series with default
+          // styles and the line can vanish.
+          emphasis: {
+            focus: "none",
+            lineStyle: {
+              width: 1.5,
+              color,
+            },
+            areaStyle: area,
+          },
+          areaStyle: area,
+          data: s.points.map((p) => [p.time, p.value]),
+          markArea: markArea.data.length > 0 ? markArea : undefined,
+          markLine: i === 0 && markLine.data.length > 0 ? markLine : undefined,
+        };
+      }),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, locale, thresholds.warning, thresholds.critical, downIntervals]);
 
   return (
-    <Card variant="bordered" className="h-full">
-      {locations.length > 1 && (
-        <CardHeader className="flex-row items-center justify-end gap-3 space-y-0">
-          <div className="flex flex-wrap items-center gap-1">
+    <Card
+      variant="bordered"
+      className="h-full shadow-subtle transition-[border-color,box-shadow] duration-300 dark:hover:border-primary/40 dark:hover:shadow-glow"
+    >
+      <CardHeader className="flex-row items-center justify-between gap-3 space-y-0 px-5 pt-4">
+        <div className="min-w-0">
+          <CardTitle className="text-sm font-semibold text-foreground">{title}</CardTitle>
+        </div>
+        {locations.length > 1 && (
+          <div className="flex shrink-0 flex-wrap items-center gap-1">
             <Button
               type="button"
               variant={selected === "all" ? "secondary" : "ghost"}
@@ -159,7 +192,7 @@ export function PingMetricChart({
               className="h-6 px-2 text-xs"
               onClick={() => setSelected("all")}
             >
-              {isFa ? "همه" : "All"}
+              {isFa ? "???" : "All"}
             </Button>
             {locations.map((loc) => (
               <Button
@@ -174,28 +207,28 @@ export function PingMetricChart({
               </Button>
             ))}
           </div>
-        </CardHeader>
-      )}
-      <CardContent className="pt-1">
+        )}
+      </CardHeader>
+      <CardContent className={cn("px-1 pb-3 pt-1 sm:px-2")}>
         {isLoading ? (
-          <Skeleton className="h-64 w-full rounded-lg" />
+          <Skeleton className="h-60 w-full rounded-lg" />
         ) : isError ? (
-          <div className="flex h-64 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
-            <span>{isFa ? "خطا در دریافت داده" : "Unable to load data"}</span>
+          <div className="flex h-60 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+            <span>{isFa ? "??? ?? ?????? ????" : "Unable to load data"}</span>
             {onRetry && (
               <Button type="button" variant="outline" size="sm" onClick={onRetry}>
-                {isFa ? "تلاش مجدد" : "Retry"}
+                {isFa ? "???? ????" : "Retry"}
               </Button>
             )}
           </div>
         ) : visible.length === 0 ? (
-          <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
-            {isFa ? "داده‌ای برای نمایش نیست" : "No data to display"}
+          <div className="flex h-60 items-center justify-center text-sm text-muted-foreground">
+            {isFa ? "??????? ???? ????? ????" : "No data to display"}
           </div>
         ) : (
           <EChart
             option={option}
-            className="h-64 w-full"
+            className="h-60 w-full"
             ariaLabel={title}
           />
         )}
@@ -208,10 +241,11 @@ export function PingMetricChart({
 // chart can shade downtime from the explicit status signal (not from gaps).
 export function toDownMarkArea(
   downIntervals: DownInterval[],
+  danger: string,
 ): Array<{ name: string; xAxis: [string, string]; itemStyle: { color: string } }> {
   return downIntervals.map((interval) => ({
     name: "Down",
     xAxis: [interval.start, interval.end],
-    itemStyle: { color: "rgba(220,48,53,0.08)" },
+    itemStyle: { color: hexToRgba(danger, 0.1) },
   }));
 }

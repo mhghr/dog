@@ -27,7 +27,7 @@ export function MonitorTable({ monitors }: { monitors: Monitor[] }) {
   const nodes = useMemo(() => groupMonitorsByNode(monitors), [monitors]);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border/60 bg-card/55">
+    <div className="overflow-hidden rounded-xl border border-border/60 bg-card shadow-subtle">
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>

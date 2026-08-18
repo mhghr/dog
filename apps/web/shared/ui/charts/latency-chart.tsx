@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { useLocale, useTranslations } from "next-intl";
 
 import { EChart, useChartPalette } from "@/shared/ui/charts/echart";
-import { makeGrid, makeTimeXAxis, makeTooltip } from "@/shared/ui/charts/chart-config";
+import { makeGrid, makeTimeXAxis, makeTooltip, hexToRgba } from "@/shared/ui/charts/chart-config";
 import { EmptyState } from "@/design-system/patterns/empty-state";
 import type { MetricPoint } from "@/entities/monitor/model/result";
 
@@ -39,9 +39,14 @@ export function LatencyChart({ data }: LatencyChartProps) {
           name: "latency",
           showSymbol: false,
           smooth: 0.2,
-          lineStyle: { width: 2, color: palette.primary },
+          lineStyle: {
+            width: 2,
+            color: palette.primary,
+            shadowBlur: 8,
+            shadowColor: hexToRgba(palette.primary, 0.4),
+          },
           itemStyle: { color: palette.primary },
-          areaStyle: { opacity: 0.08, color: palette.primary },
+          areaStyle: { opacity: 0.1, color: palette.primary },
           data: data.map((point) => [point.timestamp, point.value]),
         },
       ],

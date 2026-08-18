@@ -3,11 +3,11 @@
    ════════════════════════════════════════════════════════════════ */
 
 :root {
-  --brand-hue: 225;
-  --brand-tint: 0.003;
-  --brand-accent: #4F5DE0;
-  --brand-accent-foreground: #FFFFFF;
-  --radius: 0.625rem;
+  --brand-hue: 258;
+  --brand-tint: 0.16;
+  --brand-accent: oklch(0.5856 0.2070 262.0);
+  --brand-accent-foreground: oklch(1 0 0);
+  --radius: 1rem;
   --glass-opacity: 70%;
 
   --sans-font: var(--font-estedad), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;

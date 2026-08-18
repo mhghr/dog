@@ -3,7 +3,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { monitorApi } from "@/entities/monitor/api/monitor.api";
-import type { CreateMonitorInput, Monitor } from "@/entities/monitor/model/types";
+import type { CreateMonitorInput } from "@/entities/monitor/model/types";
 
 function useInvalidateMonitors() {
   const queryClient = useQueryClient();
@@ -23,15 +23,6 @@ export function useCreateMonitor() {
   return useMutation({
     mutationFn: (input: CreateMonitorInput) => monitorApi.create(input),
     onSuccess: () => invalidate(),
-  });
-}
-
-export function useUpdateMonitor(monitorId: string) {
-  const invalidate = useInvalidateMonitors();
-
-  return useMutation({
-    mutationFn: (input: CreateMonitorInput) => monitorApi.update(monitorId, input),
-    onSuccess: () => invalidate(monitorId),
   });
 }
 

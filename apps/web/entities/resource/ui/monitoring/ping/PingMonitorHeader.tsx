@@ -40,10 +40,10 @@ export function PingMonitorHeader({
   return (
     <div className="flex flex-wrap items-center gap-3">
       {showLive && (
-        <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
+        <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-success dark:shadow-[0_0_14px_-2px_var(--success)]">
           <span className="relative flex size-1.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
-            <span className="relative inline-flex size-1.5 rounded-full bg-emerald-500" />
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-60" />
+            <span className="relative inline-flex size-1.5 rounded-full bg-success dark:shadow-[0_0_8px_1px_var(--success)]" />
           </span>
           {isFa ? "زنده" : "Live"}
         </span>

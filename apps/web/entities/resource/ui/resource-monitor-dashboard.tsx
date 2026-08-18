@@ -4,11 +4,10 @@ import { useMemo, useState } from "react";
 import { useLocale } from "next-intl";
 
 import { EChart, useChartPalette } from "@/shared/ui/charts/echart";
-import { makeGrid, makeTimeXAxis, makeTooltip } from "@/shared/ui/charts/chart-config";
+import { makeGrid, makeTimeXAxis, makeTooltip, hexToRgba } from "@/shared/ui/charts/chart-config";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Button } from "@/shared/ui/button";
 import { Skeleton } from "@/shared/ui/skeleton";
-import { cn } from "@/shared/utils/cn";
 import {
   useResourceMonitorMetrics,
   type MetricsRange,
@@ -30,8 +29,6 @@ function getMetricValue(result: ProbeResult, keys: string[]): number | null {
   }
   return null;
 }
-
-const PALETTE = ["#4F66F0", "#0D9464", "#DC3035", "#F59E0B", "#8B5CF6", "#06B6D4", "#EC4899", "#84CC16"];
 
 export function ResourceMonitorDashboard({
   resourceId,
@@ -99,22 +96,43 @@ export function ResourceMonitorDashboard({
       yAxis: {
         type: "value" as const,
         axisLabel: { color: palette.text, formatter: (value: number) => formatValue(value) },
-        splitLine: { lineStyle: { color: palette.axis } },
+        splitLine: { lineStyle: { color: palette.axis, opacity: 0.35 } },
       },
       legend: {
         type: "scroll" as const,
         bottom: 0,
         textStyle: { color: palette.text },
       },
-      series: series.map((s, index) => ({
-        type: "line" as const,
-        name: s.probe_name || `probe-${index + 1}`,
-        showSymbol: false,
-        smooth: 0.2,
-        lineStyle: { width: 2, color: PALETTE[index % PALETTE.length] },
-        itemStyle: { color: PALETTE[index % PALETTE.length] },
-        data: s.points.map((p) => [p.timestamp, p.value]),
-      })),
+      series: series.map((s, index) => {
+        const color = palette.series[index % palette.series.length];
+        return {
+          type: "line" as const,
+          name: s.probe_name || `probe-${index + 1}`,
+          showSymbol: false,
+          smooth: 0.2,
+          lineStyle: {
+            width: 2,
+            color,
+            shadowBlur: 16,
+            shadowColor: hexToRgba(color, 0.55),
+          },
+          itemStyle: { color },
+          areaStyle: {
+            color: {
+              type: "linear" as const,
+              x: 0,
+              y: 0,
+              x2: 0,
+              y2: 1,
+              colorStops: [
+                { offset: 0, color: hexToRgba(color, 0.16) },
+                { offset: 1, color: hexToRgba(color, 0) },
+              ],
+            },
+          },
+          data: s.points.map((p) => [p.timestamp, p.value]),
+        };
+      }),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [series, locale]);
@@ -136,7 +154,7 @@ export function ResourceMonitorDashboard({
     <div className="space-y-4">
       {/* Time range selector */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex w-fit items-center rounded-lg border border-border/70 bg-muted/25 p-1">
+        <div className="inline-flex w-fit items-center rounded-lg border border-border/60 bg-muted/25 p-1">
           {RANGES.map((r) => (
             <Button
               key={r}
@@ -155,11 +173,11 @@ export function ResourceMonitorDashboard({
       {/* Metric cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <MetricCard
-          label={isFa ? "میانگین تأخیر" : "Avg latency"}
+          label={isFa ? "??????? ?????" : "Avg latency"}
           value={cards.avgLatency == null ? "—" : formatValue(cards.avgLatency)}
         />
         <MetricCard
-          label={isFa ? "دسترس‌پذیری" : "Availability"}
+          label={isFa ? "???????????" : "Availability"}
           value={cards.availability == null ? "—" : `${cards.availability.toFixed(1)}%`}
         />
         {cards.metricCards.map((card) => (
@@ -173,9 +191,9 @@ export function ResourceMonitorDashboard({
 
       {/* Per-probe current values */}
       {perProbeLatest.length > 0 ? (
-        <Card variant="bordered">
+        <Card variant="bordered" className="transition-[border-color,box-shadow] duration-300 dark:hover:border-primary/40 dark:hover:shadow-glow">
           <CardHeader>
-            <CardTitle>{isFa ? "مقادیر هر پراب" : "Values per probe"}</CardTitle>
+            <CardTitle>{isFa ? "?????? ?? ????" : "Values per probe"}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col">
             {perProbeLatest.map(({ probeName, result }) => (
@@ -184,12 +202,15 @@ export function ResourceMonitorDashboard({
                 className="flex items-center justify-between gap-3 border-b border-border/50 py-2.5 last:border-0"
               >
                 <div className="flex items-center gap-2.5">
-                  <span className="size-2 rounded-full bg-current" style={{ color: PALETTE[perProbeLatest.findIndex((p) => p.probeName === probeName) % PALETTE.length] }} />
+                  <span
+                    className="size-2 rounded-full bg-current dark:shadow-[0_0_8px_1px_currentColor]"
+                    style={{ color: palette.series[perProbeLatest.findIndex((p) => p.probeName === probeName) % palette.series.length] }}
+                  />
                   <span className="text-sm font-medium">{probeName}</span>
                   {result.success ? (
-                    <span className="text-xs text-success">{isFa ? "موفق" : "ok"}</span>
+                    <span className="text-xs text-success dark:neon-text-current">{isFa ? "????" : "ok"}</span>
                   ) : (
-                    <span className="text-xs text-destructive">{isFa ? "ناموفق" : "fail"}</span>
+                    <span className="text-xs text-destructive dark:neon-text-current">{isFa ? "??????" : "fail"}</span>
                   )}
                 </div>
                 <span className="text-sm tabular-nums text-muted-foreground">
@@ -203,7 +224,7 @@ export function ResourceMonitorDashboard({
 
       {/* Chart */}
       {series.length > 0 ? (
-        <Card variant="bordered">
+        <Card variant="bordered" className="transition-[border-color,box-shadow] duration-300 dark:hover:border-primary/40 dark:hover:shadow-glow">
           <CardContent className="pt-4">
             <EChart option={chartOption} className="h-72 w-full" />
           </CardContent>
@@ -211,7 +232,7 @@ export function ResourceMonitorDashboard({
       ) : (
         <Card variant="bordered">
           <CardContent className="flex items-center justify-center py-12 text-sm text-muted-foreground">
-            {isFa ? "داده‌ای برای نمایش نیست" : "No data to display"}
+            {isFa ? "??????? ???? ????? ????" : "No data to display"}
           </CardContent>
         </Card>
       )}
@@ -221,10 +242,19 @@ export function ResourceMonitorDashboard({
 
 function MetricCard({ label, value }: { label: string; value: string }) {
   return (
-    <Card variant="bordered">
-      <CardContent className="p-4">
-        <p className="truncate text-xs text-muted-foreground">{label}</p>
-        <p className="mt-1 text-xl font-semibold tabular-nums" dir="ltr">
+    <Card
+      variant="bordered"
+      className="group relative overflow-hidden shadow-subtle transition-[border-color,box-shadow] duration-300 hover:border-border/70 hover:shadow-card-hover dark:hover:border-primary/50 dark:hover:shadow-glow"
+    >
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -top-10 right-0 size-32 rounded-full bg-primary/10 blur-3xl dark:bg-primary/15"
+      />
+      <CardContent className="relative p-4">
+        <p className="truncate text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+          {label}
+        </p>
+        <p className="mt-1 text-xl leading-none font-semibold tracking-tight tabular-nums dark:neon-text-current dark:text-primary" dir="ltr">
           {value}
         </p>
       </CardContent>

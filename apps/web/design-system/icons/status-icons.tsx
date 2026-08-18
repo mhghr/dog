@@ -57,16 +57,16 @@ export const STATUS_ICONS: Record<string, StatusDef> = {
   unknown: {
     icon: MinusCircle,
     label: "Unknown",
-    color: "text-zinc-400",
-    dot: "bg-zinc-400",
-    badge: "border-zinc-500/25 bg-zinc-500/10 text-zinc-400",
+    color: "text-muted-foreground",
+    dot: "bg-muted-foreground",
+    badge: "border-muted-foreground/25 bg-muted-foreground/10 text-muted-foreground",
   },
   paused: {
     icon: Pause,
     label: "Paused",
-    color: "text-zinc-400",
-    dot: "bg-zinc-400",
-    badge: "border-zinc-500/25 bg-zinc-500/10 text-zinc-400",
+    color: "text-muted-foreground",
+    dot: "bg-muted-foreground",
+    badge: "border-muted-foreground/25 bg-muted-foreground/10 text-muted-foreground",
   },
   active: {
     icon: Activity,

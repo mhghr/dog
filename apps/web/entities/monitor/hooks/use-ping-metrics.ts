@@ -48,13 +48,3 @@ export function usePingSeriesByMetric(
     placeholderData: (previous) => previous,
   });
 }
-
-export function usePingSnapshot(monitorId: string) {
-  return useQuery({
-    queryKey: ["monitors", monitorId, "ping-snapshot"],
-    queryFn: () => monitorApi.getById(monitorId),
-    enabled: Boolean(monitorId),
-    refetchInterval: 15_000,
-    placeholderData: (previous) => previous,
-  });
-}

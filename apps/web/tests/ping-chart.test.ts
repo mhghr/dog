@@ -8,16 +8,16 @@ describe("toDownMarkArea", () => {
     const intervals: DownInterval[] = [
       { start: "2026-01-01T00:05:00Z", end: "2026-01-01T00:15:00Z" },
     ];
-    expect(toDownMarkArea(intervals)).toEqual([
+    expect(toDownMarkArea(intervals, "#DC3035")).toEqual([
       {
         name: "Down",
         xAxis: ["2026-01-01T00:05:00Z", "2026-01-01T00:15:00Z"],
-        itemStyle: { color: "rgba(220,48,53,0.08)" },
+        itemStyle: { color: "rgba(220,48,53,0.1)" },
       },
     ]);
   });
 
   it("returns an empty array for no down intervals", () => {
-    expect(toDownMarkArea([])).toEqual([]);
+    expect(toDownMarkArea([], "#DC3035")).toEqual([]);
   });
 });

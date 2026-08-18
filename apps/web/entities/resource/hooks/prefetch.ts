@@ -22,11 +22,7 @@ export class ResourceNotFoundError extends Error {
 }
 
 const DEFAULT_RANGE = "1h" as const;
-const PING_METRICS = [
-  undefined,
-  "packet_loss_percent",
-  "jitter_ms",
-] as const;
+const PING_METRICS = [undefined, "status", "packet_loss_percent", "jitter_ms"] as const;
 
 // Server-side preload for the Resource detail page. Fetches every query the
 // page layout depends on — the resource, its monitors, the monitor types, and

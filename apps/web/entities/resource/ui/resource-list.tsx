@@ -39,7 +39,7 @@ function ResourceCard({ resource }: { resource: Resource }) {
     <Link href={`${base}/resources/${resource.id}`} className="block h-full">
       <Card
         variant="bordered"
-        className="h-full transition-all duration-200 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5"
+        className="h-full transition-[border-color,box-shadow] duration-200 hover:border-border hover:shadow-card-hover"
       >
         <CardContent className="flex h-full flex-col gap-3 p-4">
           <div className="flex items-start gap-3">
@@ -190,7 +190,7 @@ function AddResourceDialog({
                       setStep(2);
                     }}
                     className={cn(
-                      "group flex flex-col items-center justify-center gap-2 rounded-xl border border-border bg-card p-4 text-center transition-all hover:border-primary/50 hover:bg-accent",
+                      "group flex flex-col items-center justify-center gap-2 rounded-xl border border-border bg-card p-4 text-center transition-[border-color,background-color] hover:border-primary/50 hover:bg-accent",
                     )}
                   >
                     <span className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">

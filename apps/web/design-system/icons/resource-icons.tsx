@@ -29,7 +29,7 @@ export const RESOURCE_ICONS: Record<string, IconDef> = {
 export const DEFAULT_RESOURCE_ICON: IconDef = {
   icon: Monitor,
   label: "Resource",
-  color: "text-zinc-500 bg-zinc-500/10",
+  color: "text-muted-foreground bg-muted-foreground/10",
 };
 
 export function getResourceIcon(category?: string): IconDef {

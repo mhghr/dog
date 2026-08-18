@@ -24,8 +24,15 @@
 /* Neon glow — soft outer glow for active/primary elements */
 @utility neon-glow {
   box-shadow:
-    0 0 12px -2px color-mix(in oklch, var(--primary) 40%, transparent),
-    0 0 2px color-mix(in oklch, var(--primary) 20%, transparent);
+    0 0 18px -2px color-mix(in oklch, var(--primary) 45%, transparent),
+    0 0 4px color-mix(in oklch, var(--primary) 25%, transparent);
+}
+
+/* Neon glow that follows an element's own color (status dots, stripes) */
+@utility neon-glow-current {
+  box-shadow:
+    0 0 14px -1px color-mix(in oklch, currentColor 45%, transparent),
+    0 0 2px currentColor;
 }
 
 /* Neon ring — subtle glowing border effect */
@@ -38,6 +45,13 @@
   text-shadow:
     0 0 10px color-mix(in oklch, var(--primary) 50%, transparent),
     0 0 30px color-mix(in oklch, var(--primary) 20%, transparent);
+}
+
+/* Neon text that follows the element's own color */
+@utility neon-text-current {
+  text-shadow:
+    0 0 12px color-mix(in oklch, currentColor 45%, transparent),
+    0 0 28px color-mix(in oklch, currentColor 20%, transparent);
 }
 
 /* Neon border — glowing border for cards in dark mode */
@@ -70,7 +84,7 @@
 
 /* Stat card — elevated metric surface */
 @utility stat-card {
-  @apply rounded-xl border border-border/60 bg-card p-5 transition-colors hover:border-border;
+  @apply rounded-xl bg-card p-5 shadow-subtle ring-1 ring-foreground/5;
 }
 
 @keyframes status-pulse {
