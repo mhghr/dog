@@ -103,3 +103,155 @@ func pingReachabilityDef() ParameterDefinition {
 	}
 	panic("ping.reachability not found")
 }
+
+func TestEvaluateThresholds(t *testing.T) {
+	compare := compareValue
+
+	cases := []struct {
+		name          string
+		rule          ParameterRule
+		value         float64
+		expectedState HealthState
+	}{
+		{
+			name: "below error threshold",
+			rule: ParameterRule{
+				ErrorOperator: "gte",
+				ErrorValue:    floatPtr(200),
+				WarningValue:  floatPtr(100),
+			},
+			value:         50,
+			expectedState: HealthOK,
+		},
+		{
+			name: "warning threshold",
+			rule: ParameterRule{
+				ErrorOperator: "gte",
+				ErrorValue:    floatPtr(200),
+				WarningValue:  floatPtr(100),
+			},
+			value:         150,
+			expectedState: HealthWarning,
+		},
+		{
+			name: "error threshold",
+			rule: ParameterRule{
+				ErrorOperator: "gte",
+				ErrorValue:    floatPtr(200),
+				WarningValue:  floatPtr(100),
+			},
+			value:         250,
+			expectedState: HealthError,
+		},
+		{
+			name: "warning takes precedence only when ok",
+			rule: ParameterRule{
+				ErrorOperator: "gte",
+				ErrorValue:    floatPtr(100),
+				WarningValue:  floatPtr(200),
+			},
+			value:         250,
+			expectedState: HealthError,
+		},
+		{
+			name: "no thresholds",
+			rule: ParameterRule{
+				WarningOperator: "gte",
+			},
+			value:         250,
+			expectedState: HealthOK,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := evaluateThresholds(tc.value, &tc.rule, stubHealthRepo{}, context.Background(), "m1", "param", compare)
+			if got != tc.expectedState {
+				t.Fatalf("expected %s, got %s", tc.expectedState, got)
+			}
+		})
+	}
+}
+
+func TestEvaluateDirectionalLowerIsWorse(t *testing.T) {
+	rule := ParameterRule{
+		ErrorOperator:   "gte",
+		ErrorValue:      floatPtr(20),
+		WarningOperator: "gte",
+		WarningValue:    floatPtr(50),
+	}
+	if got := evaluateDirectional([]float64{10}, &rule, ParameterDefinition{}, stubHealthRepo{}, context.Background(), "m1", "param", compareValueLower); got != HealthError {
+		t.Fatalf("low value should be HealthError, got %s", got)
+	}
+	if got := evaluateDirectional([]float64{30}, &rule, ParameterDefinition{}, stubHealthRepo{}, context.Background(), "m1", "param", compareValueLower); got != HealthWarning {
+		t.Fatalf("mid value should be HealthWarning, got %s", got)
+	}
+	if got := evaluateDirectional([]float64{80}, &rule, ParameterDefinition{}, stubHealthRepo{}, context.Background(), "m1", "param", compareValueLower); got != HealthOK {
+		t.Fatalf("high value should be HealthOK, got %s", got)
+	}
+}
+
+func TestEvaluateDirectionalMissingData(t *testing.T) {
+	rule := ParameterRule{MissingDataPolicy: "IGNORE"}
+	if got := evaluateDirectional(nil, &rule, ParameterDefinition{}, stubHealthRepo{}, context.Background(), "m1", "param", compareValue); got != HealthUnknown {
+		t.Fatalf("IGNORE policy should be HealthUnknown, got %s", got)
+	}
+
+	rule = ParameterRule{MissingDataPolicy: "ERROR"}
+	if got := evaluateDirectional(nil, &rule, ParameterDefinition{}, stubHealthRepo{}, context.Background(), "m1", "param", compareValue); got != HealthError {
+		t.Fatalf("ERROR policy should be HealthError, got %s", got)
+	}
+
+	rule = ParameterRule{MissingDataPolicy: "WARNING"}
+	if got := evaluateDirectional(nil, &rule, ParameterDefinition{}, stubHealthRepo{}, context.Background(), "m1", "param", compareValue); got != HealthWarning {
+		t.Fatalf("WARNING policy should be HealthWarning, got %s", got)
+	}
+}
+
+func TestAggregateValues(t *testing.T) {
+	values := []float64{10, 20, 30}
+	if got := aggregateValues(values, "avg"); got != 20 {
+		t.Errorf("avg: expected 20, got %f", got)
+	}
+	if got := aggregateValues(values, "min"); got != 10 {
+		t.Errorf("min: expected 10, got %f", got)
+	}
+	if got := aggregateValues(values, "max"); got != 30 {
+		t.Errorf("max: expected 30, got %f", got)
+	}
+	if got := aggregateValues(values, "sum"); got != 60 {
+		t.Errorf("sum: expected 60, got %f", got)
+	}
+	if got := aggregateValues(values, "last"); got != 30 {
+		t.Errorf("last: expected 30, got %f", got)
+	}
+	if got := aggregateValues(nil, "avg"); got != 0 {
+		t.Errorf("empty: expected 0, got %f", got)
+	}
+}
+
+func TestToFloat64(t *testing.T) {
+	cases := []struct {
+		input    any
+		expected float64
+		ok       bool
+	}{
+		{float64(1.5), 1.5, true},
+		{float32(1.5), 1.5, true},
+		{int(7), 7, true},
+		{int64(8), 8, true},
+		{int32(9), 9, true},
+		{true, 1.0, true},
+		{false, 0.0, true},
+		{"nope", 0, false},
+		{nil, 0, false},
+	}
+	for _, tc := range cases {
+		got, ok := toFloat64(tc.input)
+		if ok != tc.ok || (ok && got != tc.expected) {
+			t.Errorf("toFloat64(%v) = %f,%v; want %f,%v", tc.input, got, ok, tc.expected, tc.ok)
+		}
+	}
+}
+
+func floatPtr(v float64) *float64 { return &v }

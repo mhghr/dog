@@ -36,12 +36,6 @@ type Workspace struct {
 	UpdatedAt      time.Time               `json:"updated_at"`
 }
 
-type WorkspaceInput struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Plan        string `json:"plan,omitempty"`
-}
-
 type WorkspaceMember struct {
 	WorkspaceID string        `json:"workspace_id"`
 	UserID      string        `json:"user_id"`
@@ -177,18 +171,6 @@ type Monitor struct {
 	ProbeType      MonitorType `json:"-"`
 }
 
-type MonitorInput struct {
-	MonitorTypeID   string         `json:"monitor_type_id"`
-	HealthProfileID *string        `json:"health_profile_id,omitempty"`
-	Name            string         `json:"name"`
-	Enabled         *bool          `json:"enabled"`
-	Configuration   map[string]any `json:"configuration"`
-	Severity        string         `json:"severity"`
-	IntervalSeconds int            `json:"interval_seconds"`
-	TimeoutMillis   int            `json:"timeout_millis"`
-	Retries         int            `json:"retries"`
-}
-
 // MonitorTypeCode returns the probe executor key for a monitor type name,
 // or "" when the type name has no matching probe executor. Resource types
 // seed names like "HTTP Check" while probe executors are keyed on enum
@@ -217,14 +199,6 @@ func MonitorTypeCode(typeName string) MonitorType {
 }
 
 // ── Monitor Assignments ───────────────────────────────────────
-
-type MonitorAssignment struct {
-	ID              string  `json:"id"`
-	MonitorID       string  `json:"monitor_id"`
-	ExecutionType   string  `json:"execution_type"`
-	AgentID         *string `json:"agent_id,omitempty"`
-	ProbeLocationID *string `json:"probe_location_id,omitempty"`
-}
 
 type ProbeAssignment struct {
 	ID        string    `json:"id"`

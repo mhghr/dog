@@ -263,6 +263,13 @@ func evaluateDirectional(recentValues []float64, rule *ParameterRule, catDef Par
 	}
 
 	aggValue := aggregateValues(recentValues, rule.Aggregation)
+
+	return evaluateThresholds(aggValue, rule, repo, ctx, monitorID, paramKey, compare)
+}
+
+// evaluateThresholds applies error/warning/recovery thresholds against a single
+// aggregated value and persists the resulting health state.
+func evaluateThresholds(aggValue float64, rule *ParameterRule, repo Repository, ctx context.Context, monitorID, paramKey string, compare func(value, threshold float64, op string) bool) HealthState {
 	newState := HealthOK
 
 	if rule.ErrorValue != nil {

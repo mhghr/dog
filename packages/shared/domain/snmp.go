@@ -46,9 +46,3 @@ type SNMPDevice struct {
 	CreatedAt       time.Time       `json:"created_at"`
 	UpdatedAt       time.Time       `json:"updated_at"`
 }
-
-type SNMPOIDEntry struct {
-	Name string `json:"name"`
-	OID  string `json:"oid"`
-	Type string `json:"type"`
-}

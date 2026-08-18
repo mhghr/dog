@@ -85,14 +85,3 @@ func NewProbeResultEnvelope(eventID string, source string, monitorID, resourceID
 	env.Source = source
 	return env, nil
 }
-
-func NewMetricBatchEnvelope(eventID string, source string, tenantID, agentID string, value interface{}) (*Envelope, error) {
-	env, err := NewEnvelope(TypeMetricBatch, eventID, value)
-	if err != nil {
-		return nil, err
-	}
-	env.TenantID = tenantID
-	env.AgentID = agentID
-	env.Source = source
-	return env, nil
-}

@@ -1,7 +1,5 @@
 package domain
 
-import "context"
-
 type WorkspacePermission string
 
 const (
@@ -18,8 +16,3 @@ const (
 )
 
 const WorkspaceIDContextKey OrgContextKey = "workspace.id"
-
-func WorkspaceIDFromContext(ctx context.Context) (string, bool) {
-	id, ok := ctx.Value(WorkspaceIDContextKey).(string)
-	return id, ok && id != ""
-}

@@ -279,27 +279,47 @@ func whoisInfoFromResponse(responseText string) domainInfo {
 // applyWhoisLine extracts a single field (expiry, registrar or nameserver)
 // from one WHOIS response line, when present.
 func applyWhoisLine(info domainInfo, line string) domainInfo {
-	if info.ExpiresAt == nil {
-		if match := whoisExpiryPattern.FindStringSubmatch(line); match != nil {
-			if parsed, ok := parseWhoisDate(strings.TrimSpace(match[1])); ok {
-				info.ExpiresAt = &parsed
-			}
-		}
-	}
+	info = applyWhoisExpiry(info, line)
+	info = applyWhoisRegistrar(info, line)
+	info = applyWhoisNameserver(info, line)
+	return info
+}
 
-	if info.Registrar == "" {
-		if match := whoisRegistrarPattern.FindStringSubmatch(line); match != nil {
-			info.Registrar = strings.TrimSpace(match[1])
-		}
+func applyWhoisExpiry(info domainInfo, line string) domainInfo {
+	if info.ExpiresAt != nil {
+		return info
 	}
-
-	if match := whoisNameserverPattern.FindStringSubmatch(line); match != nil {
-		nameserver := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(match[1]), "."))
-		if nameserver != "" && !containsString(info.Nameservers, nameserver) {
-			info.Nameservers = append(info.Nameservers, nameserver)
-		}
+	match := whoisExpiryPattern.FindStringSubmatch(line)
+	if match == nil {
+		return info
 	}
+	if parsed, ok := parseWhoisDate(strings.TrimSpace(match[1])); ok {
+		info.ExpiresAt = &parsed
+	}
+	return info
+}
 
+func applyWhoisRegistrar(info domainInfo, line string) domainInfo {
+	if info.Registrar != "" {
+		return info
+	}
+	match := whoisRegistrarPattern.FindStringSubmatch(line)
+	if match == nil {
+		return info
+	}
+	info.Registrar = strings.TrimSpace(match[1])
+	return info
+}
+
+func applyWhoisNameserver(info domainInfo, line string) domainInfo {
+	match := whoisNameserverPattern.FindStringSubmatch(line)
+	if match == nil {
+		return info
+	}
+	nameserver := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(match[1]), "."))
+	if nameserver != "" && !containsString(info.Nameservers, nameserver) {
+		info.Nameservers = append(info.Nameservers, nameserver)
+	}
 	return info
 }
 

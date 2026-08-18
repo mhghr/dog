@@ -29,15 +29,3 @@ type Plugin struct {
 	CreatedAt           time.Time       `json:"created_at"`
 	UpdatedAt           time.Time       `json:"updated_at"`
 }
-
-type PluginInput struct {
-	Name                string          `json:"name"`
-	Slug                string          `json:"slug"`
-	Description         string          `json:"description"`
-	Type                PluginType      `json:"type"`
-	Version             string          `json:"version"`
-	Icon                string          `json:"icon"`
-	Category            string          `json:"category"`
-	ConfigurationSchema json.RawMessage `json:"configuration_schema"`
-	Enabled             *bool           `json:"enabled,omitempty"`
-}

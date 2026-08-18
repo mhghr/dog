@@ -114,18 +114,6 @@ type EnrollResponse struct {
 	Message   string
 }
 
-type ApproveRequest struct {
-	AgentID uuid.UUID
-}
-
-type ApproveResponse struct {
-	AgentID       uuid.UUID
-	Certificate   string
-	SerialNumber  string
-	NotBefore     time.Time
-	NotAfter      time.Time
-}
-
 var validTransitions = map[AgentStatus][]AgentStatus{
 	AgentPending:  {AgentApproved, AgentRejected},
 	AgentApproved: {AgentActive, AgentDisabled, AgentRevoked},

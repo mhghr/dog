@@ -30,17 +30,6 @@ var AllMonitorTypes = []MonitorType{
 	MonitorNTP,
 }
 
-func ParseMonitorType(value string) (MonitorType, bool) {
-	candidate := MonitorType(value)
-	for _, monitorType := range AllMonitorTypes {
-		if monitorType == candidate {
-			return candidate, true
-		}
-	}
-
-	return "", false
-}
-
 type MonitorStatus string
 
 const (
@@ -81,13 +70,6 @@ var DefaultIntervalSeconds = map[MonitorType]int{
 	MonitorDomainExpiration: 43200,
 	MonitorSMTP:             60,
 	MonitorNTP:              300,
-}
-
-type LastResultSummary struct {
-	Success        bool           `json:"success"`
-	DurationMillis int64          `json:"duration_millis"`
-	ErrorCode      *string        `json:"error_code"`
-	Metrics        map[string]any `json:"metrics,omitempty"`
 }
 
 type ProbeLocation struct {
