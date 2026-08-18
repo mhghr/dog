@@ -235,12 +235,12 @@ func (h *Handler) resourceMonitorMetrics(w http.ResponseWriter, r *http.Request)
 	var series []domain.ProbeSeries
 	switch metricKey {
 	case "status":
-		series, err = h.deps.Results.StatusSeriesByProbe(r.Context(), monitorID, from, to, stepSeconds)
+		series, err = h.deps.Results.StatusSeriesByProbe(r.Context(), monitorID, from, to, stepSeconds, maxChartSeries)
 	default:
 		if metricKey != "" {
-			series, err = h.deps.Results.SeriesByProbeMetric(r.Context(), monitorID, metricKey, from, to, stepSeconds)
+			series, err = h.deps.Results.SeriesByProbeMetric(r.Context(), monitorID, metricKey, from, to, stepSeconds, maxChartSeries)
 		} else {
-			series, err = h.deps.Results.SeriesByProbe(r.Context(), monitorID, from, to, stepSeconds)
+			series, err = h.deps.Results.SeriesByProbe(r.Context(), monitorID, from, to, stepSeconds, maxChartSeries)
 		}
 	}
 	if err != nil {
@@ -249,7 +249,10 @@ func (h *Handler) resourceMonitorMetrics(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	latest, err := h.deps.Results.LatestResultsByProbe(r.Context(), monitorID)
+	// A detail page must remain bounded even when a monitor is assigned to many
+	// probes. The UI renders a representative recent sample; full probe lists
+	// belong to a dedicated, paginated endpoint.
+	latest, err := h.deps.Results.LatestResultsByProbe(r.Context(), monitorID, maxChartSeries)
 	if err != nil {
 		h.deps.Logger.Error("query latest results by probe failed", "monitor_id", monitorID, "error", err)
 		writeDomainError(w, r, err)
@@ -272,6 +275,7 @@ func (h *Handler) resourceMonitorMetrics(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"series":          series,
 		"latest":          latest,
+		"series_limit":    maxChartSeries,
 		"step_seconds":    stepSeconds,
 		"from":            from,
 		"to":              to,
@@ -281,7 +285,10 @@ func (h *Handler) resourceMonitorMetrics(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-const maxChartPoints = 1500
+const (
+	maxChartPoints = 1500
+	maxChartSeries = 25
+)
 
 // resolveStep implements the spec downsampling table with a hard cap on the
 // number of returned points.

@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS probe_results_monitor_probe_time_idx;

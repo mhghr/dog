@@ -279,7 +279,7 @@ func (h *Handler) getResourceOverview(w http.ResponseWriter, r *http.Request) {
 	trendWindow := time.Now().UTC().Add(-1 * time.Hour)
 
 	for _, m := range monitors {
-		latest, err := h.deps.Results.LatestResultsByProbe(r.Context(), m.ID)
+		latest, err := h.deps.Results.LatestResultsByProbe(r.Context(), m.ID, 0)
 		if err != nil || len(latest) == 0 {
 			if err != nil {
 				h.deps.Logger.Warn("overview: latest results failed", "monitor_id", m.ID, "error", err)
@@ -337,7 +337,7 @@ func monitorOverviewEntry(latest []domain.ProbeResult) map[string]any {
 // sparklineTrend returns a short series of averaged values for the monitor's
 // primary metric (rtt_ms) over the last hour, suitable for a tiny sparkline.
 func (h *Handler) sparklineTrend(ctx context.Context, monitorID string, from time.Time) []float64 {
-	series, err := h.deps.Results.SeriesByProbeMetric(ctx, monitorID, "rtt_ms", from, time.Now().UTC(), 60)
+	series, err := h.deps.Results.SeriesByProbeMetric(ctx, monitorID, "rtt_ms", from, time.Now().UTC(), 60, 1)
 	if err != nil || len(series) == 0 {
 		return nil
 	}

@@ -409,107 +409,17 @@ func getAttemptFromAttributes(attrs map[string]any) int {
 	}
 }
 
-// SeriesByProbe returns one time-bucketed series per probe location for a
-// monitor. Buckets are built over the [from, to) window; each series holds
-// the average latency (ms) per bucket.
-func (r *ResultRepository) SeriesByProbe(ctx context.Context, monitorID string, from, to time.Time, stepSeconds int) ([]domain.ProbeSeries, error) {
-	rows, err := r.pool.Query(ctx, `
-		SELECT
-			pl.id::text,
-			COALESCE(pl.name, ''),
-			COALESCE(pl.code, ''),
-			date_bin(make_interval(secs => $4::int), pr.started_at, TIMESTAMPTZ 'epoch') AS bucket,
-			AVG(pr.duration_millis)::float8 AS latency
-		FROM probe_results pr
-		LEFT JOIN probe_locations pl ON pl.id = pr.probe_location_id
-		WHERE pr.monitor_id = $1::uuid
-		  AND pr.success = TRUE
-		  AND pr.started_at >= $2
-		  AND pr.started_at < $3
-		GROUP BY pl.id, pl.name, pl.code, bucket
-		ORDER BY pl.name, bucket`,
-		monitorID, from, to, stepSeconds)
-	if err != nil {
-		return nil, fmt.Errorf("query per-probe series: %w", err)
-	}
-	defer rows.Close()
-
-	type rawPoint struct {
-		probeID   string
-		probeName string
-		location  string
-		ts        time.Time
-		value     float64
-	}
-	var raw []rawPoint
-	for rows.Next() {
-		var (
-			pid, pname, loc string
-			bucket          time.Time
-			latency         float64
-		)
-		if err := rows.Scan(&pid, &pname, &loc, &bucket, &latency); err != nil {
-			return nil, fmt.Errorf("scan per-probe bucket: %w", err)
-		}
-		raw = append(raw, rawPoint{probeID: pid, probeName: pname, location: loc, ts: bucket, value: latency})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	// Group rows by probe location, preserving name ordering.
-	var series []domain.ProbeSeries
-	var current *domain.ProbeSeries
-	for _, p := range raw {
-		if current == nil || current.ProbeID != p.probeID {
-			series = append(series, domain.ProbeSeries{
-				ProbeID:   p.probeID,
-				ProbeName: p.probeName,
-				Location:  p.location,
-				Points:    []domain.MetricPoint{},
-				Values:    []domain.MetricPoint{},
-			})
-			current = &series[len(series)-1]
-		}
-		current.Points = append(current.Points, domain.MetricPoint{Timestamp: p.ts, Value: p.value})
-		current.Values = append(current.Values, domain.MetricPoint{Timestamp: p.ts, Value: p.value})
-	}
-
-	return series, nil
+type rawPoint struct {
+	probeID   string
+	probeName string
+	location  string
+	ts        time.Time
+	value     float64
 }
 
-// SeriesByProbeMetric returns one time-bucketed series per probe location for
-// a specific metric key in the probe_results.metrics JSONB column.
-func (r *ResultRepository) SeriesByProbeMetric(ctx context.Context, monitorID, metricKey string, from, to time.Time, stepSeconds int) ([]domain.ProbeSeries, error) {
-	rows, err := r.pool.Query(ctx, `
-		SELECT
-			pl.id::text,
-			COALESCE(pl.name, ''),
-			COALESCE(pl.code, ''),
-			date_bin(make_interval(secs => $4::int), pr.started_at, TIMESTAMPTZ 'epoch') AS bucket,
-			AVG((pr.metrics->>$5)::numeric)::float8 AS value
-		FROM probe_results pr
-		LEFT JOIN probe_locations pl ON pl.id = pr.probe_location_id
-		WHERE pr.monitor_id = $1::uuid
-		  AND pr.success = TRUE
-		  AND pr.started_at >= $2
-		  AND pr.started_at < $3
-		  AND pr.metrics->>$5 IS NOT NULL
-		GROUP BY pl.id, pl.name, pl.code, bucket
-		ORDER BY pl.name, bucket`,
-		monitorID, from, to, stepSeconds, metricKey)
-	if err != nil {
-		return nil, fmt.Errorf("query per-probe metric series: %w", err)
-	}
-	defer rows.Close()
-
-	type rawPoint struct {
-		probeID   string
-		probeName string
-		location  string
-		ts        time.Time
-		value     float64
-	}
+// scanProbeSeriesRows reads raw (probe_id, probe_name, location, bucket,
+// value) rows produced by the per-probe series queries.
+func scanProbeSeriesRows(rows pgx.Rows, scanErr string) ([]rawPoint, error) {
 	var raw []rawPoint
 	for rows.Next() {
 		var (
@@ -518,14 +428,19 @@ func (r *ResultRepository) SeriesByProbeMetric(ctx context.Context, monitorID, m
 			value           float64
 		)
 		if err := rows.Scan(&pid, &pname, &loc, &bucket, &value); err != nil {
-			return nil, fmt.Errorf("scan per-probe metric bucket: %w", err)
+			return nil, fmt.Errorf("%s: %w", scanErr, err)
 		}
 		raw = append(raw, rawPoint{probeID: pid, probeName: pname, location: loc, ts: bucket, value: value})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	return raw, nil
+}
 
+// groupProbeSeries groups raw points by probe location, preserving name
+// ordering, and returns one time-bucketed series per probe.
+func groupProbeSeries(raw []rawPoint, metricKey string) []domain.ProbeSeries {
 	var series []domain.ProbeSeries
 	var current *domain.ProbeSeries
 	for _, p := range raw {
@@ -543,13 +458,94 @@ func (r *ResultRepository) SeriesByProbeMetric(ctx context.Context, monitorID, m
 		current.Points = append(current.Points, domain.MetricPoint{Timestamp: p.ts, Value: p.value})
 		current.Values = append(current.Values, domain.MetricPoint{Timestamp: p.ts, Value: p.value})
 	}
+	return series
+}
 
-	return series, nil
+// SeriesByProbe returns one time-bucketed series per probe location for a
+// monitor. Buckets are built over the [from, to) window; each series holds
+// the average latency (ms) per bucket.
+func (r *ResultRepository) SeriesByProbe(ctx context.Context, monitorID string, from, to time.Time, stepSeconds, seriesLimit int) ([]domain.ProbeSeries, error) {
+	rows, err := r.pool.Query(ctx, `
+		WITH selected_probes AS (
+			SELECT DISTINCT ON (probe_location_id) probe_location_id
+			FROM probe_results
+			WHERE monitor_id = $1::uuid AND started_at >= $2 AND started_at < $3
+			ORDER BY probe_location_id, started_at DESC
+			LIMIT $5
+		)
+		SELECT
+			pl.id::text,
+			COALESCE(pl.name, ''),
+			COALESCE(pl.code, ''),
+			date_bin(make_interval(secs => $4::int), pr.started_at, TIMESTAMPTZ 'epoch') AS bucket,
+			AVG(pr.duration_millis)::float8 AS latency
+		FROM probe_results pr
+		LEFT JOIN probe_locations pl ON pl.id = pr.probe_location_id
+		JOIN selected_probes sp ON sp.probe_location_id = pr.probe_location_id
+		WHERE pr.monitor_id = $1::uuid
+		  AND pr.success = TRUE
+		  AND pr.started_at >= $2
+		  AND pr.started_at < $3
+		GROUP BY pl.id, pl.name, pl.code, bucket
+		ORDER BY pl.name, bucket`,
+		monitorID, from, to, stepSeconds, seriesLimit)
+	if err != nil {
+		return nil, fmt.Errorf("query per-probe series: %w", err)
+	}
+	defer rows.Close()
+
+	raw, err := scanProbeSeriesRows(rows, "scan per-probe bucket")
+	if err != nil {
+		return nil, err
+	}
+
+	return groupProbeSeries(raw, ""), nil
+}
+
+// SeriesByProbeMetric returns one time-bucketed series per probe location for
+// a specific metric key in the probe_results.metrics JSONB column.
+func (r *ResultRepository) SeriesByProbeMetric(ctx context.Context, monitorID, metricKey string, from, to time.Time, stepSeconds, seriesLimit int) ([]domain.ProbeSeries, error) {
+	rows, err := r.pool.Query(ctx, `
+		WITH selected_probes AS (
+			SELECT DISTINCT ON (probe_location_id) probe_location_id
+			FROM probe_results
+			WHERE monitor_id = $1::uuid AND started_at >= $2 AND started_at < $3
+			ORDER BY probe_location_id, started_at DESC
+			LIMIT $6
+		)
+		SELECT
+			pl.id::text,
+			COALESCE(pl.name, ''),
+			COALESCE(pl.code, ''),
+			date_bin(make_interval(secs => $4::int), pr.started_at, TIMESTAMPTZ 'epoch') AS bucket,
+			AVG((pr.metrics->>$5)::numeric)::float8 AS value
+		FROM probe_results pr
+		LEFT JOIN probe_locations pl ON pl.id = pr.probe_location_id
+		JOIN selected_probes sp ON sp.probe_location_id = pr.probe_location_id
+		WHERE pr.monitor_id = $1::uuid
+		  AND pr.success = TRUE
+		  AND pr.started_at >= $2
+		  AND pr.started_at < $3
+		  AND pr.metrics->>$5 IS NOT NULL
+		GROUP BY pl.id, pl.name, pl.code, bucket
+		ORDER BY pl.name, bucket`,
+		monitorID, from, to, stepSeconds, metricKey, seriesLimit)
+	if err != nil {
+		return nil, fmt.Errorf("query per-probe metric series: %w", err)
+	}
+	defer rows.Close()
+
+	raw, err := scanProbeSeriesRows(rows, "scan per-probe metric bucket")
+	if err != nil {
+		return nil, err
+	}
+
+	return groupProbeSeries(raw, metricKey), nil
 }
 
 // LatestResultsByProbe returns the most recent probe result for each probe
 // location assigned to a monitor.
-func (r *ResultRepository) LatestResultsByProbe(ctx context.Context, monitorID string) ([]domain.ProbeResult, error) {
+func (r *ResultRepository) LatestResultsByProbe(ctx context.Context, monitorID string, limit int) ([]domain.ProbeResult, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT DISTINCT ON (pr.probe_location_id)
 			pr.id::text, pr.job_id::text, pr.monitor_id::text,
@@ -561,8 +557,9 @@ func (r *ResultRepository) LatestResultsByProbe(ctx context.Context, monitorID s
 		FROM probe_results pr
 		LEFT JOIN probe_locations pl ON pl.id = pr.probe_location_id
 		WHERE pr.monitor_id = $1::uuid
-		ORDER BY pr.probe_location_id, pr.started_at DESC`,
-		monitorID)
+		ORDER BY pr.probe_location_id, pr.started_at DESC
+		LIMIT NULLIF($2, 0)`,
+		monitorID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("query latest results by probe: %w", err)
 	}
@@ -605,8 +602,15 @@ func (r *ResultRepository) LatestResultsByProbe(ctx context.Context, monitorID s
 // probe location for a monitor, including failed checks. This is the explicit
 // availability signal: 1.0 means fully up in that bucket, 0.0 fully down, and
 // an absent bucket means no data (never inferred as downtime by consumers).
-func (r *ResultRepository) StatusSeriesByProbe(ctx context.Context, monitorID string, from, to time.Time, stepSeconds int) ([]domain.ProbeSeries, error) {
+func (r *ResultRepository) StatusSeriesByProbe(ctx context.Context, monitorID string, from, to time.Time, stepSeconds, seriesLimit int) ([]domain.ProbeSeries, error) {
 	rows, err := r.pool.Query(ctx, `
+		WITH selected_probes AS (
+			SELECT DISTINCT ON (probe_location_id) probe_location_id
+			FROM probe_results
+			WHERE monitor_id = $1::uuid AND started_at >= $2 AND started_at < $3
+			ORDER BY probe_location_id, started_at DESC
+			LIMIT $5
+		)
 		SELECT
 			pl.id::text,
 			COALESCE(pl.name, ''),
@@ -615,59 +619,24 @@ func (r *ResultRepository) StatusSeriesByProbe(ctx context.Context, monitorID st
 			AVG(CASE WHEN pr.success THEN 1 ELSE 0 END)::float8 AS value
 		FROM probe_results pr
 		LEFT JOIN probe_locations pl ON pl.id = pr.probe_location_id
+		JOIN selected_probes sp ON sp.probe_location_id = pr.probe_location_id
 		WHERE pr.monitor_id = $1::uuid
 		  AND pr.started_at >= $2
 		  AND pr.started_at < $3
 		GROUP BY pl.id, pl.name, pl.code, bucket
 		ORDER BY pl.name, bucket`,
-		monitorID, from, to, stepSeconds)
+		monitorID, from, to, stepSeconds, seriesLimit)
 	if err != nil {
 		return nil, fmt.Errorf("query status series: %w", err)
 	}
 	defer rows.Close()
 
-	type rawPoint struct {
-		probeID   string
-		probeName string
-		location  string
-		ts        time.Time
-		value     float64
-	}
-	var raw []rawPoint
-	for rows.Next() {
-		var (
-			pid, pname, loc string
-			bucket          time.Time
-			value           float64
-		)
-		if err := rows.Scan(&pid, &pname, &loc, &bucket, &value); err != nil {
-			return nil, fmt.Errorf("scan status bucket: %w", err)
-		}
-		raw = append(raw, rawPoint{probeID: pid, probeName: pname, location: loc, ts: bucket, value: value})
-	}
-	if err := rows.Err(); err != nil {
+	raw, err := scanProbeSeriesRows(rows, "scan status bucket")
+	if err != nil {
 		return nil, err
 	}
 
-	var series []domain.ProbeSeries
-	var current *domain.ProbeSeries
-	for _, p := range raw {
-		if current == nil || current.ProbeID != p.probeID {
-			series = append(series, domain.ProbeSeries{
-				ProbeID:   p.probeID,
-				ProbeName: p.probeName,
-				Location:  p.location,
-				MetricKey: "status",
-				Points:    []domain.MetricPoint{},
-				Values:    []domain.MetricPoint{},
-			})
-			current = &series[len(series)-1]
-		}
-		current.Points = append(current.Points, domain.MetricPoint{Timestamp: p.ts, Value: p.value})
-		current.Values = append(current.Values, domain.MetricPoint{Timestamp: p.ts, Value: p.value})
-	}
-
-	return series, nil
+	return groupProbeSeries(raw, "status"), nil
 }
 
 // LatestSuccessAt returns the most recent successful check time, or nil.

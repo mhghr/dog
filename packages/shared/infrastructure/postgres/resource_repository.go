@@ -79,38 +79,7 @@ func (r *ResourceRepository) GetByID(ctx context.Context, id string) (domain.Res
 }
 
 func (r *ResourceRepository) List(ctx context.Context, filter domain.ResourceListFilter) ([]domain.Resource, int, error) {
-	where := []string{"r.organization_id = $1::uuid"}
-	args := []any{filter.OrganizationID}
-
-	if filter.WorkspaceID != "" {
-		args = append(args, filter.WorkspaceID)
-		where = append(where, fmt.Sprintf("r.workspace_id = $%d::uuid", len(args)))
-	}
-	if filter.ResourceTypeID != "" {
-		args = append(args, filter.ResourceTypeID)
-		where = append(where, fmt.Sprintf("r.resource_type_id = $%d::uuid", len(args)))
-	}
-	if filter.Status != "" {
-		args = append(args, filter.Status)
-		where = append(where, fmt.Sprintf("r.status = $%d", len(args)))
-	}
-	if search := strings.TrimSpace(filter.Search); search != "" {
-		args = append(args, "%"+escapeLike(search)+"%")
-		where = append(where, fmt.Sprintf("(r.name ILIKE $%d OR r.description ILIKE $%d OR r.target ILIKE $%d)", len(args), len(args), len(args)))
-	}
-	if len(filter.Tags) > 0 {
-		for key, value := range filter.Tags {
-			args = append(args, key, value)
-			n := len(args)
-			where = append(where, fmt.Sprintf(`EXISTS (
-				SELECT 1 FROM resource_tags rt
-				JOIN tags t ON t.id = rt.tag_id
-				WHERE rt.resource_id = r.id AND t.key = $%d AND t.value = $%d
-			)`, n-1, n))
-		}
-	}
-
-	whereClause := " WHERE " + strings.Join(where, " AND ")
+	whereClause, args := buildResourceListFilter(filter)
 
 	var total int
 	if err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM resources r`+whereClause, args...).Scan(&total); err != nil {
@@ -162,6 +131,43 @@ func (r *ResourceRepository) List(ctx context.Context, filter domain.ResourceLis
 		resources = append(resources, res)
 	}
 	return resources, total, rows.Err()
+}
+
+// buildResourceListFilter turns a resource list filter into a WHERE clause and
+// its bind arguments. The clause always includes the organization predicate.
+func buildResourceListFilter(filter domain.ResourceListFilter) (string, []any) {
+	where := []string{"r.organization_id = $1::uuid"}
+	args := []any{filter.OrganizationID}
+
+	if filter.WorkspaceID != "" {
+		args = append(args, filter.WorkspaceID)
+		where = append(where, fmt.Sprintf("r.workspace_id = $%d::uuid", len(args)))
+	}
+	if filter.ResourceTypeID != "" {
+		args = append(args, filter.ResourceTypeID)
+		where = append(where, fmt.Sprintf("r.resource_type_id = $%d::uuid", len(args)))
+	}
+	if filter.Status != "" {
+		args = append(args, filter.Status)
+		where = append(where, fmt.Sprintf("r.status = $%d", len(args)))
+	}
+	if search := strings.TrimSpace(filter.Search); search != "" {
+		args = append(args, "%"+escapeLike(search)+"%")
+		where = append(where, fmt.Sprintf("(r.name ILIKE $%d OR r.description ILIKE $%d OR r.target ILIKE $%d)", len(args), len(args), len(args)))
+	}
+	if len(filter.Tags) > 0 {
+		for key, value := range filter.Tags {
+			args = append(args, key, value)
+			n := len(args)
+			where = append(where, fmt.Sprintf(`EXISTS (
+				SELECT 1 FROM resource_tags rt
+				JOIN tags t ON t.id = rt.tag_id
+				WHERE rt.resource_id = r.id AND t.key = $%d AND t.value = $%d
+			)`, n-1, n))
+		}
+	}
+
+	return " WHERE " + strings.Join(where, " AND "), args
 }
 
 func (r *ResourceRepository) Update(ctx context.Context, res *domain.Resource) error {

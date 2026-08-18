@@ -18,19 +18,19 @@ type ResultRepository interface {
 	Series(ctx context.Context, monitorID string, from, to time.Time, stepSeconds int) (domain.MetricSeries, error)
 	// SeriesByProbe returns time-bucketed series per probe location for a
 	// monitor, used by the resource monitoring dashboard.
-	SeriesByProbe(ctx context.Context, monitorID string, from, to time.Time, stepSeconds int) ([]domain.ProbeSeries, error)
+	SeriesByProbe(ctx context.Context, monitorID string, from, to time.Time, stepSeconds, seriesLimit int) ([]domain.ProbeSeries, error)
 	// SeriesByProbeMetric returns per-location time-bucketed series for a
 	// specific metric key stored in probe_results.metrics JSONB.
-	SeriesByProbeMetric(ctx context.Context, monitorID, metricKey string, from, to time.Time, stepSeconds int) ([]domain.ProbeSeries, error)
+	SeriesByProbeMetric(ctx context.Context, monitorID, metricKey string, from, to time.Time, stepSeconds, seriesLimit int) ([]domain.ProbeSeries, error)
 	// StatusSeriesByProbe returns per-location time-bucketed success ratios
 	// (0..1) for a monitor, including failed checks. 1.0 = fully up, 0.0 =
 	// fully down. Missing buckets mean no data — NOT downtime.
-	StatusSeriesByProbe(ctx context.Context, monitorID string, from, to time.Time, stepSeconds int) ([]domain.ProbeSeries, error)
+	StatusSeriesByProbe(ctx context.Context, monitorID string, from, to time.Time, stepSeconds, seriesLimit int) ([]domain.ProbeSeries, error)
 	// LatestSuccessAt returns the most recent successful check time for a
 	// monitor, or nil when there is none.
 	LatestSuccessAt(ctx context.Context, monitorID string) (*time.Time, error)
 	// LatestResultsByProbe returns the most recent result per probe location.
-	LatestResultsByProbe(ctx context.Context, monitorID string) ([]domain.ProbeResult, error)
+	LatestResultsByProbe(ctx context.Context, monitorID string, limit int) ([]domain.ProbeResult, error)
 	DashboardSummary(ctx context.Context) (domain.DashboardSummary, error)
 }
 
