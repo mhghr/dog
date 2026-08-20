@@ -130,6 +130,14 @@ func (h *Handler) loadResource(w http.ResponseWriter, r *http.Request) (domain.R
 		return domain.Resource{}, false
 	}
 
+	// Tenant isolation: only the owning organization may access the resource.
+	if orgID, ok := domain.OrgIDFromContext(r.Context()); ok {
+		if res.OrganizationID != orgID {
+			writeError(w, r, http.StatusNotFound, "not_found", "resource not found", nil)
+			return domain.Resource{}, false
+		}
+	}
+
 	return res, true
 }
 

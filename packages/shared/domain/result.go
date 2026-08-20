@@ -84,3 +84,10 @@ type Checks24h struct {
 	Successful int64 `json:"successful"`
 	Failed     int64 `json:"failed"`
 }
+
+// StatusCodeCount is one bucket of the HTTP status-code distribution for a
+// monitor over a time window.
+type StatusCodeCount struct {
+	Code  int   `json:"code"`
+	Count int64 `json:"count"`
+}

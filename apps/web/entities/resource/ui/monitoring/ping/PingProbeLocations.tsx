@@ -2,7 +2,7 @@
 
 import { useLocale } from "next-intl";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Card, CardContent } from "@/shared/ui/card";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { StatusBadge } from "@/design-system/components";
 import { cn } from "@/shared/utils/cn";
@@ -48,12 +48,7 @@ export function PingProbeLocations({
       variant="bordered"
       className="shadow-subtle transition-[border-color,box-shadow] duration-300 dark:hover:border-primary/40 dark:hover:shadow-glow"
     >
-      <CardHeader className="px-5 pt-4">
-        <CardTitle className="text-sm font-semibold text-foreground">
-          {isFa ? "موقعیت پراب‌ها" : "Probe locations"}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="overflow-x-auto px-5 pb-4">
+      <CardContent className="overflow-x-auto px-4 pb-4 pt-4">
         {isLoading ? (
           <div className="space-y-2">
             {Array.from({ length: 3 }).map((_, i) => (

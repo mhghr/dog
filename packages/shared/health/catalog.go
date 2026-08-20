@@ -7,7 +7,7 @@ var AllParameters = map[string][]ParameterDefinition{
 	"http":               HTTPParameters,
 	"tcp":                TCPParameters,
 	"dns":                DNSParameters,
-	"tls":                TLSParameters,
+	"tls":                SSLParameters,
 	"domain_expiration":  DomainExpirationParameters,
 	"smtp":               SMTPParameters,
 	"ntp":                NTPParameters,
@@ -89,13 +89,9 @@ var TCPParameters = []ParameterDefinition{
 		DataType: "BOOLEAN", Direction: "BOOLEAN_FAILURE", Unit: "",
 	},
 	{
-		Key: "tcp.connect_duration_ms", Name: "Connect Duration",
+		Key: "tcp.connect_time_ms", Name: "Connect Time",
 		DataType: "NUMBER", Direction: "HIGHER_IS_WORSE", Unit: "ms",
 		DefaultWarning: ptr(500.0), DefaultError: ptr(2000.0), Recovery: ptr(400.0),
-	},
-	{
-		Key: "tcp.banner_match", Name: "Banner Match",
-		DataType: "BOOLEAN", Direction: "BOOLEAN_FAILURE", Unit: "",
 	},
 }
 
@@ -105,9 +101,13 @@ var DNSParameters = []ParameterDefinition{
 		DataType: "BOOLEAN", Direction: "BOOLEAN_FAILURE", Unit: "",
 	},
 	{
-		Key: "dns.resolution_duration_ms", Name: "Resolution Duration",
+		Key: "dns.response_time_ms", Name: "Response Time",
 		DataType: "NUMBER", Direction: "HIGHER_IS_WORSE", Unit: "ms",
 		DefaultWarning: ptr(500.0), DefaultError: ptr(2000.0), Recovery: ptr(400.0),
+	},
+	{
+		Key: "dns.answer_count", Name: "Answer Count",
+		DataType: "NUMBER", Direction: "NONE", Unit: "",
 	},
 	{
 		Key: "dns.expected_record_match", Name: "Expected Record Match",
@@ -115,27 +115,32 @@ var DNSParameters = []ParameterDefinition{
 	},
 }
 
-var TLSParameters = []ParameterDefinition{
+var SSLParameters = []ParameterDefinition{
 	{
-		Key: "tls.certificate_valid", Name: "Certificate Valid",
+		Key: "ssl.reachability", Name: "Reachability",
 		DataType: "BOOLEAN", Direction: "BOOLEAN_FAILURE", Unit: "",
 	},
 	{
-		Key: "tls.hostname_match", Name: "Hostname Match",
-		DataType: "BOOLEAN", Direction: "BOOLEAN_FAILURE", Unit: "",
+		Key: "ssl.handshake_time_ms", Name: "Handshake Time",
+		DataType: "NUMBER", Direction: "HIGHER_IS_WORSE", Unit: "ms",
+		DefaultWarning: ptr(500.0), DefaultError: ptr(2000.0), Recovery: ptr(400.0),
 	},
 	{
-		Key: "tls.chain_trusted", Name: "Chain Trusted",
-		DataType: "BOOLEAN", Direction: "BOOLEAN_FAILURE", Unit: "",
-	},
-	{
-		Key: "tls.days_remaining", Name: "Days Remaining",
+		Key: "ssl.certificate_expiry_days", Name: "Certificate Expiry",
 		DataType: "NUMBER", Direction: "LOWER_IS_WORSE", Unit: "days",
 		DefaultWarning: ptr(30.0), DefaultError: ptr(14.0), Recovery: ptr(60.0),
 	},
 	{
-		Key: "tls.protocol_version", Name: "Protocol Version",
-		DataType: "ENUM", Direction: "ENUM_STATE", Unit: "",
+		Key: "ssl.certificate_valid", Name: "Certificate Valid",
+		DataType: "BOOLEAN", Direction: "BOOLEAN_FAILURE", Unit: "",
+	},
+	{
+		Key: "ssl.hostname_match", Name: "Hostname Match",
+		DataType: "BOOLEAN", Direction: "BOOLEAN_FAILURE", Unit: "",
+	},
+	{
+		Key: "ssl.chain_valid", Name: "Chain Valid",
+		DataType: "BOOLEAN", Direction: "BOOLEAN_FAILURE", Unit: "",
 	},
 }
 

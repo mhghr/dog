@@ -173,11 +173,11 @@ export function ResourceMonitorDashboard({
       {/* Metric cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <MetricCard
-          label={isFa ? "??????? ?????" : "Avg latency"}
+          label={isFa ? "میانگین تاخیر" : "Avg latency"}
           value={cards.avgLatency == null ? "—" : formatValue(cards.avgLatency)}
         />
         <MetricCard
-          label={isFa ? "???????????" : "Availability"}
+          label={isFa ? "دسترس‌پذیری" : "Availability"}
           value={cards.availability == null ? "—" : `${cards.availability.toFixed(1)}%`}
         />
         {cards.metricCards.map((card) => (
@@ -193,7 +193,7 @@ export function ResourceMonitorDashboard({
       {perProbeLatest.length > 0 ? (
         <Card variant="bordered" className="transition-[border-color,box-shadow] duration-300 dark:hover:border-primary/40 dark:hover:shadow-glow">
           <CardHeader>
-            <CardTitle>{isFa ? "?????? ?? ????" : "Values per probe"}</CardTitle>
+            <CardTitle>{isFa ? "مقادیر هر پراب" : "Values per probe"}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col">
             {perProbeLatest.map(({ probeName, result }) => (
@@ -208,9 +208,9 @@ export function ResourceMonitorDashboard({
                   />
                   <span className="text-sm font-medium">{probeName}</span>
                   {result.success ? (
-                    <span className="text-xs text-success dark:neon-text-current">{isFa ? "????" : "ok"}</span>
+                    <span className="text-xs text-success dark:neon-text-current">{isFa ? "موفق" : "ok"}</span>
                   ) : (
-                    <span className="text-xs text-destructive dark:neon-text-current">{isFa ? "??????" : "fail"}</span>
+                    <span className="text-xs text-destructive dark:neon-text-current">{isFa ? "ناموفق" : "fail"}</span>
                   )}
                 </div>
                 <span className="text-sm tabular-nums text-muted-foreground">
@@ -232,7 +232,7 @@ export function ResourceMonitorDashboard({
       ) : (
         <Card variant="bordered">
           <CardContent className="flex items-center justify-center py-12 text-sm text-muted-foreground">
-            {isFa ? "??????? ???? ????? ????" : "No data to display"}
+            {isFa ? "داده‌ای برای نمایش وجود ندارد" : "No data to display"}
           </CardContent>
         </Card>
       )}

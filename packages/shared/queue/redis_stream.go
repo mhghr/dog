@@ -86,7 +86,7 @@ func (q *RedisQueue) PublishToLocation(ctx context.Context, locationCode string,
 	}).Err()
 }
 
-func (q *RedisQueue) Consume(ctx context.Context, consumerName string, count int64, block time.Duration) ([]redis.XMessage, error) {
+func (q *RedisQueue) Consume(ctx context.Context, consumerName string, count int64, block time.Duration) ([]Message, error) {
 	streams, err := q.client.XReadGroup(ctx, &redis.XReadGroupArgs{
 		Group:    q.cfg.Group,
 		Consumer: consumerName,
@@ -103,7 +103,12 @@ func (q *RedisQueue) Consume(ctx context.Context, consumerName string, count int
 		return nil, nil
 	}
 
-	return streams[0].Messages, nil
+	messages := streams[0].Messages
+	result := make([]Message, 0, len(messages))
+	for _, m := range messages {
+		result = append(result, Message{ID: m.ID, Values: m.Values})
+	}
+	return result, nil
 }
 
 func (q *RedisQueue) Ack(ctx context.Context, messageID string) error {
@@ -111,7 +116,7 @@ func (q *RedisQueue) Ack(ctx context.Context, messageID string) error {
 }
 
 // AutoClaim recovers messages abandoned by dead consumers.
-func (q *RedisQueue) AutoClaim(ctx context.Context, consumerName string, minIdle time.Duration, count int64) ([]redis.XMessage, error) {
+func (q *RedisQueue) AutoClaim(ctx context.Context, consumerName string, minIdle time.Duration, count int64) ([]Message, error) {
 	messages, _, err := q.client.XAutoClaim(ctx, &redis.XAutoClaimArgs{
 		Stream:   q.cfg.Stream,
 		Group:    q.cfg.Group,
@@ -125,7 +130,11 @@ func (q *RedisQueue) AutoClaim(ctx context.Context, consumerName string, minIdle
 		return nil, err
 	}
 
-	return messages, nil
+	result := make([]Message, 0, len(messages))
+	for _, m := range messages {
+		result = append(result, Message{ID: m.ID, Values: m.Values})
+	}
+	return result, nil
 }
 
 // DeliveryCount reports how many times a pending message has been delivered.
@@ -150,13 +159,13 @@ func (q *RedisQueue) DeliveryCount(ctx context.Context, messageID string) (int64
 }
 
 // DeadLetter moves a poison message to the dead letter stream and acks it.
-func (q *RedisQueue) DeadLetter(ctx context.Context, message redis.XMessage, reason string) error {
+func (q *RedisQueue) DeadLetter(ctx context.Context, msg Message, reason string) error {
 	values := map[string]any{
-		"original_id": message.ID,
+		"original_id": msg.ID,
 		"reason":      reason,
 		"failed_at":   time.Now().UTC().Format(time.RFC3339),
 	}
-	if payload, ok := message.Values["payload"]; ok {
+	if payload, ok := msg.Values["payload"]; ok {
 		values["payload"] = payload
 	}
 
@@ -169,12 +178,7 @@ func (q *RedisQueue) DeadLetter(ctx context.Context, message redis.XMessage, rea
 		return fmt.Errorf("publish dead letter: %w", err)
 	}
 
-	return q.Ack(ctx, message.ID)
-}
-
-type Stats struct {
-	Lag     int64 `json:"lag"`
-	Pending int64 `json:"pending"`
+	return q.Ack(ctx, msg.ID)
 }
 
 // Stats reports backlog (entries not yet delivered) and pending (delivered
@@ -196,3 +200,5 @@ func (q *RedisQueue) Stats(ctx context.Context) (Stats, error) {
 
 	return Stats{}, nil
 }
+
+var _ JobQueue = (*RedisQueue)(nil)

@@ -180,7 +180,7 @@ export function formatPingKpiValue(
   down: boolean,
 ): string {
   if (value != null) {
-    return format === "ms" ? String(Math.round(value)) : value.toFixed(2);
+    return format === "ms" ? String(Math.round(value)) : String(Math.round(value));
   }
   if (down) {
     return format === "ms" ? "∞" : "100";

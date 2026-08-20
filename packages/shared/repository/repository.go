@@ -31,6 +31,9 @@ type ResultRepository interface {
 	LatestSuccessAt(ctx context.Context, monitorID string) (*time.Time, error)
 	// LatestResultsByProbe returns the most recent result per probe location.
 	LatestResultsByProbe(ctx context.Context, monitorID string, limit int) ([]domain.ProbeResult, error)
+	// StatusCodeDistribution returns the HTTP status-code counts for a monitor
+	// over a time window, ordered by count descending.
+	StatusCodeDistribution(ctx context.Context, monitorID string, from, to time.Time) ([]domain.StatusCodeCount, error)
 	DashboardSummary(ctx context.Context) (domain.DashboardSummary, error)
 }
 

@@ -82,6 +82,18 @@ export function PingMetricChart({
         : value.toFixed(1)
       : String(value);
 
+  // X-axis time labels only at multiples of ten minutes (e.g. 14:00, 14:10,
+  // 14:20) so the axis stays sparse instead of a wall of overlapping times.
+  const timeLabelFormatter = (value: unknown) => {
+    if (typeof value !== "number") return "";
+    const date = new Date(value);
+    if (date.getMinutes() % 10 !== 0) return "";
+    return new Intl.DateTimeFormat(locale, {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(date);
+  };
+
   const option = useMemo(() => {
     const markLine = {
       silent: true,
@@ -112,11 +124,33 @@ export function PingMetricChart({
 
     return {
       animation: false,
-      grid: makeGrid({ top: 24, right: 16, bottom: 40, left: 48 }),
+      grid: makeGrid({ top: 16, right: 16, bottom: 56, left: 48 }),
       tooltip: { ...makeTooltip(palette, formatter), textStyle: { color: palette.tooltipText, fontSize: 12, fontFamily: CHART_FONT } },
-      xAxis: { ...makeTimeXAxis(locale, palette, CHART_FONT) },
+      legend: {
+        type: "scroll" as const,
+        bottom: 0,
+        left: 0,
+        right: 0,
+        icon: "roundRect",
+        itemWidth: 14,
+        itemHeight: 7,
+        itemGap: 14,
+        textStyle: { color: palette.text, fontFamily: CHART_FONT, fontSize: 11 },
+      },
+      xAxis: {
+        ...makeTimeXAxis(locale, palette, CHART_FONT),
+        axisLabel: {
+          color: palette.text,
+          fontFamily: CHART_FONT,
+          hideOverlap: true,
+          interval: 0,
+          formatter: timeLabelFormatter,
+        },
+      },
       yAxis: {
         type: "value" as const,
+        name: unit === "ms" ? "ms" : "%",
+        nameTextStyle: { color: palette.text, fontFamily: CHART_FONT, align: "left", verticalAlign: "bottom" },
         axisLabel: { color: palette.text, fontFamily: CHART_FONT, formatter: axisFormatter },
         axisLine: { show: false },
         axisTick: { show: false },
@@ -192,7 +226,7 @@ export function PingMetricChart({
               className="h-6 px-2 text-xs"
               onClick={() => setSelected("all")}
             >
-              {isFa ? "???" : "All"}
+              {isFa ? "همه" : "All"}
             </Button>
             {locations.map((loc) => (
               <Button
@@ -214,16 +248,16 @@ export function PingMetricChart({
           <Skeleton className="h-60 w-full rounded-lg" />
         ) : isError ? (
           <div className="flex h-60 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
-            <span>{isFa ? "??? ?? ?????? ????" : "Unable to load data"}</span>
+            <span>{isFa ? "امکان بارگذاری داده وجود ندارد" : "Unable to load data"}</span>
             {onRetry && (
               <Button type="button" variant="outline" size="sm" onClick={onRetry}>
-                {isFa ? "???? ????" : "Retry"}
+                {isFa ? "تلاش مجدد" : "Retry"}
               </Button>
             )}
           </div>
         ) : visible.length === 0 ? (
           <div className="flex h-60 items-center justify-center text-sm text-muted-foreground">
-            {isFa ? "??????? ???? ????? ????" : "No data to display"}
+            {isFa ? "داده‌ای برای نمایش وجود ندارد" : "No data to display"}
           </div>
         ) : (
           <EChart

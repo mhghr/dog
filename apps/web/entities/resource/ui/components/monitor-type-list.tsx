@@ -83,9 +83,20 @@ export function MonitorTypeList({
   }
 
   const sorted = [...displayTypes].sort((a, b) => {
-    const isPing = (t: typeof a) => t.title === "Ping" || t.title === "پینگ" || t.titleFa === "پینگ";
-    if (isPing(a)) return -1;
-    if (isPing(b)) return 1;
+    // Stable order: Ping, HTTP, TCP, DNS, SSL, then the remaining types.
+    const rank = (t: { title: string; titleFa: string }) => {
+      const en = t.title.toLowerCase();
+      const fa = t.titleFa.toLowerCase();
+      if (en === "ping" || fa.includes("پینگ")) return 0;
+      if (en.includes("http")) return 1;
+      if (en.includes("tcp") || fa.includes("پورت tcp")) return 2;
+      if (en.includes("dns") || fa.includes("dns") || fa.includes("تفکیک")) return 3;
+      if (en.includes("ssl") || en.includes("certificate") || fa.includes("گواهی")) return 4;
+      return 5;
+    };
+    const ra = rank(a);
+    const rb = rank(b);
+    if (ra !== rb) return ra - rb;
     return 0;
   });
 

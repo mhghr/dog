@@ -103,4 +103,5 @@ export interface MonitorMetricsResponse {
   metric_key?: string;
   monitor_type?: string;
   last_success_at?: string | null;
+  status_codes?: Array<{ code: number; count: number }>;
 }

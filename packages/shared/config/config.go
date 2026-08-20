@@ -27,6 +27,14 @@ type Config struct {
 	WorkerConcurrency int
 	APIBaseURL        string
 
+	// Enterprise concurrency controls. PerType is a comma-separated list
+	// (e.g. "http=500,ping=200,tcp=300"); the global WorkerConcurrency
+	// always bounds the fleet, and these bound how much of it a single check
+	// type / workspace may consume so one tenant cannot saturate the probe
+	// fleet.
+	WorkerPerTypeConcurrency      string
+	WorkerPerWorkspaceConcurrency int
+
 	SchedulerBatchSize int
 	SchedulerInterval  time.Duration
 
@@ -102,6 +110,9 @@ func Load() *Config {
 		WorkerName:        getString("WORKER_NAME", defaultWorkerName()),
 		WorkerConcurrency: getInt("WORKER_CONCURRENCY", 8),
 		APIBaseURL:        getString("API_BASE_URL", "http://localhost:5000"),
+
+		WorkerPerTypeConcurrency:      getString("WORKER_PER_TYPE_CONCURRENCY", ""),
+		WorkerPerWorkspaceConcurrency: getInt("WORKER_PER_WORKSPACE_CONCURRENCY", 0),
 
 		SchedulerBatchSize: getInt("SCHEDULER_BATCH_SIZE", 100),
 		SchedulerInterval:  getDuration("SCHEDULER_INTERVAL", time.Second),

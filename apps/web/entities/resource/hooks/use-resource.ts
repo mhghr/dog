@@ -16,7 +16,11 @@ export { type Monitor, type MonitorInput };
 export {
   RANGE_MILLIS,
   buildMetricsQueryString,
+  isDnsMonitor,
+  isHttpMonitor,
   isPingMonitor,
+  isTcpMonitor,
+  isTlsMonitor,
   resourceListQueryString,
   resourceMonitorMetricsQueryKey,
   type MetricsRange,

@@ -54,6 +54,42 @@ func TestExecuteWithRetrySucceedsAfterFailure(t *testing.T) {
 	if result.Attributes["max_attempts"] != 3 {
 		t.Fatalf("expected max_attempts 3, got %v", result.Attributes["max_attempts"])
 	}
+	if result.Attributes["attempts"] != 2 {
+		t.Fatalf("expected attempts attribute 2, got %v", result.Attributes["attempts"])
+	}
+	if result.Attributes["first_attempt_failed"] != true {
+		t.Fatalf("expected first_attempt_failed=true, got %v", result.Attributes["first_attempt_failed"])
+	}
+	if result.Attributes["execution_id"] != "job-1" {
+		t.Fatalf("expected execution_id=job-1, got %v", result.Attributes["execution_id"])
+	}
+}
+
+func TestExecuteWithRetryCleanSuccessBookkeeping(t *testing.T) {
+	executor := &flakyExecutor{failuresBeforeSuccess: 0}
+
+	job := domain.ProbeJob{
+		ID:            "job-4",
+		MonitorID:     "monitor-4",
+		Type:          domain.MonitorHTTP,
+		TimeoutMillis: 1000,
+		Retries:       2,
+	}
+
+	result := ExecuteWithRetry(context.Background(), executor, job)
+
+	if !result.Success {
+		t.Fatalf("expected success, got %+v", result)
+	}
+	if result.Attributes["attempts"] != 1 {
+		t.Fatalf("expected attempts=1, got %v", result.Attributes["attempts"])
+	}
+	if result.Attributes["first_attempt_failed"] != false {
+		t.Fatalf("expected first_attempt_failed=false, got %v", result.Attributes["first_attempt_failed"])
+	}
+	if result.Attributes["execution_id"] != "job-4" {
+		t.Fatalf("expected execution_id=job-4, got %v", result.Attributes["execution_id"])
+	}
 }
 
 func TestExecuteWithRetryExhaustsAttempts(t *testing.T) {
@@ -81,6 +117,12 @@ func TestExecuteWithRetryExhaustsAttempts(t *testing.T) {
 	}
 	if result.ErrorCode != "http_request_failed" {
 		t.Fatalf("unexpected error code %s", result.ErrorCode)
+	}
+	if result.Attributes["attempts"] != 2 {
+		t.Fatalf("expected attempts=2 on exhausted retries, got %v", result.Attributes["attempts"])
+	}
+	if result.Attributes["first_attempt_failed"] != true {
+		t.Fatalf("expected first_attempt_failed=true, got %v", result.Attributes["first_attempt_failed"])
 	}
 }
 

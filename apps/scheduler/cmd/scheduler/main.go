@@ -19,6 +19,7 @@ import (
 	"monitoring-platform/packages/shared/logging"
 	"monitoring-platform/packages/shared/metrics"
 	"monitoring-platform/packages/shared/infrastructure/postgres"
+	"monitoring-platform/packages/shared/ingestion/messagebus"
 	"monitoring-platform/packages/shared/queue"
 	"monitoring-platform/packages/shared/scheduler"
 )
@@ -65,6 +66,40 @@ func main() {
 		os.Exit(1)
 	}
 
+	var jobQueue queue.JobQueue = probeQueue
+
+	// Enterprise execution backbone: publish probe jobs over NATS JetStream
+	// (PROBE_JOBS stream) instead of Redis Streams. Redis remains the cache/
+	// session/lock store; only the job backbone switches.
+	if mode := os.Getenv("TELEMETRY_PIPELINE_MODE"); mode == "nats" {
+		natsURL := os.Getenv("NATS_URL")
+		if natsURL == "" {
+			natsURL = "nats://localhost:4222"
+		}
+		natsBus, err := messagebus.NewNATSBus(messagebus.NATSConfig{
+			URL:       natsURL,
+			Reconnect: true,
+			MaxReconn: 10,
+		}, logger)
+		if err != nil {
+			logger.Error("NATS connection failed", "error", err)
+			os.Exit(1)
+		}
+		defer natsBus.Close()
+
+		natsQueue, err := queue.NewNATSQueue(natsBus, "scheduler", logger)
+		if err != nil {
+			logger.Error("NATS queue setup failed", "error", err)
+			os.Exit(1)
+		}
+		if err := natsQueue.EnsureGroup(ctx); err != nil {
+			logger.Error("NATS queue ensure group failed", "error", err)
+			os.Exit(1)
+		}
+		jobQueue = natsQueue
+		logger.Info("probe job backbone switched to NATS JetStream")
+	}
+
 	enabledLocations, err := loadProbeLocations(ctx, cfg, pool)
 	if err != nil {
 		logger.Error("load probe locations failed", "error", err)
@@ -82,7 +117,7 @@ func main() {
 
 	service := scheduler.New(
 		monitorRepo,
-		probeQueue,
+		jobQueue,
 		enabledLocations,
 		cfg.SchedulerBatchSize,
 		cfg.SchedulerInterval,

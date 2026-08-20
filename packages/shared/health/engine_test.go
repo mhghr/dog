@@ -104,6 +104,86 @@ func pingReachabilityDef() ParameterDefinition {
 	panic("ping.reachability not found")
 }
 
+func httpDef(key string) ParameterDefinition {
+	for _, p := range HTTPParameters {
+		if p.Key == key {
+			return p
+		}
+	}
+	panic("http parameter not found: " + key)
+}
+
+func TestEngineEvaluateHTTPReachability(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	engine := NewEngine(stubHealthRepo{}, logger)
+
+	def := httpDef("http.reachability")
+	rule := defaultRuleFromCatalog(def, "m1")
+
+	state := engine.EvaluateParameter(context.Background(), "m1", "http.reachability", []float64{0}, &rule, def)
+	if state != HealthError {
+		t.Fatalf("down http reachability should be HealthError, got %s", state)
+	}
+	state = engine.EvaluateParameter(context.Background(), "m1", "http.reachability", []float64{1}, &rule, def)
+	if state != HealthOK {
+		t.Fatalf("up http reachability should be HealthOK, got %s", state)
+	}
+}
+
+func TestEngineEvaluateHTTPContentAssertion(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	engine := NewEngine(stubHealthRepo{}, logger)
+
+	def := httpDef("http.content_assertion")
+	rule := defaultRuleFromCatalog(def, "m1")
+
+	state := engine.EvaluateParameter(context.Background(), "m1", "http.content_assertion", []float64{0}, &rule, def)
+	if state != HealthError {
+		t.Fatalf("failed content assertion should be HealthError, got %s", state)
+	}
+	state = engine.EvaluateParameter(context.Background(), "m1", "http.content_assertion", []float64{1}, &rule, def)
+	if state != HealthOK {
+		t.Fatalf("passed content assertion should be HealthOK, got %s", state)
+	}
+}
+
+func TestExtractParamValueHTTPAliases(t *testing.T) {
+	result := &domain.ProbeResult{
+		Metrics: map[string]any{
+			"reachability":        0.0,
+			"status_code":         500.0,
+			"response_time_ms":    1200.0,
+			"content_assertion":   1.0,
+			"dns_duration_ms":     50.0,
+			"ttfb_ms":             300.0,
+			"download_time_ms":    200.0,
+			"response_size_bytes": 4096.0,
+		},
+	}
+
+	cases := []struct {
+		key      string
+		expected float64
+		found    bool
+	}{
+		{"http.reachability", 0, true},
+		{"http.status_code", 500, true},
+		{"http.response_time_ms", 1200, true},
+		{"http.content_assertion", 1, true},
+		{"http.dns_duration_ms", 50, true},
+		{"http.ttfb_ms", 300, true},
+		{"http.download_time_ms", 200, true},
+		{"http.response_size_bytes", 4096, true},
+	}
+
+	for _, tc := range cases {
+		value, ok := extractParamValue(result, tc.key)
+		if ok != tc.found || (ok && value != tc.expected) {
+			t.Errorf("extractParamValue(%s) = %v,%v; want %v,%v", tc.key, value, ok, tc.expected, tc.found)
+		}
+	}
+}
+
 func TestEvaluateThresholds(t *testing.T) {
 	compare := compareValue
 

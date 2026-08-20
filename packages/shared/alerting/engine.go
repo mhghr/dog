@@ -121,13 +121,25 @@ func (e *Engine) evaluatePolicy(ctx context.Context, policy domain.AlertPolicy, 
 		alert.Description = fmt.Sprintf("Resolved after %d consecutive successes", alert.ConsecutiveSuccesses)
 	}
 
+	// Flapping suppression: record a transition and, when transitions within
+	// the window exceed the threshold, mark the alert as flapping. Flapping
+	// alerts keep tracking state but do NOT emit firing/recovery events, so
+	// an oscillating service cannot generate an alert/recovery storm.
+	stateChanged := alert.State != oldState
+	if stateChanged {
+		now := time.Now().UTC()
+		alert.TransitionTimes = append(alert.TransitionTimes, now)
+	}
+	flapping := isFlapping(&alert, &policy)
+	alert.Flapping = flapping
+
 	alert.DedupKey = dedupKey
 	if err := e.alerts.UpsertAlert(ctx, &alert); err != nil {
 		e.Logger.Error("alert: upsert failed", "alert_id", alert.ID, "error", err)
 		return nil
 	}
 
-	if alert.State != oldState && (alert.State == "firing" || alert.State == "recovering" || alert.State == "resolved") {
+	if stateChanged && !flapping && (alert.State == "firing" || alert.State == "recovering" || alert.State == "resolved") {
 		return &domain.EvaluateResult{
 			AlertID:     alert.ID,
 			OldState:    oldState,
@@ -141,6 +153,23 @@ func (e *Engine) evaluatePolicy(ctx context.Context, policy domain.AlertPolicy, 
 	}
 
 	return nil
+}
+
+// isFlapping reports whether the alert has had too many state transitions
+// within the configured window. Zero threshold/window disables the check.
+func isFlapping(alert *domain.Alert, policy *domain.AlertPolicy) bool {
+	if policy.FlappingWindowSeconds <= 0 || policy.FlappingThreshold <= 0 {
+		return false
+	}
+
+	cutoff := time.Now().UTC().Add(-time.Duration(policy.FlappingWindowSeconds) * time.Second)
+	count := 0
+	for _, ts := range alert.TransitionTimes {
+		if ts.After(cutoff) {
+			count++
+		}
+	}
+	return count >= policy.FlappingThreshold
 }
 
 // ---------------------------------------------------------------------------

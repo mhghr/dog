@@ -33,6 +33,23 @@ export function formatDuration(
   }).format(millis / 1000)} s`;
 }
 
+export function formatBytes(
+  value: number | null | undefined,
+  locale: string,
+): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "—";
+  }
+
+  if (value < 1024) {
+    return `${formatNumber(Math.round(value), locale)} B`;
+  }
+  if (value < 1024 * 1024) {
+    return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(value / 1024)} KB`;
+  }
+  return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(value / (1024 * 1024))} MB`;
+}
+
 export function formatDateTime(
   value: string | null | undefined,
   locale: string,

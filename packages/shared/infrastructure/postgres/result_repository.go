@@ -658,3 +658,33 @@ func (r *ResultRepository) LatestSuccessAt(ctx context.Context, monitorID string
 	}
 	return &at, nil
 }
+
+// StatusCodeDistribution returns HTTP status-code counts for a monitor over a
+// time window, ordered by count descending. Only results that recorded a
+// status code are counted.
+func (r *ResultRepository) StatusCodeDistribution(ctx context.Context, monitorID string, from, to time.Time) ([]domain.StatusCodeCount, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT (attributes->>'status_code')::int AS code, COUNT(*)::bigint
+		FROM probe_results
+		WHERE monitor_id = $1::uuid
+		  AND started_at >= $2
+		  AND started_at < $3
+		  AND attributes ? 'status_code'
+		GROUP BY code
+		ORDER BY count DESC`,
+		monitorID, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("query status code distribution: %w", err)
+	}
+	defer rows.Close()
+
+	distribution := make([]domain.StatusCodeCount, 0)
+	for rows.Next() {
+		var entry domain.StatusCodeCount
+		if err := rows.Scan(&entry.Code, &entry.Count); err != nil {
+			return nil, fmt.Errorf("scan status code distribution: %w", err)
+		}
+		distribution = append(distribution, entry)
+	}
+	return distribution, rows.Err()
+}

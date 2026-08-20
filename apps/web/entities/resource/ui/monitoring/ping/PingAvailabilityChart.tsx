@@ -117,11 +117,11 @@ export function PingAvailabilityChart({
           <Skeleton className="h-60 w-full rounded-lg" />
         ) : isError ? (
           <div className="flex h-60 items-center justify-center text-sm text-muted-foreground">
-            {isFa ? "??? ?? ?????? ????" : "Unable to load data"}
+            {isFa ? "امکان بارگذاری داده وجود ندارد" : "Unable to load data"}
           </div>
         ) : series.length === 0 ? (
           <div className="flex h-60 items-center justify-center text-sm text-muted-foreground">
-            {isFa ? "??????? ???? ????? ????" : "No data to display"}
+            {isFa ? "داده‌ای برای نمایش وجود ندارد" : "No data to display"}
           </div>
         ) : (
           <EChart option={option} className="h-60 w-full" ariaLabel={title} />

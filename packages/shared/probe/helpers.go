@@ -3,6 +3,7 @@ package probe
 import (
 	"context"
 	"errors"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -199,4 +200,45 @@ func containsInt(values []int, expected int) bool {
 	}
 
 	return false
+}
+
+// secretRefPattern matches `${secret:name}` references in header values.
+var secretRefPattern = regexp.MustCompile(`\$\{secret:([^}]+)\}`)
+
+// resolveSecrets replaces `${secret:name}` placeholders with values from the
+// SecretResolver. Unresolvable references fail explicitly — a raw reference
+// is never sent on the wire or stored. A nil resolver means references are
+// unsupported in this deployment, so any reference is an error.
+func resolveSecrets(ctx context.Context, resolver SecretResolver, value string) (string, error) {
+	if !strings.Contains(value, "${secret:") {
+		return value, nil
+	}
+	if resolver == nil {
+		return "", errors.New("secret references are not supported in this deployment")
+	}
+
+	var lastErr error
+	resolved := secretRefPattern.ReplaceAllStringFunc(value, func(match string) string {
+		parts := secretRefPattern.FindStringSubmatch(match)
+		if len(parts) < 2 {
+			return match
+		}
+		secretValue, err := resolver.Resolve(ctx, strings.TrimSpace(parts[1]))
+		if err != nil {
+			lastErr = err
+			return match
+		}
+		return secretValue
+	})
+	if lastErr != nil {
+		return "", lastErr
+	}
+	return resolved, nil
+}
+
+func boolToInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }

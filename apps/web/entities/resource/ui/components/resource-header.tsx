@@ -63,7 +63,7 @@ function ResourceLocationLine({ resource, fa }: { resource: Resource; fa: boolea
   return (
     <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
       <MapPin className="size-3 shrink-0" />
-      <span dir="auto">{label || (fa ? "??????" : "Unknown")}</span>
+      <span dir="auto">{label || (fa ? "نامشخص" : "Unknown")}</span>
     </p>
   );
 }
@@ -121,7 +121,7 @@ function EditResourceDialog({
     try {
       const metadata = { ...resource.metadata, location };
       await update.mutateAsync({ name: name.trim(), target: target.trim(), metadata });
-      toast.success(fa ? "????? ??" : "Saved");
+      toast.success(fa ? "ذخیره شد" : "Saved");
       onOpenChange(false);
     } catch (err) {
       const msg = apiErrorMessage(err, fa);
@@ -135,12 +135,12 @@ function EditResourceDialog({
     <Dialog open onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{fa ? "?????? ??????" : "Edit resource"}</DialogTitle>
+          <DialogTitle>{fa ? "ویرایش منبع" : "Edit resource"}</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="res-name">{fa ? "???" : "Name"}</Label>
+            <Label htmlFor="res-name">{fa ? "نام" : "Name"}</Label>
             <Input
               id="res-name"
               value={name}
@@ -150,7 +150,7 @@ function EditResourceDialog({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="res-target">{fa ? "???? / IP" : "Address / IP"}</Label>
+            <Label htmlFor="res-target">{fa ? "آدرس / IP" : "Address / IP"}</Label>
             <Input
               id="res-target"
               value={target}
@@ -160,12 +160,12 @@ function EditResourceDialog({
             {detecting ? (
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Loader2 className="size-3 animate-spin" />
-                {fa ? "?? ??? ????? ??????..." : "Detecting location..."}
+                {fa ? "در حال شناسایی موقعیت..." : "Detecting location..."}
               </p>
             ) : (
               <p className="text-xs text-muted-foreground">
-                {fa ? "??????: " : "Location: "}
-                <span dir="auto">{locationLabel || (fa ? "??????" : "Unknown")}</span>
+                {fa ? "موقعیت: " : "Location: "}
+                <span dir="auto">{locationLabel || (fa ? "نامشخص" : "Unknown")}</span>
               </p>
             )}
           </div>
@@ -178,14 +178,14 @@ function EditResourceDialog({
               disabled={pending}
               onClick={() => onOpenChange(false)}
             >
-              {fa ? "??????" : "Cancel"}
+              {fa ? "انصراف" : "Cancel"}
             </Button>
             <Button
               size="sm"
               disabled={pending || !name.trim()}
               onClick={() => void submit()}
             >
-              {pending ? (fa ? "?? ??? ?????..." : "Saving...") : (fa ? "?????" : "Save")}
+              {pending ? (fa ? "در حال ذخیره..." : "Saving...") : (fa ? "ذخیره" : "Save")}
             </Button>
           </div>
         </div>
@@ -209,16 +209,16 @@ export function ResourceHeader({ resourceId }: { resourceId: string }) {
   const a = r.avg_response_ms;
 
   const hl = fa
-    ? h === "healthy" ? "????" : h === "degraded" ? "?????" : h === "down" ? "?????" : "—"
+    ? h === "healthy" ? "سالم" : h === "degraded" ? "هشدار" : h === "down" ? "قطع" : "—"
     : h === "healthy" ? "Healthy" : h === "degraded" ? "Warning" : h === "down" ? "Down" : "—";
 
   const resIcon = getResourceIcon(r.type_category);
 
   const stats = [
-    { label: fa ? "?????" : "Status", value: hl, tone: h === "healthy" ? "success" : h === "degraded" ? "warning" : "muted" as const },
-    { label: fa ? "??????" : "Uptime", value: s > 0 ? `${s.toFixed(1)}%` : "—", tone: s >= 99 ? "success" as const : s >= 95 ? "warning" as const : "muted" as const },
-    { label: fa ? "?????????" : "Monitors", value: `${c}`, tone: "info" as const },
-    { label: fa ? "????" : "Response", value: a ? `${a}ms` : "—", tone: a && a < 500 ? "success" as const : a && a < 1000 ? "warning" as const : "muted" as const },
+    { label: fa ? "وضعیت" : "Status", value: hl, tone: h === "healthy" ? "success" : h === "degraded" ? "warning" : "muted" as const },
+    { label: fa ? "آپ‌تایم" : "Uptime", value: s > 0 ? `${s.toFixed(1)}%` : "—", tone: s >= 99 ? "success" as const : s >= 95 ? "warning" as const : "muted" as const },
+    { label: fa ? "مانیتورها" : "Monitors", value: `${c}`, tone: "info" as const },
+    { label: fa ? "پاسخ" : "Response", value: a ? `${a}ms` : "—", tone: a && a < 500 ? "success" as const : a && a < 1000 ? "warning" as const : "muted" as const },
   ];
 
   return (
@@ -253,12 +253,12 @@ export function ResourceHeader({ resourceId }: { resourceId: string }) {
               <h1 className="truncate text-xl font-bold tracking-tight">{r.name}</h1>
               <Badge className={cn("rounded-md border text-[11px] font-semibold uppercase tracking-wider px-2.5 py-0.5",
                 r.status === "active" ? "border-success/25 bg-success/10 text-success" : "border-muted bg-muted/40 text-muted-foreground"
-              )}>{fa ? "????" : r.status}</Badge>
+              )}>{fa ? "فعال" : r.status}</Badge>
               <Button
                 variant="ghost"
                 size="icon"
                 className="size-8 text-muted-foreground hover:text-foreground"
-                aria-label={fa ? "??????" : "Edit"}
+                aria-label={fa ? "ویرایش" : "Edit"}
                 onClick={() => setEditOpen(true)}
               >
                 <MoreHorizontal className="size-4" />

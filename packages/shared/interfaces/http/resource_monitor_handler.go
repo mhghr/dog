@@ -18,6 +18,11 @@ func (h *Handler) listResourceMonitors(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Tenant isolation: the resource must belong to the session organization.
+	if !h.resourceBelongsToOrg(w, r, resourceID) {
+		return
+	}
+
 	monitors, err := h.deps.MonitorRepo.ListByResource(r.Context(), resourceID)
 	if err != nil {
 		h.deps.Logger.Error("list resource monitors failed", "error", err)
@@ -34,6 +39,12 @@ func (h *Handler) createResourceMonitor(w http.ResponseWriter, r *http.Request) 
 	resourceID := chi.URLParam(r, "resourceID")
 	if _, err := uuid.Parse(resourceID); err != nil {
 		writeError(w, r, http.StatusBadRequest, "invalid_id", "resource id must be a valid UUID", nil)
+		return
+	}
+
+	// Tenant isolation: a monitor may only be created under a resource the
+	// session organization owns.
+	if !h.resourceBelongsToOrg(w, r, resourceID) {
 		return
 	}
 
@@ -79,6 +90,13 @@ func (h *Handler) getResourceMonitor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Tenant isolation: the monitor's parent resource must belong to the
+	// session organization. Resolving through the resource repo (org-owned)
+	// prevents cross-tenant ID enumeration.
+	if !h.monitorBelongsToOrg(w, r, monitorID) {
+		return
+	}
+
 	monitor, err := h.deps.MonitorRepo.GetByID(r.Context(), monitorID)
 	if err != nil {
 		writeDomainError(w, r, err)
@@ -91,6 +109,10 @@ func (h *Handler) updateResourceMonitor(w http.ResponseWriter, r *http.Request) 
 	monitorID := chi.URLParam(r, "monitorID")
 	if _, err := uuid.Parse(monitorID); err != nil {
 		writeError(w, r, http.StatusBadRequest, "invalid_id", "monitor id must be a valid UUID", nil)
+		return
+	}
+
+	if !h.monitorBelongsToOrg(w, r, monitorID) {
 		return
 	}
 
@@ -149,6 +171,10 @@ func (h *Handler) deleteResourceMonitor(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if !h.monitorBelongsToOrg(w, r, monitorID) {
+		return
+	}
+
 	if err := h.deps.MonitorRepo.Delete(r.Context(), monitorID); err != nil {
 		writeDomainError(w, r, err)
 		return
@@ -160,6 +186,10 @@ func (h *Handler) listResourceMonitorResults(w http.ResponseWriter, r *http.Requ
 	monitorID := chi.URLParam(r, "monitorID")
 	if _, err := uuid.Parse(monitorID); err != nil {
 		writeError(w, r, http.StatusBadRequest, "invalid_id", "monitor id must be a valid UUID", nil)
+		return
+	}
+
+	if !h.monitorBelongsToOrg(w, r, monitorID) {
 		return
 	}
 
@@ -193,6 +223,10 @@ func (h *Handler) resourceMonitorMetrics(w http.ResponseWriter, r *http.Request)
 	monitorID := chi.URLParam(r, "monitorID")
 	if _, err := uuid.Parse(monitorID); err != nil {
 		writeError(w, r, http.StatusBadRequest, "invalid_id", "monitor id must be a valid UUID", nil)
+		return
+	}
+
+	if !h.monitorBelongsToOrg(w, r, monitorID) {
 		return
 	}
 
@@ -272,6 +306,12 @@ func (h *Handler) resourceMonitorMetrics(w http.ResponseWriter, r *http.Request)
 		lastSuccessAt = nil
 	}
 
+	statusCodes, err := h.deps.Results.StatusCodeDistribution(r.Context(), monitorID, from, to)
+	if err != nil {
+		h.deps.Logger.Error("query status code distribution failed", "monitor_id", monitorID, "error", err)
+		statusCodes = nil
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"series":          series,
 		"latest":          latest,
@@ -282,6 +322,7 @@ func (h *Handler) resourceMonitorMetrics(w http.ResponseWriter, r *http.Request)
 		"metric_key":      metricKey,
 		"monitor_type":    string(monitor.Type),
 		"last_success_at": lastSuccessAt,
+		"status_codes":    statusCodes,
 	})
 }
 
@@ -289,6 +330,60 @@ const (
 	maxChartPoints = 1500
 	maxChartSeries = 25
 )
+
+// resourceBelongsToOrg verifies that the given resource belongs to the
+// session organization. Writes a 403/404 and returns false otherwise.
+func (h *Handler) resourceBelongsToOrg(w http.ResponseWriter, r *http.Request, resourceID string) bool {
+	orgID, ok := domain.OrgIDFromContext(r.Context())
+	if !ok {
+		writeError(w, r, http.StatusForbidden, "forbidden", "No organization in session", nil)
+		return false
+	}
+
+	res, err := h.deps.ResourceRepo.GetByID(r.Context(), resourceID)
+	if err != nil {
+		writeError(w, r, http.StatusNotFound, "not_found", "resource not found", nil)
+		return false
+	}
+	if res.OrganizationID != orgID {
+		writeError(w, r, http.StatusNotFound, "not_found", "resource not found", nil)
+		return false
+	}
+	return true
+}
+
+// monitorBelongsToOrg resolves the monitor's parent resource and verifies it
+// belongs to the session organization. Prevents cross-tenant ID enumeration
+// on monitor, result and metric endpoints.
+func (h *Handler) monitorBelongsToOrg(w http.ResponseWriter, r *http.Request, monitorID string) bool {
+	orgID, ok := domain.OrgIDFromContext(r.Context())
+	if !ok {
+		writeError(w, r, http.StatusForbidden, "forbidden", "No organization in session", nil)
+		return false
+	}
+
+	monitor, err := h.deps.MonitorRepo.GetByID(r.Context(), monitorID)
+	if err != nil {
+		writeError(w, r, http.StatusNotFound, "not_found", "monitor not found", nil)
+		return false
+	}
+
+	if monitor.ResourceID == "" {
+		writeError(w, r, http.StatusNotFound, "not_found", "monitor not found", nil)
+		return false
+	}
+
+	res, err := h.deps.ResourceRepo.GetByID(r.Context(), monitor.ResourceID)
+	if err != nil {
+		writeError(w, r, http.StatusNotFound, "not_found", "monitor not found", nil)
+		return false
+	}
+	if res.OrganizationID != orgID {
+		writeError(w, r, http.StatusNotFound, "not_found", "monitor not found", nil)
+		return false
+	}
+	return true
+}
 
 // resolveStep implements the spec downsampling table with a hard cap on the
 // number of returned points.

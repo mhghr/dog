@@ -5,7 +5,6 @@ import { useLocale } from "next-intl";
 
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Warning } from "@/shared/ui/icons";
-import { useChartPalette } from "@/shared/ui/charts/echart";
 import {
   useResourceMonitorMetrics,
   useResourceMonitorStatus,
@@ -23,13 +22,11 @@ import {
   summarize,
   toProbeStats,
   toChartSeries,
-  formatPingKpiValue,
   type PingChartSeries,
 } from "./ping-metrics";
 import { PingMonitorHeader } from "./PingMonitorHeader";
-import { PingKpiCard } from "./PingKpiCard";
+import { PingKpiGrid } from "./PingKpiGrid";
 import { PingMetricChart } from "./PingMetricChart";
-import { PingAvailabilityChart } from "./PingAvailabilityChart";
 import { PingProbeLocations } from "./PingProbeLocations";
 
 function isDataStale(
@@ -61,7 +58,6 @@ export function PingMonitoringView({
   const locale = useLocale();
   const isFa = locale === "fa";
   const [range, setRange] = useState<MetricsRange>("1h");
-  const palette = useChartPalette();
 
   const config = useMemo(() => readPingConfig(monitor.configuration), [monitor.configuration]);
 
@@ -165,7 +161,6 @@ export function PingMonitoringView({
             <Skeleton className="h-60 rounded-xl" />
             <Skeleton className="h-60 rounded-xl" />
           </div>
-          <Skeleton className="h-48 rounded-xl" />
         </div>
       ) : !hasData ? (
         <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-border/60 bg-card px-6 py-16 shadow-subtle">
@@ -187,16 +182,16 @@ export function PingMonitoringView({
             down={overall === "down"}
             summary={summary}
             states={kpiStates}
-            colors={palette.series}
             availabilitySeries={statusSeries}
             latencySeries={latencySeries}
             lossSeries={packetLossSeries}
             jitterSeries={jitterSeries}
             lastSuccessAt={lastSuccessAt}
             failureReason={failureReason}
+            rangeLabel={range}
           />
 
-          {/* Charts — equal width side by side */}
+          {/* Latency chart + per-probe table — equal width side by side */}
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <PingMetricChart
               title={t("Latency over time", "تأخیر در طول زمان")}
@@ -207,20 +202,12 @@ export function PingMonitoringView({
               isLoading={latencyQuery.isPending}
               isError={latencyQuery.isError}
             />
-            <PingAvailabilityChart
-              title={t("Availability over time", "دسترس‌پذیری در طول زمان")}
-              series={statusSeries}
-              isLoading={statusQuery.isPending}
-              isError={statusQuery.isError}
+            <PingProbeLocations
+              stats={probeStats}
+              thresholds={config.thresholds}
+              isLoading={latencyQuery.isPending}
             />
           </div>
-
-          {/* Per-probe parameters table */}
-          <PingProbeLocations
-            stats={probeStats}
-            thresholds={config.thresholds}
-            isLoading={latencyQuery.isPending}
-          />
         </>
       )}
     </section>
@@ -232,13 +219,13 @@ function KpiGrid({
   down,
   summary,
   states,
-  colors,
   availabilitySeries,
   latencySeries,
   lossSeries,
   jitterSeries,
   lastSuccessAt,
   failureReason,
+  rangeLabel,
 }: {
   isFa: boolean;
   down: boolean;
@@ -249,13 +236,13 @@ function KpiGrid({
     packetLoss: PingHealthState;
     jitter: PingHealthState;
   };
-  colors: string[];
   availabilitySeries: PingChartSeries[];
   latencySeries: PingChartSeries[];
   lossSeries: PingChartSeries[];
   jitterSeries: PingChartSeries[];
   lastSuccessAt: string | null;
   failureReason: string | null;
+  rangeLabel: string;
 }) {
   const t = (en: string, fa: string) => (isFa ? fa : en);
 
@@ -285,46 +272,16 @@ function KpiGrid({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <PingKpiCard
-          label={t("Availability", "دسترس‌پذیری")}
-          value={summary.availability == null
-            ? down ? "0.00" : "N/A"
-            : summary.availability.toFixed(2)}
-          unit="%"
-          state={states.availability}
-          spark={availabilitySeries}
-          colors={colors}
-          sparkLabel={t("Availability trend", "روند دسترس‌پذیری")}
-        />
-        <PingKpiCard
-          label={t("Latency", "تأخیر")}
-          value={formatPingKpiValue(summary.latency, "ms", down)}
-          unit={summary.latency != null || down ? "ms" : undefined}
-          state={states.latency}
-          spark={latencySeries}
-          colors={colors}
-          sparkLabel={t("Latency trend", "روند تأخیر")}
-        />
-        <PingKpiCard
-          label={t("Packet loss", "افت بسته")}
-          value={formatPingKpiValue(summary.packetLoss, "percent", down)}
-          unit={summary.packetLoss != null || down ? "%" : undefined}
-          state={states.packetLoss}
-          spark={lossSeries}
-          colors={colors}
-          sparkLabel={t("Packet loss trend", "روند افت بسته")}
-        />
-        <PingKpiCard
-          label={t("Jitter", "نوسان")}
-          value={formatPingKpiValue(summary.jitter, "ms", down)}
-          unit={summary.jitter != null || down ? "ms" : undefined}
-          state={states.jitter}
-          spark={jitterSeries}
-          colors={colors}
-          sparkLabel={t("Jitter trend", "روند نوسان")}
-        />
-      </div>
+      <PingKpiGrid
+        isFa={isFa}
+        summary={summary}
+        states={states}
+        availabilitySeries={availabilitySeries}
+        latencySeries={latencySeries}
+        lossSeries={lossSeries}
+        jitterSeries={jitterSeries}
+        rangeLabel={rangeLabel}
+      />
     </section>
   );
 }

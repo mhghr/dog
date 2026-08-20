@@ -14,11 +14,24 @@ type Executor interface {
 	Execute(ctx context.Context, job domain.ProbeJob) domain.ProbeResult
 }
 
+// SecretResolver resolves secret references (`${secret:name}`) at execution
+// time. Implementations back onto a vault/KMS/env provider so raw credentials
+// never live in monitor configuration, logs, or result attributes. A nil
+// resolver leaves references unresolved (an explicit failure) rather than
+// silently emitting the reference itself.
+type SecretResolver interface {
+	// Resolve returns the secret value for name, or an error when it is
+	// missing. Implementations must never log or return the raw value in
+	// error messages.
+	Resolve(ctx context.Context, name string) (string, error)
+}
+
 // Deps carries shared infrastructure into executors.
 type Deps struct {
 	Guard          *security.Guard
 	Logger         *slog.Logger
 	PingPrivileged bool
+	Secrets        SecretResolver
 }
 
 type Registry struct {

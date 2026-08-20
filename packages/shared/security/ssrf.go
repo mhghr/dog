@@ -50,15 +50,106 @@ func (e *BlockedTargetError) Error() string {
 type Guard struct {
 	allowPrivate bool
 	resolver     *net.Resolver
+	family       IPFamily
+}
+
+// IPFamily restricts which address families a probe may dial. Auto allows
+// both IPv4 and IPv6; IPv4/IPv6 force a single family for enterprise
+// infrastructure monitoring where the target must be reached over a
+// specific network stack.
+type IPFamily string
+
+const (
+	IPFamilyAuto IPFamily = "auto"
+	IPFamilyIPv4 IPFamily = "ipv4"
+	IPFamilyIPv6 IPFamily = "ipv6"
+)
+
+// ParseIPFamily normalizes a user-supplied family string. Unknown values
+// fall back to Auto so a bad config never hard-fails a probe.
+func ParseIPFamily(value string) IPFamily {
+	switch IPFamily(value) {
+	case IPFamilyIPv4, IPFamilyIPv6:
+		return IPFamily(value)
+	default:
+		return IPFamilyAuto
+	}
 }
 
 func NewGuard(allowPrivate bool) *Guard {
 	return &Guard{
 		allowPrivate: allowPrivate,
 		resolver:     net.DefaultResolver,
+		family:       IPFamilyAuto,
 	}
 }
 
+// WithIPFamily returns a copy of the guard restricted to one address family.
+// The shared resolver/allowPrivate settings are preserved.
+func (g *Guard) WithIPFamily(family IPFamily) *Guard {
+	clone := *g
+	clone.family = family
+	return &clone
+}
+
+// DialContext dials only addresses that pass validation and the configured
+// family filter. The connection is always established against a
+// pre-validated IP, never a re-resolved name.
+func (g *Guard) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, fmt.Errorf("invalid address %q: %w", address, err)
+	}
+
+	ips, err := g.ResolveAndValidate(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+
+	ips = filterFamily(ips, g.family)
+	if len(ips) == 0 {
+		return nil, &BlockedTargetError{Host: host, Reason: "no address matches the configured IP family"}
+	}
+
+	dialer := &net.Dialer{Timeout: 30 * time.Second}
+
+	var lastErr error
+	for _, ip := range ips {
+		conn, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+		if dialErr == nil {
+			return conn, nil
+		}
+		lastErr = dialErr
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+	}
+
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no reachable address for %q", host)
+	}
+
+	return nil, lastErr
+}
+
+// filterFamily keeps only the addresses the configured family allows.
+func filterFamily(ips []net.IP, family IPFamily) []net.IP {
+	if family != IPFamilyIPv4 && family != IPFamilyIPv6 {
+		return ips
+	}
+
+	filtered := make([]net.IP, 0, len(ips))
+	for _, ip := range ips {
+		isIPv4 := ip.To4() != nil
+		if (family == IPFamilyIPv4 && isIPv4) || (family == IPFamilyIPv6 && !isIPv4) {
+			filtered = append(filtered, ip)
+		}
+	}
+	return filtered
+}
 func (g *Guard) AllowPrivate() bool {
 	return g.allowPrivate
 }
@@ -117,43 +208,6 @@ func (g *Guard) ResolveAndValidate(ctx context.Context, host string) ([]net.IP, 
 	}
 
 	return ips, nil
-}
-
-// DialContext dials only addresses that pass validation. The connection is
-// always established against a pre-validated IP, never a re-resolved name.
-func (g *Guard) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
-	host, port, err := net.SplitHostPort(address)
-	if err != nil {
-		return nil, fmt.Errorf("invalid address %q: %w", address, err)
-	}
-
-	ips, err := g.ResolveAndValidate(ctx, host)
-	if err != nil {
-		return nil, err
-	}
-
-	dialer := &net.Dialer{Timeout: 30 * time.Second}
-
-	var lastErr error
-	for _, ip := range ips {
-		conn, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
-		if dialErr == nil {
-			return conn, nil
-		}
-		lastErr = dialErr
-
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
-	}
-
-	if lastErr == nil {
-		lastErr = fmt.Errorf("no reachable address for %q", host)
-	}
-
-	return nil, lastErr
 }
 
 // WrapTransport forces an HTTP transport through the guarded dialer.

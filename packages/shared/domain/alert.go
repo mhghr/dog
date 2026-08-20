@@ -33,8 +33,16 @@ type AlertPolicy struct {
 	RenotifySeconds    int
 	Enabled            bool
 	ChannelIDs         []string
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+
+	// Flapping suppression: when the number of state transitions within
+	// FlappingWindowSeconds reaches FlappingThreshold, firing/recovery
+	// notifications are suppressed (the alert state still tracks) so a
+	// service that oscillates healthy/failed does not produce an
+	// alert/recovery storm. Zero disables flapping detection.
+	FlappingWindowSeconds int
+	FlappingThreshold     int
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
 }
 
 // Alert represents a stateful alert event.
@@ -59,7 +67,12 @@ type Alert struct {
 	AcknowledgedBy       *string
 	LastNotifiedAt       *time.Time
 	NotificationCount    int
-	CreatedAt            time.Time
+
+	// Flapping bookkeeping: recent state-transition timestamps (RFC3339) used
+	// to suppress alert/recovery storms for oscillating services.
+	TransitionTimes []time.Time
+	Flapping        bool
+	CreatedAt       time.Time
 }
 
 // EvaluateResult is the outcome of evaluating a probe result against policies.

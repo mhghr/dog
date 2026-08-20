@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 
 	"monitoring-platform/packages/shared/agents/agent/spool"
 	"monitoring-platform/packages/shared/config"
+	"monitoring-platform/packages/shared/domain"
 	"monitoring-platform/packages/shared/heartbeat"
 	"monitoring-platform/packages/shared/httpserver"
 	"monitoring-platform/packages/shared/ingestion/messagebus"
@@ -84,6 +87,10 @@ func main() {
 
 	var sender spool.ResultSender = resultClient
 
+	// Job queue + result sender both switch to NATS JetStream in nats mode:
+	// Scheduler → PROBE_JOBS stream → worker, results → telemetry.probe.result.
+	var jobQueue queue.JobQueue = probeQueue
+
 	if mode := os.Getenv("TELEMETRY_PIPELINE_MODE"); mode == "nats" {
 		natsURL := os.Getenv("NATS_URL")
 		if natsURL == "" {
@@ -99,7 +106,19 @@ func main() {
 			os.Exit(1)
 		}
 		defer natsBus.Close()
+
 		sender = worker.NewNATSResultSender(natsBus, logger)
+
+		natsQueue, err := queue.NewNATSQueue(natsBus, cfg.WorkerName, logger)
+		if err != nil {
+			logger.Error("NATS queue setup failed", "error", err)
+			os.Exit(1)
+		}
+		if err := natsQueue.EnsureGroup(ctx); err != nil {
+			logger.Error("NATS queue ensure group failed", "error", err)
+			os.Exit(1)
+		}
+		jobQueue = natsQueue
 	}
 
 	batcher := spool.NewBatcher(resultSpool, sender, spool.DefaultBatcherConfig(), logger)
@@ -108,12 +127,12 @@ func main() {
 	promRegistry := metrics.NewRegistry()
 	workerMetrics := metrics.NewWorkerMetrics(promRegistry)
 
-	service := worker.New(
-		probeQueue,
+	service := worker.NewWithLimits(
+		jobQueue,
 		registry,
 		resultSpool,
 		cfg.WorkerName,
-		cfg.WorkerConcurrency,
+		parseWorkerLimits(cfg),
 		logger,
 		workerMetrics,
 	)
@@ -161,4 +180,33 @@ func workerHealthMux(redisClient *redis.Client, promHandler http.Handler) http.H
 	mux.Handle("/metrics", promHandler)
 
 	return mux
+}
+
+// parseWorkerLimits converts config strings into worker.Limits. The per-type
+// string is a comma-separated list ("http=500,ping=200"); invalid entries are
+// skipped rather than failing the whole worker.
+func parseWorkerLimits(cfg *config.Config) worker.Limits {
+	limits := worker.Limits{
+		Global:       cfg.WorkerConcurrency,
+		PerWorkspace: cfg.WorkerPerWorkspaceConcurrency,
+		PerType:      map[domain.MonitorType]int{},
+	}
+
+	for _, entry := range strings.Split(cfg.WorkerPerTypeConcurrency, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		parts := strings.SplitN(entry, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		limit, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+		if err != nil || limit < 1 {
+			continue
+		}
+		limits.PerType[domain.MonitorType(strings.ToLower(strings.TrimSpace(parts[0])))] = limit
+	}
+
+	return limits
 }

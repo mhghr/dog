@@ -221,6 +221,9 @@
       "packetLossThresholds": "Packet loss thresholds",
       "jitterThresholds": "Jitter thresholds",
       "httpSettings": "HTTP settings",
+      "httpBehavior": "HTTP behavior",
+      "bodyContainsHint": "The response body must contain this text",
+      "requestBodyHint": "Optional request body payload",
       "domainSettings": "Domain settings",
       "serverName": "Server name (SNI)",
       "verifyChain": "Verify chain",
@@ -292,7 +295,17 @@
     "locationResults": "Latest result by probe location",
     "unknownLocation": "Default probe",
     "noLocationResults": "No location results recorded yet.",
-    "noData": "No data recorded yet."
+    "noData": "No data recorded yet.",
+    "statusCode": "Status code",
+    "method": "Method",
+    "expectedStatus": "Expected status",
+    "followRedirects": "Follow redirects",
+    "verifyTls": "Verify TLS",
+    "yes": "Yes",
+    "no": "No",
+    "timeToFirstByte": "Time to first byte",
+    "responseSize": "Response size",
+    "httpConfiguration": "HTTP configuration"
   },
   "results": {
     "title": "Probe results",

@@ -5,7 +5,11 @@ import { ServerApiError, serverApiRequest } from "@/shared/api/server";
 import type { Monitor } from "@/entities/resource/hooks/types";
 import {
   buildMetricsQueryString,
+  isDnsMonitor,
+  isHttpMonitor,
   isPingMonitor,
+  isTcpMonitor,
+  isTlsMonitor,
   resourceMonitorMetricsQueryKey,
 } from "@/entities/resource/hooks/resource-query";
 import type {
@@ -23,6 +27,10 @@ export class ResourceNotFoundError extends Error {
 
 const DEFAULT_RANGE = "1h" as const;
 const PING_METRICS = [undefined, "status", "packet_loss_percent", "jitter_ms"] as const;
+const HTTP_METRICS = [undefined, "status"] as const;
+const TCP_METRICS = [undefined, "status", "connect_time_ms"] as const;
+const DNS_METRICS = [undefined, "status", "response_time_ms", "answer_count"] as const;
+const TLS_METRICS = [undefined, "status", "handshake_time_ms", "certificate_expiry_days"] as const;
 
 // Server-side preload for the Resource detail page. Fetches every query the
 // page layout depends on — the resource, its monitors, the monitor types, and
@@ -80,12 +88,25 @@ export async function prefetchResourceDetail(
   const pingMonitors = (monitorsData?.items ?? []).filter((m) =>
     isPingMonitor(m, typesData?.items ?? []),
   );
+  const httpMonitors = (monitorsData?.items ?? []).filter((m) =>
+    isHttpMonitor(m, typesData?.items ?? []),
+  );
+  const tcpMonitors = (monitorsData?.items ?? []).filter((m) =>
+    isTcpMonitor(m, typesData?.items ?? []),
+  );
+  const dnsMonitors = (monitorsData?.items ?? []).filter((m) =>
+    isDnsMonitor(m, typesData?.items ?? []),
+  );
+  const tlsMonitors = (monitorsData?.items ?? []).filter((m) =>
+    isTlsMonitor(m, typesData?.items ?? []),
+  );
 
-  // Preload the metric series the ping cards render, so the health state and
-  // KPI cards are correct in the initial HTML rather than "unknown"/skeleton.
-  await Promise.all(
-    pingMonitors.flatMap((monitor) =>
-      PING_METRICS.map((metric) =>
+  // Preload the metric series the monitoring cards render, so the health
+  // state and KPI cards are correct in the initial HTML rather than
+  // "unknown"/skeleton.
+  const prefetchSeries = (monitors: Monitor[], metricKeys: readonly (string | undefined)[]) =>
+    monitors.flatMap((monitor) =>
+      metricKeys.map((metric) =>
         queryClient.prefetchQuery({
           queryKey: resourceMonitorMetricsQueryKey(
             resourceId,
@@ -102,6 +123,19 @@ export async function prefetchResourceDetail(
           staleTime: 15_000,
         }),
       ),
-    ),
-  );
+    );
+
+  const pingPrefetches = prefetchSeries(pingMonitors, PING_METRICS);
+  const httpPrefetches = prefetchSeries(httpMonitors, HTTP_METRICS);
+  const tcpPrefetches = prefetchSeries(tcpMonitors, TCP_METRICS);
+  const dnsPrefetches = prefetchSeries(dnsMonitors, DNS_METRICS);
+  const tlsPrefetches = prefetchSeries(tlsMonitors, TLS_METRICS);
+
+  await Promise.all([
+    ...pingPrefetches,
+    ...httpPrefetches,
+    ...tcpPrefetches,
+    ...dnsPrefetches,
+    ...tlsPrefetches,
+  ]);
 }

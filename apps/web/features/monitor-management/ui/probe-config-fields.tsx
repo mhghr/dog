@@ -4,7 +4,7 @@ import type { UseFormReturn } from "react-hook-form";
 import { useTranslations } from "next-intl";
 import { Activity, Radio, Waves, Gauge } from "lucide-react";
 
-import { NumberField, SelectField, TextField } from "@/features/monitor-management/ui/form-fields";
+import { NumberField, SelectField, SwitchField, TextField } from "@/features/monitor-management/ui/form-fields";
 import type { MonitorFormValues } from "@/entities/monitor/model/form-values";
 import { Label } from "@/shared/ui/label";
 import { cn } from "@/shared/utils/cn";
@@ -144,6 +144,13 @@ export function HTTPConfigFields({ form }: ConfigFieldsProps) {
         <SelectField form={form} name="http_method" label={t("method")} options={["GET","POST","PUT","PATCH","DELETE","HEAD","OPTIONS"].map((v) => ({ value: v, label: v }))} />
         <TextField form={form} name="http_expected_status_codes" label={t("expectedStatusCodes")} hint={t("statusCodesHint")} dir="ltr" placeholder="200, 204" />
         <NumberField form={form} name="http_max_redirects" label={t("maxRedirects")} min={0} max={20} fullWidth />
+        <TextField form={form} name="http_body_contains" label={t("bodyContains")} hint={t("bodyContainsHint")} placeholder="healthy, success" />
+        <TextField form={form} name="http_body" label={t("requestBody")} hint={t("requestBodyHint")} placeholder='{"ping":1}' />
+      </InputGroup>
+
+      <InputGroup label={t("httpBehavior")} icon={Activity}>
+        <SwitchField form={form} name="http_follow_redirects" label={t("followRedirects")} />
+        <SwitchField form={form} name="http_verify_tls" label={t("verifyTls")} />
       </InputGroup>
     </div>
   );

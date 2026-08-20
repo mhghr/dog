@@ -315,7 +315,7 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
       <div
         className="relative flex min-h-screen"
         dir={isRtl ? "rtl" : "ltr"}
-        style={{ scrollbarGutter: "auto" }}
+        style={{ scrollbarGutter: "auto", ["--sidebar-width" as string]: collapsed ? "4.5rem" : "16rem" }}
       >
         <AuthGate isLoaded={isLoaded} isSignedIn={isSignedIn} />
 

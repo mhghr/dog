@@ -84,3 +84,60 @@ export function isPingMonitor(
     type?.name?.toLowerCase() === "ping"
   );
 }
+
+// Classifies a resource monitor as an HTTP monitor by its monitor type.
+export function isHttpMonitor(
+  monitor: Monitor,
+  types: MonitorTypeDef[],
+): boolean {
+  const type = types.find((t) => t.id === monitor.monitor_type_id);
+  return (
+    type?.executor_key === "http" ||
+    type?.slug === "http" ||
+    (type?.name?.toLowerCase().includes("http") ?? false)
+  );
+}
+
+// Classifies a resource monitor as a TCP port monitor by its monitor type.
+export function isTcpMonitor(
+  monitor: Monitor,
+  types: MonitorTypeDef[],
+): boolean {
+  const type = types.find((t) => t.id === monitor.monitor_type_id);
+  return (
+    type?.executor_key === "tcp" ||
+    type?.slug === "tcp" ||
+    (type?.name?.toLowerCase().includes("tcp") ?? false)
+  );
+}
+
+// Classifies a resource monitor as a DNS monitor by its monitor type.
+export function isDnsMonitor(
+  monitor: Monitor,
+  types: MonitorTypeDef[],
+): boolean {
+  const type = types.find((t) => t.id === monitor.monitor_type_id);
+  return (
+    type?.executor_key === "dns" ||
+    type?.slug === "dns" ||
+    type?.name?.toLowerCase() === "dns resolution" ||
+    (type?.name?.toLowerCase().includes("dns") ?? false)
+  );
+}
+
+// Classifies a resource monitor as a TLS/SSL certificate monitor. The seeded
+// monitor type uses slug "ssl" with executor_key "tls".
+export function isTlsMonitor(
+  monitor: Monitor,
+  types: MonitorTypeDef[],
+): boolean {
+  const type = types.find((t) => t.id === monitor.monitor_type_id);
+  return (
+    type?.executor_key === "tls" ||
+    type?.slug === "ssl" ||
+    type?.slug === "tls" ||
+    (type?.name?.toLowerCase().includes("ssl") ?? false) ||
+    (type?.name?.toLowerCase().includes("tls") ?? false) ||
+    (type?.name?.toLowerCase().includes("certificate") ?? false)
+  );
+}

@@ -136,8 +136,8 @@ describe("formatPingKpiValue", () => {
     expect(formatPingKpiValue(42, "ms", false)).toBe("42");
   });
 
-  it("formats a measured packet loss (bare)", () => {
-    expect(formatPingKpiValue(2.5, "percent", false)).toBe("2.50");
+  it("formats a measured packet loss (bare, whole percent)", () => {
+    expect(formatPingKpiValue(2.5, "percent", false)).toBe("3");
   });
 
   it("shows infinity for missing latency when down", () => {
@@ -157,7 +157,7 @@ describe("formatPingKpiValue", () => {
 describe("formatPingKpiValueWithUnit", () => {
   it("embeds the unit for inline row values", () => {
     expect(formatPingKpiValueWithUnit(42, "ms", false)).toBe("42 ms");
-    expect(formatPingKpiValueWithUnit(2.5, "percent", false)).toBe("2.50%");
+    expect(formatPingKpiValueWithUnit(2.5, "percent", false)).toBe("3%");
     expect(formatPingKpiValueWithUnit(null, "ms", true)).toBe("∞ ms");
     expect(formatPingKpiValueWithUnit(null, "percent", true)).toBe("100%");
   });

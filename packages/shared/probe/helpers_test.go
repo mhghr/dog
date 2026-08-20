@@ -1,8 +1,21 @@
 package probe
 
 import (
+	"io"
+	"log/slog"
 	"testing"
+
+	"monitoring-platform/packages/shared/security"
 )
+
+// restrictiveDeps builds executor dependencies with the SSRF Guard enforcing
+// public-only destinations (allowPrivate=false), mirroring production config.
+func restrictiveDeps() Deps {
+	return Deps{
+		Guard:  security.NewGuard(false),
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+}
 
 func TestStringConfig(t *testing.T) {
 	config := map[string]any{"method": "POST", "empty": ""}

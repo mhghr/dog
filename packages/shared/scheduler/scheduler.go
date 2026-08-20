@@ -18,7 +18,7 @@ import (
 type Scheduler struct {
 	monitors  repository.MonitorRepository
 	locations []domain.ProbeLocation
-	queue     *queue.RedisQueue
+	queue     queue.JobQueue
 	batchSize int
 	interval  time.Duration
 	logger    *slog.Logger
@@ -27,7 +27,7 @@ type Scheduler struct {
 
 func New(
 	monitors repository.MonitorRepository,
-	probeQueue *queue.RedisQueue,
+	probeQueue queue.JobQueue,
 	locations []domain.ProbeLocation,
 	batchSize int,
 	interval time.Duration,

@@ -105,6 +105,21 @@ func (b *NATSBus) ensureStreams() error {
 			maxAge:    24 * time.Hour,
 			maxBytes:  50 * 1024 * 1024 * 1024,
 		},
+		{
+			// Enterprise execution backbone: scheduler → worker probe jobs.
+			name:      "PROBE_JOBS",
+			subjects:  []string{"probe.jobs.>"},
+			retention: nats.WorkQueuePolicy,
+			maxAge:    24 * time.Hour,
+			maxBytes:  20 * 1024 * 1024 * 1024,
+		},
+		{
+			name:      "PROBE_JOBS_DLQ",
+			subjects:  []string{"probe.jobs.dlq.>"},
+			retention: nats.LimitsPolicy,
+			maxAge:    24 * time.Hour,
+			maxBytes:  20 * 1024 * 1024 * 1024,
+		},
 	}
 
 	for _, s := range streams {
@@ -325,6 +340,12 @@ func getReplicas() int {
 // Nack negatively acknowledges a message (NATS handles this via msg.Nak() in Subscribe).
 func (b *NATSBus) Nack(ctx context.Context, msg Message) error {
 	return nil
+}
+
+// JetStream returns the underlying JetStream context for advanced usage
+// (e.g. synchronous workers that need pull-based consumption).
+func (b *NATSBus) JetStream() nats.JetStreamContext {
+	return b.js
 }
 
 // Close unsubscribes all consumers and closes the NATS connection.

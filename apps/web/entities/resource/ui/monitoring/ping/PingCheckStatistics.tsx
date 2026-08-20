@@ -40,28 +40,28 @@ export function PingCheckStatistics({
   const t = (en: string, fa: string) => (isFa ? fa : en);
 
   const checks: StatRow[] = [
-    { label: t("Total", "?????"), value: String(s?.totalChecks ?? "—") },
-    { label: t("Successful", "????"), value: String(s?.successChecks ?? "—"), tone: "success" },
-    { label: t("Failed", "??????"), value: String(s?.failedChecks ?? "—"), tone: s?.failedChecks ? "destructive" : "muted" },
-    { label: t("Success rate", "??? ??????"), value: s?.availability == null ? "—" : `${s.availability.toFixed(2)}%` },
+    { label: t("Total", "مجموع"), value: String(s?.totalChecks ?? "—") },
+    { label: t("Successful", "موفق"), value: String(s?.successChecks ?? "—"), tone: "success" },
+    { label: t("Failed", "ناموفق"), value: String(s?.failedChecks ?? "—"), tone: s?.failedChecks ? "destructive" : "muted" },
+    { label: t("Success rate", "نرخ موفقیت"), value: s?.availability == null ? "—" : `${s.availability.toFixed(2)}%` },
   ];
 
   const latency: StatRow[] = [
-    { label: t("Average", "???????"), value: s?.latency == null ? "—" : `${Math.round(s.latency)} ms` },
-    { label: t("Minimum", "?????"), value: s?.latencyMin == null ? "—" : `${Math.round(s.latencyMin)} ms` },
-    { label: t("Maximum", "??????"), value: s?.latencyMax == null ? "—" : `${Math.round(s.latencyMax)} ms` },
+    { label: t("Average", "میانگین"), value: s?.latency == null ? "—" : `${Math.round(s.latency)} ms` },
+    { label: t("Minimum", "حداقل"), value: s?.latencyMin == null ? "—" : `${Math.round(s.latencyMin)} ms` },
+    { label: t("Maximum", "حداکثر"), value: s?.latencyMax == null ? "—" : `${Math.round(s.latencyMax)} ms` },
   ];
 
   const packets: StatRow[] = [
-    { label: t("Sent", "?????????"), value: String(s?.packetsSent ?? "—") },
-    { label: t("Received", "??????????"), value: String(s?.packetsReceived ?? "—") },
-    { label: t("Lost", "?? ??? ????"), value: String(s?.packetsLost ?? "—"), tone: s?.packetsLost ? "destructive" : "muted" },
-    { label: t("Loss", "???"), value: s?.packetLoss == null ? "—" : `${s.packetLoss.toFixed(2)}%`, tone: s?.packetLoss ? "warning" : "muted" },
+    { label: t("Sent", "ارسال‌شده"), value: String(s?.packetsSent ?? "—") },
+    { label: t("Received", "دریافت‌شده"), value: String(s?.packetsReceived ?? "—") },
+    { label: t("Lost", "از دست رفته"), value: String(s?.packetsLost ?? "—"), tone: s?.packetsLost ? "destructive" : "muted" },
+    { label: t("Loss", "درصد اتلاف"), value: s?.packetLoss == null ? "—" : `${s.packetLoss.toFixed(2)}%`, tone: s?.packetLoss ? "warning" : "muted" },
   ];
 
   const jitter: StatRow[] = [
-    { label: t("Average", "???????"), value: s?.jitter == null ? "—" : `${Math.round(s.jitter)} ms` },
-    { label: t("Maximum", "??????"), value: s?.jitterMax == null ? "—" : `${Math.round(s.jitterMax)} ms` },
+    { label: t("Average", "میانگین"), value: s?.jitter == null ? "—" : `${Math.round(s.jitter)} ms` },
+    { label: t("Maximum", "حداکثر"), value: s?.jitterMax == null ? "—" : `${Math.round(s.jitterMax)} ms` },
   ];
 
   return (
@@ -71,7 +71,7 @@ export function PingCheckStatistics({
     >
       <CardHeader className="px-5 pt-4">
         <CardTitle className="text-sm font-semibold text-foreground">
-          {t("Check statistics", "???? ????????")}
+          {t("Check statistics", "آمار بررسی‌ها")}
         </CardTitle>
       </CardHeader>
       <CardContent className="px-5 pb-4">
@@ -79,14 +79,14 @@ export function PingCheckStatistics({
           <Skeleton className="h-24 w-full rounded-lg" />
         ) : !hasData ? (
           <p className="py-4 text-sm text-muted-foreground">
-            {t("No monitoring data yet", "???? ???? ?????????? ???? ?????")}
+            {t("No monitoring data yet", "هنوز داده‌ای برای مانیتورینگ ثبت نشده است")}
           </p>
         ) : (
           <div className="grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-4">
-            <StatGroup title={t("Checks", "????????")} rows={checks} />
-            <StatGroup title={t("Latency", "?????")} rows={latency} />
-            <StatGroup title={t("Packets", "???????")} rows={packets} />
-            <StatGroup title={t("Jitter", "?????")} rows={jitter} />
+            <StatGroup title={t("Checks", "بررسی‌ها")} rows={checks} />
+            <StatGroup title={t("Latency", "تاخیر")} rows={latency} />
+            <StatGroup title={t("Packets", "بسته‌ها")} rows={packets} />
+            <StatGroup title={t("Jitter", "نوسان")} rows={jitter} />
           </div>
         )}
       </CardContent>

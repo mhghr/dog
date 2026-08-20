@@ -136,11 +136,13 @@ func splitParamKey(key string) []string {
 	case key == "ping.jitter_ms":
 		return []string{"jitter_ms", "jitter"}
 	case key == "http.reachability":
-		return []string{"http.reachability"}
+		return []string{"http.reachability", "reachability"}
 	case key == "http.status_code":
 		return []string{"status_code"}
+	case key == "http.response_time_ms":
+		return []string{"response_time_ms", "total_duration_ms", "duration_ms"}
 	case key == "http.total_duration_ms":
-		return []string{"total_duration_ms", "duration_ms"}
+		return []string{"total_duration_ms", "duration_ms", "response_time_ms"}
 	case key == "http.ttfb_ms":
 		return []string{"ttfb_ms", "time_to_first_byte_ms"}
 	case key == "http.dns_duration_ms":
@@ -149,30 +151,36 @@ func splitParamKey(key string) []string {
 		return []string{"connect_duration_ms"}
 	case key == "http.tls_duration_ms":
 		return []string{"tls_duration_ms"}
+	case key == "http.download_time_ms":
+		return []string{"download_time_ms"}
+	case key == "http.response_size_bytes":
+		return []string{"response_size_bytes"}
 	case key == "http.content_assertion":
 		return []string{"content_assertion"}
 	case key == "tcp.reachability":
-		return []string{"tcp.reachability"}
-	case key == "tcp.connect_duration_ms":
-		return []string{"connect_duration_ms", "connection_time_ms"}
-	case key == "tcp.banner_match":
-		return []string{"banner_match"}
+		return []string{"tcp.reachability", "reachability"}
+	case key == "tcp.connect_time_ms":
+		return []string{"connect_time_ms", "connection_time_ms", "connect_duration_ms"}
 	case key == "dns.reachability":
-		return []string{"dns.reachability"}
-	case key == "dns.resolution_duration_ms":
-		return []string{"resolution_duration_ms", "resolution_time_ms"}
+		return []string{"dns.reachability", "reachability"}
+	case key == "dns.response_time_ms":
+		return []string{"response_time_ms", "resolution_duration_ms", "resolution_time_ms", "dns_duration_ms"}
+	case key == "dns.answer_count":
+		return []string{"answer_count"}
 	case key == "dns.expected_record_match":
 		return []string{"expected_record_match", "record_match"}
-	case key == "tls.certificate_valid":
+	case key == "tls.reachability" || key == "ssl.reachability":
+		return []string{"reachability", key}
+	case key == "tls.handshake_time_ms" || key == "ssl.handshake_time_ms":
+		return []string{"handshake_time_ms", "handshake_duration_ms"}
+	case key == "tls.certificate_expiry_days" || key == "ssl.certificate_expiry_days":
+		return []string{"certificate_expiry_days", "days_remaining", "cert_days_remaining"}
+	case key == "ssl.certificate_valid" || key == "tls.certificate_valid":
 		return []string{"certificate_valid", "cert_valid"}
-	case key == "tls.hostname_match":
+	case key == "ssl.hostname_match" || key == "tls.hostname_match":
 		return []string{"hostname_match"}
-	case key == "tls.chain_trusted":
-		return []string{"chain_trusted"}
-	case key == "tls.days_remaining":
-		return []string{"days_remaining", "cert_days_remaining"}
-	case key == "tls.protocol_version":
-		return []string{"protocol_version", "tls_version"}
+	case key == "ssl.chain_valid" || key == "tls.chain_valid":
+		return []string{"chain_valid", "chain_trusted"}
 	case key == "domain_expiration.days_remaining":
 		return []string{"days_remaining", "domain_days_remaining"}
 	case key == "domain_expiration.registrar_match":

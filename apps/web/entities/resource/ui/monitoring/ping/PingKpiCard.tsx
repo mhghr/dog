@@ -31,6 +31,7 @@ export function PingKpiCard({
   spark,
   colors,
   sparkLabel,
+  probes,
 }: {
   label: string;
   value: string;
@@ -39,6 +40,8 @@ export function PingKpiCard({
   spark?: SparklineSeries[];
   colors?: string[];
   sparkLabel?: string;
+  /** Per-probe location labels beside the sparkline. */
+  probes?: Array<{ name: string }>;
 }) {
   const stateText = STATE_TEXT[state];
   const stateGlow = STATE_GLOW[state];
@@ -60,7 +63,7 @@ export function PingKpiCard({
         )}
       />
 
-      <CardContent className="relative flex h-full flex-col gap-3 p-3.5">
+      <CardContent className="relative flex h-full flex-col gap-2.5 p-3.5">
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-1.5">
             <span
@@ -92,14 +95,23 @@ export function PingKpiCard({
         </div>
 
         {spark && spark.length > 0 && (
-          <div className="mt-auto pt-1">
+          <div className="flex items-end justify-end gap-4">
             <Sparkline
               series={spark}
               colors={colors ?? []}
-              height={40}
-              className="-mx-0.5 h-10"
+              height={36}
+              className="-mx-0.5 h-9 w-2/5 min-w-0"
               ariaLabel={sparkLabel}
             />
+            {probes && probes.length > 0 && (
+              <ul className="flex shrink-0 flex-col items-end gap-1.5">
+                {probes.map((p) => (
+                  <li key={p.name} className="truncate text-[10px] leading-none text-muted-foreground">
+                    {p.name}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
       </CardContent>

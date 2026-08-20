@@ -90,6 +90,42 @@ func TestValidateURL(t *testing.T) {
 	}
 }
 
+func TestParseIPFamily(t *testing.T) {
+	if got := ParseIPFamily("ipv4"); got != IPFamilyIPv4 {
+		t.Fatalf("expected ipv4, got %s", got)
+	}
+	if got := ParseIPFamily("ipv6"); got != IPFamilyIPv6 {
+		t.Fatalf("expected ipv6, got %s", got)
+	}
+	if got := ParseIPFamily(""); got != IPFamilyAuto {
+		t.Fatalf("expected auto for empty, got %s", got)
+	}
+	if got := ParseIPFamily("bogus"); got != IPFamilyAuto {
+		t.Fatalf("expected auto for unknown, got %s", got)
+	}
+}
+
+func TestFilterFamily(t *testing.T) {
+	v4 := net.ParseIP("1.1.1.1")
+	v6 := net.ParseIP("2606:4700:4700::1111")
+	all := []net.IP{v4, v6}
+
+	both := filterFamily(all, IPFamilyAuto)
+	if len(both) != 2 {
+		t.Fatalf("expected both families for auto, got %d", len(both))
+	}
+
+	onlyV4 := filterFamily(all, IPFamilyIPv4)
+	if len(onlyV4) != 1 || onlyV4[0].To4() == nil {
+		t.Fatalf("expected only ipv4, got %v", onlyV4)
+	}
+
+	onlyV6 := filterFamily(all, IPFamilyIPv6)
+	if len(onlyV6) != 1 || onlyV6[0].To4() != nil {
+		t.Fatalf("expected only ipv6, got %v", onlyV6)
+	}
+}
+
 func asBlocked(err error, target **BlockedTargetError) bool {
 	blocked, ok := err.(*BlockedTargetError)
 	if ok {
