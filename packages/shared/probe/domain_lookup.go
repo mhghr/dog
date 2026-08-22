@@ -195,6 +195,11 @@ func parseVcardFullName(raw json.RawMessage) string {
 		return ""
 	}
 
+	return firstFormattedName(properties)
+}
+
+// firstFormattedName scans jCard properties for the first non-empty "fn" value.
+func firstFormattedName(properties [][]json.RawMessage) string {
 	for _, property := range properties {
 		if len(property) < 4 {
 			continue
@@ -210,7 +215,6 @@ func parseVcardFullName(raw json.RawMessage) string {
 			return value
 		}
 	}
-
 	return ""
 }
 
@@ -237,13 +241,7 @@ func lookupWHOIS(ctx context.Context, dial func(context.Context, string, string)
 		return domainInfo{}, err
 	}
 
-	server := ""
-	for _, line := range strings.Split(referral, "\n") {
-		if match := whoisReferPattern.FindStringSubmatch(line); match != nil {
-			server = strings.TrimSpace(match[1])
-			break
-		}
-	}
+	server := referralServer(referral)
 
 	responseText := referral
 	if server != "" && !strings.EqualFold(server, "whois.iana.org") {
@@ -254,14 +252,33 @@ func lookupWHOIS(ctx context.Context, dial func(context.Context, string, string)
 
 	info := whoisInfoFromResponse(responseText)
 
-	lower := strings.ToLower(responseText)
-	if strings.Contains(lower, "no match for") ||
-		strings.Contains(lower, "not found") && info.ExpiresAt == nil && info.Registrar == "" {
+	if isNotRegistered(responseText, info) {
 		return domainInfo{}, &errDomainNotRegistered{domain: domainName}
 	}
 
 	info.Registered = true
 	return info, nil
+}
+
+// referralServer extracts the authoritative WHOIS server from the IANA
+// referral response.
+func referralServer(referral string) string {
+	for _, line := range strings.Split(referral, "\n") {
+		if match := whoisReferPattern.FindStringSubmatch(line); match != nil {
+			return strings.TrimSpace(match[1])
+		}
+	}
+	return ""
+}
+
+// isNotRegistered reports whether the WHOIS response indicates the domain is
+// not registered.
+func isNotRegistered(responseText string, info domainInfo) bool {
+	lower := strings.ToLower(responseText)
+	if strings.Contains(lower, "no match for") {
+		return true
+	}
+	return strings.Contains(lower, "not found") && info.ExpiresAt == nil && info.Registrar == ""
 }
 
 // whoisInfoFromResponse parses WHOIS response lines for expiry, registrar and

@@ -130,27 +130,14 @@ func BuildParams(cfg *domain.SNMPDeviceConfig) (ConnectParams, error) {
 		transport = "udp"
 	}
 
-	timeout := time.Duration(cfg.TimeoutSeconds) * time.Second
-	if timeout <= 0 {
-		timeout = 3 * time.Second
-	}
-	retries := cfg.Retries
-	if retries < 0 {
-		retries = 0
-	}
-	maxReps := cfg.MaxRepetitions
-	if maxReps <= 0 {
-		maxReps = 10
-	}
-
 	params := ConnectParams{
 		Host:           host,
 		Port:           port,
 		Version:        version,
 		Transport:      transport,
-		Timeout:        timeout,
-		Retries:        retries,
-		MaxRepetitions: maxReps,
+		Timeout:        resolveTimeout(cfg.TimeoutSeconds),
+		Retries:        normalizeRetries(cfg.Retries),
+		MaxRepetitions: normalizeMaxRepetitions(cfg.MaxRepetitions),
 		Community:      cfg.Community,
 		Username:       cfg.Username,
 		SecurityLevel:  cfg.SecurityLevel,
@@ -162,32 +149,63 @@ func BuildParams(cfg *domain.SNMPDeviceConfig) (ConnectParams, error) {
 	}
 
 	if version == domain.SNMPv3 {
-		if params.Username == "" {
-			return ConnectParams{}, fmt.Errorf("snmpv3 username is required")
-		}
-		level := params.SecurityLevel
-		if level == "" {
-			level = domain.SNMPNoAuthNoPriv
-		}
-		if level == domain.SNMPAuthNoPriv || level == domain.SNMPAuthPriv {
-			if _, ok := authProtocol(params.AuthProto); !ok {
-				return ConnectParams{}, fmt.Errorf("unsupported snmpv3 authentication protocol %q", params.AuthProto)
-			}
-			if params.AuthSecret == "" {
-				return ConnectParams{}, fmt.Errorf("snmpv3 authentication secret is required for %s", level)
-			}
-		}
-		if level == domain.SNMPAuthPriv {
-			if _, ok := privProtocol(params.PrivProto); !ok {
-				return ConnectParams{}, fmt.Errorf("unsupported snmpv3 privacy protocol %q", params.PrivProto)
-			}
-			if params.PrivSecret == "" {
-				return ConnectParams{}, fmt.Errorf("snmpv3 privacy secret is required for authPriv")
-			}
+		if err := validateV3Params(&params); err != nil {
+			return ConnectParams{}, err
 		}
 	}
 
 	return params, nil
+}
+
+func resolveTimeout(timeoutSeconds int) time.Duration {
+	timeout := time.Duration(timeoutSeconds) * time.Second
+	if timeout <= 0 {
+		return 3 * time.Second
+	}
+	return timeout
+}
+
+func normalizeRetries(retries int) int {
+	if retries < 0 {
+		return 0
+	}
+	return retries
+}
+
+func normalizeMaxRepetitions(maxReps int) int {
+	if maxReps <= 0 {
+		return 10
+	}
+	return maxReps
+}
+
+// validateV3Params enforces the SNMPv3 username, auth and privacy requirements
+// implied by the requested security level.
+func validateV3Params(params *ConnectParams) error {
+	if params.Username == "" {
+		return fmt.Errorf("snmpv3 username is required")
+	}
+	level := params.SecurityLevel
+	if level == "" {
+		level = domain.SNMPNoAuthNoPriv
+	}
+	if level == domain.SNMPAuthNoPriv || level == domain.SNMPAuthPriv {
+		if _, ok := authProtocol(params.AuthProto); !ok {
+			return fmt.Errorf("unsupported snmpv3 authentication protocol %q", params.AuthProto)
+		}
+		if params.AuthSecret == "" {
+			return fmt.Errorf("snmpv3 authentication secret is required for %s", level)
+		}
+	}
+	if level == domain.SNMPAuthPriv {
+		if _, ok := privProtocol(params.PrivProto); !ok {
+			return fmt.Errorf("unsupported snmpv3 privacy protocol %q", params.PrivProto)
+		}
+		if params.PrivSecret == "" {
+			return fmt.Errorf("snmpv3 privacy secret is required for authPriv")
+		}
+	}
+	return nil
 }
 
 // NewClient builds a gosnmp.GoSNMP client from concrete parameters. It does
@@ -218,36 +236,42 @@ func NewClient(params ConnectParams) (*gosnmp.GoSNMP, error) {
 	}
 
 	if version == gosnmp.Version3 {
-		sec := &gosnmp.UsmSecurityParameters{}
-		sec.UserName = params.Username
-		sec.AuthenticationProtocol = gosnmp.NoAuth
-		sec.PrivacyProtocol = gosnmp.NoPriv
-
-		var flags gosnmp.SnmpV3MsgFlags = gosnmp.NoAuthNoPriv
-		switch params.SecurityLevel {
-		case domain.SNMPAuthNoPriv:
-			flags = gosnmp.AuthNoPriv
-			if proto, ok := authProtocol(params.AuthProto); ok {
-				sec.AuthenticationProtocol = proto
-			}
-			sec.AuthenticationPassphrase = params.AuthSecret
-		case domain.SNMPAuthPriv:
-			flags = gosnmp.AuthPriv
-			if proto, ok := authProtocol(params.AuthProto); ok {
-				sec.AuthenticationProtocol = proto
-			}
-			if proto, ok := privProtocol(params.PrivProto); ok {
-				sec.PrivacyProtocol = proto
-			}
-			sec.AuthenticationPassphrase = params.AuthSecret
-			sec.PrivacyPassphrase = params.PrivSecret
-		}
-		client.SecurityModel = gosnmp.UserSecurityModel
-		client.MsgFlags = flags
-		client.SecurityParameters = sec
+		applyV3Security(client, params)
 	}
 
 	return client, nil
+}
+
+// applyV3Security configures the USM security parameters for an SNMPv3 client
+// according to the requested security level.
+func applyV3Security(client *gosnmp.GoSNMP, params ConnectParams) {
+	sec := &gosnmp.UsmSecurityParameters{}
+	sec.UserName = params.Username
+	sec.AuthenticationProtocol = gosnmp.NoAuth
+	sec.PrivacyProtocol = gosnmp.NoPriv
+
+	var flags gosnmp.SnmpV3MsgFlags = gosnmp.NoAuthNoPriv
+	switch params.SecurityLevel {
+	case domain.SNMPAuthNoPriv:
+		flags = gosnmp.AuthNoPriv
+		if proto, ok := authProtocol(params.AuthProto); ok {
+			sec.AuthenticationProtocol = proto
+		}
+		sec.AuthenticationPassphrase = params.AuthSecret
+	case domain.SNMPAuthPriv:
+		flags = gosnmp.AuthPriv
+		if proto, ok := authProtocol(params.AuthProto); ok {
+			sec.AuthenticationProtocol = proto
+		}
+		if proto, ok := privProtocol(params.PrivProto); ok {
+			sec.PrivacyProtocol = proto
+		}
+		sec.AuthenticationPassphrase = params.AuthSecret
+		sec.PrivacyPassphrase = params.PrivSecret
+	}
+	client.SecurityModel = gosnmp.UserSecurityModel
+	client.MsgFlags = flags
+	client.SecurityParameters = sec
 }
 
 // DialErrorState maps a connection-level error to the failure taxonomy.

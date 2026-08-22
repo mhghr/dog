@@ -184,13 +184,22 @@ function validateSnmp(config: Record<string, unknown>, errors: FieldErrors): voi
 
 function validateSnmpCredentials(config: Record<string, unknown>, version: string, errors: FieldErrors): void {
   if (version === "1" || version === "2c") {
-    if (typeof config.community !== "string" || config.community.trim() === "") {
-      errors.community = { en: "Community string is required", fa: "رشته Community الزامی است" };
-    }
+    validateSnmpCommunity(config, errors);
+    return;
   }
   if (version !== "3") {
     return;
   }
+  validateSnmpV3(config, errors);
+}
+
+function validateSnmpCommunity(config: Record<string, unknown>, errors: FieldErrors): void {
+  if (typeof config.community !== "string" || config.community.trim() === "") {
+    errors.community = { en: "Community string is required", fa: "رشته Community الزامی است" };
+  }
+}
+
+function validateSnmpV3(config: Record<string, unknown>, errors: FieldErrors): void {
   if (typeof config.username !== "string" || config.username.trim() === "") {
     errors.username = { en: "SNMPv3 username is required", fa: "نام کاربری SNMPv3 الزامی است" };
   }

@@ -38,6 +38,28 @@ func (r *ResultRepository) InsertAndUpdateMonitor(ctx context.Context, result *d
 	}
 	defer tx.Rollback(ctx)
 
+	inserted, err := insertProbeResult(ctx, tx, result, metricsJSON, attributesJSON)
+	if err != nil {
+		return false, err
+	}
+	if !inserted {
+		return false, nil // duplicate job_id: idempotent no-op
+	}
+
+	if err := updateMonitorStatus(ctx, tx, result); err != nil {
+		return false, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return false, fmt.Errorf("commit ingestion transaction: %w", err)
+	}
+
+	return true, nil
+}
+
+// insertProbeResult inserts a probe result row, returning false when the
+// job_id conflict makes it an idempotent no-op.
+func insertProbeResult(ctx context.Context, tx pgx.Tx, result *domain.ProbeResult, metricsJSON, attributesJSON []byte) (bool, error) {
 	var locationID any
 	if result.ProbeLocationID != "" {
 		locationID = result.ProbeLocationID
@@ -72,11 +94,12 @@ func (r *ResultRepository) InsertAndUpdateMonitor(ctx context.Context, result *d
 	if err != nil {
 		return false, fmt.Errorf("insert probe result: %w", err)
 	}
+	return tag.RowsAffected() > 0, nil
+}
 
-	if tag.RowsAffected() == 0 {
-		return false, nil // duplicate job_id: idempotent no-op
-	}
-
+// updateMonitorStatus advances the monitor's last status when the new check is
+// newer than the stored one.
+func updateMonitorStatus(ctx context.Context, tx pgx.Tx, result *domain.ProbeResult) error {
 	if _, err := tx.Exec(ctx, `
 		UPDATE monitors
 		SET
@@ -90,14 +113,9 @@ func (r *ResultRepository) InsertAndUpdateMonitor(ctx context.Context, result *d
 		string(result.Status),
 		result.FinishedAt,
 	); err != nil {
-		return false, fmt.Errorf("update monitor status: %w", err)
+		return fmt.Errorf("update monitor status: %w", err)
 	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return false, fmt.Errorf("commit ingestion transaction: %w", err)
-	}
-
-	return true, nil
+	return nil
 }
 
 func (r *ResultRepository) ListByMonitor(ctx context.Context, monitorID string, limit, offset int) ([]domain.ProbeResult, int, error) {

@@ -76,50 +76,19 @@ func (e *Engine) evaluatePolicy(ctx context.Context, policy domain.AlertPolicy, 
 
 	alert := existing
 	if errors.Is(err, domain.ErrNotFound) {
-		alert = domain.Alert{
-			OrganizationID: policy.OrganizationID,
-			PolicyID:       policy.ID,
-			MonitorID:      result.MonitorID,
-			MonitorName:    result.MonitorName,
-			State:          "pending",
-			Severity:       policy.Severity,
-			Title:          policy.Name,
-			DedupKey:       dedupKey,
-		}
-		alert.ID = uuid.Must(uuid.NewV7()).String()
+		alert = newAlertFromPolicy(policy, result, dedupKey)
 	}
 
 	oldState := alert.State
 
 	if isFailure {
-		alert.ConsecutiveFailures++
-		alert.ConsecutiveSuccesses = 0
-
-		if alert.State == "pending" && alert.ConsecutiveFailures >= policy.OpeningFailures {
-			alert.State = "firing"
-		}
-		if alert.State == "recovering" && alert.ConsecutiveFailures >= policy.OpeningFailures {
-			alert.State = "firing"
-		}
+		applyFailure(&alert, policy)
 	} else if isSuccess && alert.State != "pending" && alert.State != "resolved" {
-		alert.ConsecutiveSuccesses++
-
-		if alert.State == "firing" && alert.ConsecutiveSuccesses >= policy.ResolvingSuccesses {
-			alert.State = "recovering"
-		}
+		applySuccess(&alert, policy)
 	}
 
-	if alert.State == "recovering" && alert.ConsecutiveSuccesses >= policy.ResolvingSuccesses+2 {
-		alert.State = "resolved"
-		now := time.Now().UTC()
-		alert.ResolvedAt = &now
-	}
-
-	if alert.State != "resolved" && alert.State != "pending" {
-		alert.Description = fmt.Sprintf("%d consecutive failures (opening threshold: %d)", alert.ConsecutiveFailures, policy.OpeningFailures)
-	} else if alert.State == "resolved" {
-		alert.Description = fmt.Sprintf("Resolved after %d consecutive successes", alert.ConsecutiveSuccesses)
-	}
+	applyResolution(&alert, policy)
+	alert.Description = buildAlertDescription(&alert, policy)
 
 	// Flapping suppression: record a transition and, when transitions within
 	// the window exceed the threshold, mark the alert as flapping. Flapping
@@ -153,6 +122,61 @@ func (e *Engine) evaluatePolicy(ctx context.Context, policy domain.AlertPolicy, 
 	}
 
 	return nil
+}
+
+// newAlertFromPolicy initializes a fresh alert record for a monitor/policy pair.
+func newAlertFromPolicy(policy domain.AlertPolicy, result domain.ProbeResult, dedupKey string) domain.Alert {
+	return domain.Alert{
+		OrganizationID: policy.OrganizationID,
+		PolicyID:       policy.ID,
+		MonitorID:      result.MonitorID,
+		MonitorName:    result.MonitorName,
+		State:          "pending",
+		Severity:       policy.Severity,
+		Title:          policy.Name,
+		DedupKey:       dedupKey,
+		ID:             uuid.Must(uuid.NewV7()).String(),
+	}
+}
+
+// applyFailure counts a failed check and transitions the alert to firing once
+// the opening threshold is crossed.
+func applyFailure(alert *domain.Alert, policy domain.AlertPolicy) {
+	alert.ConsecutiveFailures++
+	alert.ConsecutiveSuccesses = 0
+	if (alert.State == "pending" || alert.State == "recovering") && alert.ConsecutiveFailures >= policy.OpeningFailures {
+		alert.State = "firing"
+	}
+}
+
+// applySuccess counts a successful check and moves a firing alert to
+// recovering once the resolving threshold is crossed.
+func applySuccess(alert *domain.Alert, policy domain.AlertPolicy) {
+	alert.ConsecutiveSuccesses++
+	if alert.State == "firing" && alert.ConsecutiveSuccesses >= policy.ResolvingSuccesses {
+		alert.State = "recovering"
+	}
+}
+
+// applyResolution resolves a recovering alert after a grace margin of extra
+// successes beyond the resolving threshold.
+func applyResolution(alert *domain.Alert, policy domain.AlertPolicy) {
+	if alert.State == "recovering" && alert.ConsecutiveSuccesses >= policy.ResolvingSuccesses+2 {
+		alert.State = "resolved"
+		now := time.Now().UTC()
+		alert.ResolvedAt = &now
+	}
+}
+
+// buildAlertDescription renders a human-readable summary of the alert state.
+func buildAlertDescription(alert *domain.Alert, policy domain.AlertPolicy) string {
+	if alert.State == "resolved" {
+		return fmt.Sprintf("Resolved after %d consecutive successes", alert.ConsecutiveSuccesses)
+	}
+	if alert.State != "pending" {
+		return fmt.Sprintf("%d consecutive failures (opening threshold: %d)", alert.ConsecutiveFailures, policy.OpeningFailures)
+	}
+	return ""
 }
 
 // isFlapping reports whether the alert has had too many state transitions

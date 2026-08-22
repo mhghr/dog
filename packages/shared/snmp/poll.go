@@ -151,24 +151,37 @@ func identityFromPacket(packet *gosnmp.SnmpPacket) (domain.SNMPDeviceIdentity, s
 	var sysObjectID string
 	var uptimeSeconds float64
 	for _, v := range packet.Variables {
-		switch strings.TrimPrefix(v.Name, ".") {
-		case oidSysObjectID:
-			if oid, ok := v.Value.(string); ok {
-				sysObjectID = strings.TrimPrefix(oid, ".")
-				id.SysObjectID = sysObjectID
-				vendor, _ := ClassifyVendorModel("", sysObjectID)
-				id.Vendor = vendor
-			}
-		case oidSysName:
+		name := strings.TrimPrefix(v.Name, ".")
+		if oid := objectIDFromPDU(v); name == oidSysObjectID {
+			sysObjectID = oid
+			id.SysObjectID = oid
+			id.Vendor, _ = ClassifyVendorModel("", oid)
+		} else if name == oidSysName {
 			id.SysName = pduStringName(v)
-		case oidSysUpTime:
-			if ticks, ok := sysUpTimeTicks(v); ok {
-				uptimeSeconds = ticks / 100
-				id.SysUpTime = fmt.Sprintf("%d", uint64(ticks/100))
-			}
+		} else if name == oidSysUpTime {
+			uptimeSeconds = uptimeFromPDU(v, &id)
 		}
 	}
 	return id, sysObjectID, uptimeSeconds
+}
+
+// objectIDFromPDU extracts the dot-stripped OID string, or "" when absent.
+func objectIDFromPDU(v gosnmp.SnmpPDU) string {
+	oid, ok := v.Value.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimPrefix(oid, ".")
+}
+
+// uptimeFromPDU records sysUpTime in both numeric seconds and string form.
+func uptimeFromPDU(v gosnmp.SnmpPDU, id *domain.SNMPDeviceIdentity) float64 {
+	ticks, ok := sysUpTimeTicks(v)
+	if !ok {
+		return 0
+	}
+	id.SysUpTime = fmt.Sprintf("%d", uint64(ticks/100))
+	return ticks / 100
 }
 
 // sysUpTimeTicks extracts the sysUpTime TimeTicks value from a PDU, tolerating
@@ -520,15 +533,32 @@ func buildInterfaceSnapshot(idx int, d *polledInterface, cached domain.SNMPInter
 	snap.IfMtu = int(firstNonZero(d.mtu, float64(cached.IfMtu)))
 	snap.IfOperStatus = int(firstNonZero(d.operStatus, float64(cached.IfOperStatus)))
 	snap.IfAdminStatus = int(firstNonZero(d.adminStatus, float64(cached.IfAdminStatus)))
-	snap.IfSpeed = int64(firstNonZero(d.speed, float64(cached.IfSpeed)))
-	if snap.IfSpeed == 0 || snap.IfSpeed >= 4294967295 {
+	snap.IfSpeed = resolveInterfaceSpeed(d, cached)
+	applyInterfaceCounters(&snap, d)
+	snap.Has64BitIn = snap.Has64BitIn || cached.Has64BitIn
+	snap.Has64BitOut = snap.Has64BitOut || cached.Has64BitOut
+	return snap
+}
+
+// resolveInterfaceSpeed prefers the polled speed, falling back to highSpeed
+// (Gbps) and then the cached value when the polled one is absent or a 32-bit
+// overflow sentinel.
+func resolveInterfaceSpeed(d *polledInterface, cached domain.SNMPInterfaceInfo) int64 {
+	speed := int64(firstNonZero(d.speed, float64(cached.IfSpeed)))
+	if speed == 0 || speed >= 4294967295 {
 		if d.highSpeed > 0 {
-			snap.IfSpeed = int64(d.highSpeed) * 1_000_000
-		} else if cached.IfSpeed > 0 && cached.IfSpeed < 4294967295 {
-			snap.IfSpeed = cached.IfSpeed
+			return int64(d.highSpeed) * 1_000_000
+		}
+		if cached.IfSpeed > 0 && cached.IfSpeed < 4294967295 {
+			return cached.IfSpeed
 		}
 	}
+	return speed
+}
 
+// applyInterfaceCounters copies the polled counter values into the snapshot,
+// setting the 64-bit flags where the matching column was walked as 64-bit.
+func applyInterfaceCounters(snap *InterfaceSnapshot, d *polledInterface) {
 	for metric, value := range d.counters {
 		switch metric {
 		case "in_octets":
@@ -555,13 +585,6 @@ func buildInterfaceSnapshot(idx int, d *polledInterface, cached domain.SNMPInter
 			snap.IfOutDiscards = uint64(value)
 		}
 	}
-	if !snap.Has64BitIn && cached.Has64BitIn {
-		snap.Has64BitIn = true
-	}
-	if !snap.Has64BitOut && cached.Has64BitOut {
-		snap.Has64BitOut = true
-	}
-	return snap
 }
 
 func rateBits(is64 bool) Bits {

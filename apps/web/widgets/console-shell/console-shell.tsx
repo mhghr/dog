@@ -13,6 +13,7 @@ import { useLocale, useTranslations } from "next-intl";
 
 import { BrandMark } from "@/shared/ui/brand-mark";
 import { ConsoleBreadcrumbs } from "@/widgets/console-shell/console-breadcrumbs";
+import { consoleBasePath } from "@/widgets/console-shell/console-base";
 import { LanguageSwitcher } from "@/shared/ui/language-switcher";
 import { ThemeToggle } from "@/shared/ui/theme-toggle";
 import {
@@ -71,6 +72,11 @@ const NAV_ITEMS = {
     { href: "/settings",             labelKey: "workspaceSettings" as const, icon: GearSix },
   ],
 };
+
+// consoleBasePath derives the navigation base prefix from the active pathname.
+// Workspace-scoped consoles live under /console/w/[slug]/...; everything else
+// falls back to the classic /app surface.
+export { consoleBasePath } from "@/widgets/console-shell/console-base";
 
 function ToggleIcon({ collapsed }: { collapsed: boolean }) {
   return (
@@ -181,8 +187,7 @@ function SidebarContent({
 
   // Workspace-scoped console lives under /console/w/[slug]/... Derive the
   // base prefix so nav links stay inside the active workspace.
-  const wsMatch = pathname.match(/^\/console\/w\/([^/]+)/);
-  const base = wsMatch ? `/console/w/${wsMatch[1]}` : "/app";
+  const base = consoleBasePath(pathname);
 
   const buildNav = (items: readonly { href: string; labelKey: string; icon: React.ElementType }[]) =>
     items.map((item) => ({
