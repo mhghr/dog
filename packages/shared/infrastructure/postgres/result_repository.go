@@ -254,11 +254,35 @@ func (r *ResultRepository) DashboardSummary(ctx context.Context) (domain.Dashboa
 		SlowestMonitors:    []domain.SlowMonitor{},
 	}
 
+	if err := r.loadStatusCounts(ctx, &summary); err != nil {
+		return summary, err
+	}
+	if err := r.loadChecks24h(ctx, &summary); err != nil {
+		return summary, err
+	}
+	if err := r.loadRecentFailures(ctx, &summary); err != nil {
+		return summary, err
+	}
+	if err := r.loadSlowestMonitors(ctx, &summary); err != nil {
+		return summary, err
+	}
+	if err := r.loadAttentionSummary(ctx, &summary); err != nil {
+		return summary, err
+	}
+	if err := r.loadAvailabilitySeries(ctx, &summary); err != nil {
+		return summary, err
+	}
+
+	return summary, nil
+}
+
+func (r *ResultRepository) loadStatusCounts(ctx context.Context, summary *domain.DashboardSummary) error {
 	rows, err := r.pool.Query(ctx,
 		`SELECT last_status::text, COUNT(*) FROM monitors GROUP BY last_status`)
 	if err != nil {
-		return summary, fmt.Errorf("query status counts: %w", err)
+		return fmt.Errorf("query status counts: %w", err)
 	}
+	defer rows.Close()
 
 	for rows.Next() {
 		var (
@@ -266,18 +290,16 @@ func (r *ResultRepository) DashboardSummary(ctx context.Context) (domain.Dashboa
 			count  int
 		)
 		if err := rows.Scan(&status, &count); err != nil {
-			rows.Close()
-			return summary, err
+			return err
 		}
 		summary.StatusCounts[status] = count
 		summary.TotalMonitors += count
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return summary, err
-	}
+	return rows.Err()
+}
 
-	err = r.pool.QueryRow(ctx, `
+func (r *ResultRepository) loadChecks24h(ctx context.Context, summary *domain.DashboardSummary) error {
+	err := r.pool.QueryRow(ctx, `
 		SELECT
 			COUNT(*) FILTER (WHERE success),
 			COUNT(*) FILTER (WHERE NOT success),
@@ -286,22 +308,26 @@ func (r *ResultRepository) DashboardSummary(ctx context.Context) (domain.Dashboa
 		WHERE started_at > NOW() - INTERVAL '24 hours'`,
 	).Scan(&summary.Checks24h.Successful, &summary.Checks24h.Failed, &summary.Availability24h)
 	if err != nil {
-		return summary, fmt.Errorf("query 24h checks: %w", err)
+		return fmt.Errorf("query 24h checks: %w", err)
 	}
+	return nil
+}
 
+func (r *ResultRepository) loadRecentFailures(ctx context.Context, summary *domain.DashboardSummary) error {
 	failureRows, err := r.pool.Query(ctx, `
 		SELECT
-			m.id::text, m.name, COALESCE(mt.executor_key, m.type::text),
+			m.id::text, m.name, mt.executor_key,
 			pr.error_code, pr.error_message, pr.started_at
 		FROM probe_results pr
 		JOIN monitors m ON m.id = pr.monitor_id
-		LEFT JOIN monitor_types mt ON mt.id = m.monitor_type_id
+		JOIN monitor_types mt ON mt.id = m.monitor_type_id
 		WHERE pr.success = FALSE
 		ORDER BY pr.started_at DESC
 		LIMIT 10`)
 	if err != nil {
-		return summary, fmt.Errorf("query recent failures: %w", err)
+		return fmt.Errorf("query recent failures: %w", err)
 	}
+	defer failureRows.Close()
 
 	for failureRows.Next() {
 		var failure domain.RecentFailure
@@ -309,20 +335,18 @@ func (r *ResultRepository) DashboardSummary(ctx context.Context) (domain.Dashboa
 			&failure.MonitorID, &failure.MonitorName, &failure.MonitorType,
 			&failure.ErrorCode, &failure.ErrorMessage, &failure.StartedAt,
 		); err != nil {
-			failureRows.Close()
-			return summary, err
+			return err
 		}
 		summary.RecentFailures = append(summary.RecentFailures, failure)
 	}
-	failureRows.Close()
-	if err := failureRows.Err(); err != nil {
-		return summary, err
-	}
+	return failureRows.Err()
+}
 
+func (r *ResultRepository) loadSlowestMonitors(ctx context.Context, summary *domain.DashboardSummary) error {
 	slowRows, err := r.pool.Query(ctx, `
-		SELECT m.id::text, m.name, COALESCE(mt.executor_key, m.type::text), lr.duration_millis
+		SELECT m.id::text, m.name, mt.executor_key, lr.duration_millis
 		FROM monitors m
-		LEFT JOIN monitor_types mt ON mt.id = m.monitor_type_id
+		JOIN monitor_types mt ON mt.id = m.monitor_type_id
 		JOIN LATERAL (
 			SELECT duration_millis
 			FROM probe_results pr
@@ -334,33 +358,32 @@ func (r *ResultRepository) DashboardSummary(ctx context.Context) (domain.Dashboa
 		ORDER BY lr.duration_millis DESC
 		LIMIT 5`)
 	if err != nil {
-		return summary, fmt.Errorf("query slowest monitors: %w", err)
+		return fmt.Errorf("query slowest monitors: %w", err)
 	}
+	defer slowRows.Close()
 
 	for slowRows.Next() {
 		var slow domain.SlowMonitor
 		if err := slowRows.Scan(&slow.MonitorID, &slow.MonitorName, &slow.MonitorType, &slow.DurationMillis); err != nil {
-			slowRows.Close()
-			return summary, err
+			return err
 		}
 		summary.SlowestMonitors = append(summary.SlowestMonitors, slow)
 	}
-	slowRows.Close()
-	if err := slowRows.Err(); err != nil {
-		return summary, err
-	}
+	return slowRows.Err()
+}
 
-	err = r.pool.QueryRow(ctx, `
+func (r *ResultRepository) loadAttentionSummary(ctx context.Context, summary *domain.DashboardSummary) error {
+	err := r.pool.QueryRow(ctx, `
 		WITH latest AS (
 			SELECT DISTINCT ON (pr.monitor_id)
 				pr.monitor_id,
-				COALESCE(mt.executor_key, m.type::text) AS type,
+				mt.executor_key AS type,
 				m.config,
 				pr.error_code,
 				pr.metrics
 			FROM probe_results pr
 			JOIN monitors m ON m.id = pr.monitor_id
-			LEFT JOIN monitor_types mt ON mt.id = m.monitor_type_id
+			JOIN monitor_types mt ON mt.id = m.monitor_type_id
 			WHERE m.enabled = TRUE
 			ORDER BY pr.monitor_id, pr.started_at DESC
 		)
@@ -391,9 +414,12 @@ func (r *ResultRepository) DashboardSummary(ctx context.Context) (domain.Dashboa
 		&summary.Attention.NTPHighOffset,
 	)
 	if err != nil {
-		return summary, fmt.Errorf("query attention summary: %w", err)
+		return fmt.Errorf("query attention summary: %w", err)
 	}
+	return nil
+}
 
+func (r *ResultRepository) loadAvailabilitySeries(ctx context.Context, summary *domain.DashboardSummary) error {
 	seriesRows, err := r.pool.Query(ctx, `
 		SELECT
 			date_trunc('hour', started_at) AS bucket,
@@ -404,8 +430,9 @@ func (r *ResultRepository) DashboardSummary(ctx context.Context) (domain.Dashboa
 		GROUP BY bucket
 		ORDER BY bucket`)
 	if err != nil {
-		return summary, fmt.Errorf("query availability series: %w", err)
+		return fmt.Errorf("query availability series: %w", err)
 	}
+	defer seriesRows.Close()
 
 	for seriesRows.Next() {
 		var (
@@ -413,8 +440,7 @@ func (r *ResultRepository) DashboardSummary(ctx context.Context) (domain.Dashboa
 			total int64
 		)
 		if err := seriesRows.Scan(&point.Timestamp, &point.Successful, &total); err != nil {
-			seriesRows.Close()
-			return summary, err
+			return err
 		}
 		point.Total = total
 		if total > 0 {
@@ -422,12 +448,7 @@ func (r *ResultRepository) DashboardSummary(ctx context.Context) (domain.Dashboa
 		}
 		summary.AvailabilitySeries = append(summary.AvailabilitySeries, point)
 	}
-	seriesRows.Close()
-	if err := seriesRows.Err(); err != nil {
-		return summary, err
-	}
-
-	return summary, nil
+	return seriesRows.Err()
 }
 
 func getAttemptFromAttributes(attrs map[string]any) int {

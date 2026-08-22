@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -167,6 +168,29 @@ func (h *Handler) updateResourceMonitor(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	monitor, ok := h.applyMonitorUpdate(w, r, monitor, input)
+	if !ok {
+		return
+	}
+	if err := h.deps.MonitorRepo.Update(r.Context(), &monitor); err != nil {
+		writeDomainError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, monitor)
+}
+
+// applyMonitorUpdate merges the update input onto an existing monitor, handling
+// SNMP secret re-encryption when the configuration changes. Returns false after
+// writing an error response when the update is rejected.
+func (h *Handler) applyMonitorUpdate(w http.ResponseWriter, r *http.Request, monitor domain.Monitor, input struct {
+	Name            string         `json:"name"`
+	Enabled         *bool          `json:"enabled"`
+	Configuration   map[string]any `json:"configuration"`
+	Severity        string         `json:"severity"`
+	IntervalSeconds *int           `json:"interval_seconds"`
+	TimeoutMillis   *int           `json:"timeout_millis"`
+	Retries         *int           `json:"retries"`
+}) (domain.Monitor, bool) {
 	if input.Name != "" {
 		monitor.Name = input.Name
 	}
@@ -180,7 +204,7 @@ func (h *Handler) updateResourceMonitor(w http.ResponseWriter, r *http.Request) 
 		if monitor.Type == domain.MonitorSNMP {
 			if err := h.validateSnmpTarget(r.Context(), monitor.ResourceID, monitor.Configuration); err != nil {
 				writeError(w, r, http.StatusBadRequest, "invalid_target", err.Error(), nil)
-				return
+				return monitor, false
 			}
 			h.ensureSNMPCredential(r.Context(), monitor.ResourceID, monitor.Configuration)
 			h.encryptSNMPConfigSecrets(monitor.Configuration, h.deps.Config.AgentSecretEncryptionKey)
@@ -198,11 +222,7 @@ func (h *Handler) updateResourceMonitor(w http.ResponseWriter, r *http.Request) 
 	if input.Retries != nil {
 		monitor.Retries = *input.Retries
 	}
-	if err := h.deps.MonitorRepo.Update(r.Context(), &monitor); err != nil {
-		writeDomainError(w, r, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, monitor)
+	return monitor, true
 }
 
 func (h *Handler) deleteResourceMonitor(w http.ResponseWriter, r *http.Request) {
@@ -278,46 +298,15 @@ func (h *Handler) resourceMonitorMetrics(w http.ResponseWriter, r *http.Request)
 	}
 
 	query := r.URL.Query()
-
-	to := time.Now().UTC()
-	if raw := query.Get("to"); raw != "" {
-		parsed, err := time.Parse(time.RFC3339, raw)
-		if err != nil {
-			writeError(w, r, http.StatusBadRequest, "invalid_range", "to must be RFC3339", nil)
-			return
-		}
-		to = parsed
-	}
-
-	from := to.Add(-24 * time.Hour)
-	if raw := query.Get("from"); raw != "" {
-		parsed, err := time.Parse(time.RFC3339, raw)
-		if err != nil {
-			writeError(w, r, http.StatusBadRequest, "invalid_range", "from must be RFC3339", nil)
-			return
-		}
-		from = parsed
-	}
-
-	if !from.Before(to) {
-		writeError(w, r, http.StatusBadRequest, "invalid_range", "from must be before to", nil)
+	from, to, ok := parseMetricsRange(w, r, query)
+	if !ok {
 		return
 	}
-
 	stepSeconds := resolveStep(query.Get("step"), to.Sub(from))
+	probeID := query.Get("probe_id")
 
 	metricKey := query.Get("metric")
-	var series []domain.ProbeSeries
-	switch metricKey {
-	case "status":
-		series, err = h.deps.MetricQuery.StatusSeriesByProbe(r.Context(), monitorID, from, to, stepSeconds, maxChartSeries)
-	default:
-		if metricKey != "" {
-			series, err = h.deps.MetricQuery.SeriesByProbeMetric(r.Context(), monitorID, metricKey, from, to, stepSeconds, maxChartSeries)
-		} else {
-			series, err = h.deps.MetricQuery.SeriesByProbe(r.Context(), monitorID, from, to, stepSeconds, maxChartSeries)
-		}
-	}
+	series, err := h.querySeriesByMetric(r.Context(), monitorID, metricKey, from, to, stepSeconds)
 	if err != nil {
 		h.deps.Logger.Error("query per-probe series failed", "monitor_id", monitorID, "error", err)
 		writeDomainError(w, r, err)
@@ -355,8 +344,6 @@ func (h *Handler) resourceMonitorMetrics(w http.ResponseWriter, r *http.Request)
 
 	// Range-scoped KPIs (aggregate or per-probe), computed in the metric layer
 	// so the frontend consumes calculated values instead of raw samples.
-	probeID := query.Get("probe_id")
-
 	aggregate, err := h.deps.MetricQuery.AggregateMetrics(r.Context(), monitorID, probeID, from, to)
 	if err != nil {
 		h.deps.Logger.Error("query aggregate metrics failed", "monitor_id", monitorID, "error", err)
@@ -370,32 +357,11 @@ func (h *Handler) resourceMonitorMetrics(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Attach last-status facts to each probe row from the latest result set.
-	latestByProbe := make(map[string]domain.ProbeResult, len(latest))
-	for _, res := range latest {
-		if res.ProbeLocationID != "" {
-			latestByProbe[res.ProbeLocationID] = res
-		}
-	}
-	for i := range probeMetrics {
-		if latestRes, ok := latestByProbe[probeMetrics[i].ProbeID]; ok {
-			probeMetrics[i].LastStatusCode = attributeInt(latestRes.Attributes["status_code"])
-			probeMetrics[i].LastSuccess = latestRes.Success
-			at := latestRes.StartedAt
-			probeMetrics[i].LastCheckedAt = &at
-		}
-	}
+	attachLastStatusToProbes(probeMetrics, latest)
 
 	// Chart drill-down: when `at` is present, return the result closest to
 	// that timestamp so the frontend can render its timing waterfall.
-	var selected *domain.ProbeResult
-	if raw := query.Get("at"); raw != "" {
-		at, err := time.Parse(time.RFC3339, raw)
-		if err == nil {
-			if res, err := h.deps.Results.ResultAt(r.Context(), monitorID, probeID, at); err == nil {
-				selected = &res
-			}
-		}
-	}
+	selected := h.resolveSelectedResult(r, monitorID, probeID)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"series":          series,
@@ -413,6 +379,89 @@ func (h *Handler) resourceMonitorMetrics(w http.ResponseWriter, r *http.Request)
 		"probes":          probeMetrics,
 		"selected":        selected,
 	})
+}
+
+// parseMetricsRange resolves the from/to window from query params, defaulting
+// to the trailing 24 hours. Returns false after writing an error response when
+// the range is invalid.
+func parseMetricsRange(w http.ResponseWriter, r *http.Request, query url.Values) (time.Time, time.Time, bool) {
+	to := time.Now().UTC()
+	if raw := query.Get("to"); raw != "" {
+		parsed, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			writeError(w, r, http.StatusBadRequest, "invalid_range", "to must be RFC3339", nil)
+			return time.Time{}, time.Time{}, false
+		}
+		to = parsed
+	}
+
+	from := to.Add(-24 * time.Hour)
+	if raw := query.Get("from"); raw != "" {
+		parsed, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			writeError(w, r, http.StatusBadRequest, "invalid_range", "from must be RFC3339", nil)
+			return time.Time{}, time.Time{}, false
+		}
+		from = parsed
+	}
+
+	if !from.Before(to) {
+		writeError(w, r, http.StatusBadRequest, "invalid_range", "from must be before to", nil)
+		return time.Time{}, time.Time{}, false
+	}
+	return from, to, true
+}
+
+// querySeriesByMetric routes the per-probe series query to the metric layer
+// based on the requested metric key.
+func (h *Handler) querySeriesByMetric(ctx context.Context, monitorID, metricKey string, from, to time.Time, stepSeconds int) ([]domain.ProbeSeries, error) {
+	switch metricKey {
+	case "status":
+		return h.deps.MetricQuery.StatusSeriesByProbe(ctx, monitorID, from, to, stepSeconds, maxChartSeries)
+	case "":
+		return h.deps.MetricQuery.SeriesByProbe(ctx, monitorID, from, to, stepSeconds, maxChartSeries)
+	default:
+		return h.deps.MetricQuery.SeriesByProbeMetric(ctx, monitorID, metricKey, from, to, stepSeconds, maxChartSeries)
+	}
+}
+
+// attachLastStatusToProbes decorates each probe aggregate with the latest
+// result's status facts so the frontend can show per-probe up/down state.
+func attachLastStatusToProbes(probeMetrics []domain.ProbeAggregateMetrics, latest []domain.ProbeResult) {
+	latestByProbe := make(map[string]domain.ProbeResult, len(latest))
+	for _, res := range latest {
+		if res.ProbeLocationID != "" {
+			latestByProbe[res.ProbeLocationID] = res
+		}
+	}
+	for i := range probeMetrics {
+		latestRes, ok := latestByProbe[probeMetrics[i].ProbeID]
+		if !ok {
+			continue
+		}
+		probeMetrics[i].LastStatusCode = attributeInt(latestRes.Attributes["status_code"])
+		probeMetrics[i].LastSuccess = latestRes.Success
+		at := latestRes.StartedAt
+		probeMetrics[i].LastCheckedAt = &at
+	}
+}
+
+// resolveSelectedResult returns the probe result closest to `at` for the
+// drill-down waterfall, or nil when absent or invalid.
+func (h *Handler) resolveSelectedResult(r *http.Request, monitorID, probeID string) *domain.ProbeResult {
+	raw := r.URL.Query().Get("at")
+	if raw == "" {
+		return nil
+	}
+	at, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return nil
+	}
+	res, err := h.deps.Results.ResultAt(r.Context(), monitorID, probeID, at)
+	if err != nil {
+		return nil
+	}
+	return &res
 }
 
 // attributeInt converts a JSON-decoded status_code attribute into *int, or nil

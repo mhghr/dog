@@ -127,112 +127,72 @@ func extractParamValue(result *domain.ProbeResult, key string) (float64, bool) {
 	return 0, false
 }
 
+// paramKeyAliases maps a catalog parameter key to the metric keys a probe
+// executor may actually emit for it. The first entry is always the canonical
+// key itself.
+var paramKeyAliases = map[string][]string{
+	"ping.reachability":             {"ping.reachability", "reachability"},
+	"ping.packet_loss_percent":      {"packet_loss_percent", "packet_loss"},
+	"ping.rtt.avg_ms":               {"rtt_avg_ms", "avg_rtt_ms", "rtt_ms"},
+	"ping.rtt.min_ms":               {"rtt_min_ms", "min_rtt_ms"},
+	"ping.rtt.max_ms":               {"rtt_max_ms", "max_rtt_ms"},
+	"ping.jitter_ms":                {"jitter_ms", "jitter"},
+	"http.reachability":             {"http.reachability", "reachability"},
+	"http.status_code":              {"status_code"},
+	"http.response_time_ms":         {"response_time_ms", "total_duration_ms", "duration_ms"},
+	"http.total_duration_ms":        {"total_duration_ms", "duration_ms", "response_time_ms"},
+	"http.ttfb_ms":                  {"ttfb_ms", "time_to_first_byte_ms"},
+	"http.dns_duration_ms":          {"dns_duration_ms"},
+	"http.connect_duration_ms":      {"connect_duration_ms"},
+	"http.tls_duration_ms":          {"tls_duration_ms"},
+	"http.download_time_ms":         {"download_time_ms"},
+	"http.response_size_bytes":      {"response_size_bytes"},
+	"http.content_assertion":        {"content_assertion"},
+	"tcp.reachability":              {"tcp.reachability", "reachability"},
+	"tcp.connect_time_ms":           {"connect_time_ms", "connection_time_ms", "connect_duration_ms"},
+	"dns.reachability":              {"dns.reachability", "reachability"},
+	"dns.response_time_ms":          {"response_time_ms", "resolution_duration_ms", "resolution_time_ms", "dns_duration_ms"},
+	"dns.answer_count":              {"answer_count"},
+	"dns.expected_record_match":     {"expected_record_match", "record_match"},
+	"tls.reachability":              {"reachability", "tls.reachability"},
+	"ssl.reachability":              {"reachability", "ssl.reachability"},
+	"tls.handshake_time_ms":         {"handshake_time_ms", "handshake_duration_ms"},
+	"ssl.handshake_time_ms":         {"handshake_time_ms", "handshake_duration_ms"},
+	"tls.certificate_expiry_days":   {"certificate_expiry_days", "days_remaining", "cert_days_remaining"},
+	"ssl.certificate_expiry_days":   {"certificate_expiry_days", "days_remaining", "cert_days_remaining"},
+	"ssl.certificate_valid":         {"certificate_valid", "cert_valid"},
+	"tls.certificate_valid":         {"certificate_valid", "cert_valid"},
+	"ssl.hostname_match":            {"hostname_match"},
+	"tls.hostname_match":            {"hostname_match"},
+	"ssl.chain_valid":               {"chain_valid", "chain_trusted"},
+	"tls.chain_valid":               {"chain_valid", "chain_trusted"},
+	"domain_expiration.days_remaining":     {"days_remaining", "domain_days_remaining"},
+	"domain_expiration.registrar_match":    {"registrar_match"},
+	"domain_expiration.nameserver_match":   {"nameserver_match"},
+	"smtp.reachability":             {"smtp.reachability"},
+	"smtp.banner_match":             {"banner_match"},
+	"smtp.starttls_available":       {"starttls_available", "tls_available"},
+	"smtp.handshake_duration_ms":    {"handshake_duration_ms", "handshake_time_ms"},
+	"ntp.reachability":              {"ntp.reachability"},
+	"ntp.offset_ms":                 {"offset_ms", "offset"},
+	"ntp.round_trip_ms":             {"round_trip_ms", "rtt_ms"},
+	"ntp.jitter_ms":                 {"jitter_ms", "jitter"},
+	"ntp.stratum":                   {"stratum"},
+	"snmp.reachability":             {"snmp.reachability", "reachability"},
+	"snmp.device_health":            {"device_health"},
+	"snmp.cpu_percent":              {"device.cpu_percent", "cpu_percent"},
+	"snmp.memory_percent":           {"device.memory_percent", "memory_percent"},
+	"snmp.temperature_celsius":      {"device.temperature_celsius", "temperature_celsius"},
+	"snmp.uptime_seconds":           {"device.uptime_seconds", "uptime_seconds"},
+	"snmp.interface_oper_status":    {"snmp.interface_oper_status"},
+	"snmp.interface_utilization_percent": {"snmp.interface_utilization_percent"},
+}
+
 func splitParamKey(key string) []string {
-	var parts []string
-	parts = append(parts, key)
-
-	switch {
-	case key == "ping.reachability":
-		return []string{"ping.reachability", "reachability"}
-	case key == "ping.packet_loss_percent":
-		return []string{"packet_loss_percent", "packet_loss"}
-	case key == "ping.rtt.avg_ms":
-		return []string{"rtt_avg_ms", "avg_rtt_ms", "rtt_ms"}
-	case key == "ping.rtt.min_ms":
-		return []string{"rtt_min_ms", "min_rtt_ms"}
-	case key == "ping.rtt.max_ms":
-		return []string{"rtt_max_ms", "max_rtt_ms"}
-	case key == "ping.jitter_ms":
-		return []string{"jitter_ms", "jitter"}
-	case key == "http.reachability":
-		return []string{"http.reachability", "reachability"}
-	case key == "http.status_code":
-		return []string{"status_code"}
-	case key == "http.response_time_ms":
-		return []string{"response_time_ms", "total_duration_ms", "duration_ms"}
-	case key == "http.total_duration_ms":
-		return []string{"total_duration_ms", "duration_ms", "response_time_ms"}
-	case key == "http.ttfb_ms":
-		return []string{"ttfb_ms", "time_to_first_byte_ms"}
-	case key == "http.dns_duration_ms":
-		return []string{"dns_duration_ms"}
-	case key == "http.connect_duration_ms":
-		return []string{"connect_duration_ms"}
-	case key == "http.tls_duration_ms":
-		return []string{"tls_duration_ms"}
-	case key == "http.download_time_ms":
-		return []string{"download_time_ms"}
-	case key == "http.response_size_bytes":
-		return []string{"response_size_bytes"}
-	case key == "http.content_assertion":
-		return []string{"content_assertion"}
-	case key == "tcp.reachability":
-		return []string{"tcp.reachability", "reachability"}
-	case key == "tcp.connect_time_ms":
-		return []string{"connect_time_ms", "connection_time_ms", "connect_duration_ms"}
-	case key == "dns.reachability":
-		return []string{"dns.reachability", "reachability"}
-	case key == "dns.response_time_ms":
-		return []string{"response_time_ms", "resolution_duration_ms", "resolution_time_ms", "dns_duration_ms"}
-	case key == "dns.answer_count":
-		return []string{"answer_count"}
-	case key == "dns.expected_record_match":
-		return []string{"expected_record_match", "record_match"}
-	case key == "tls.reachability" || key == "ssl.reachability":
-		return []string{"reachability", key}
-	case key == "tls.handshake_time_ms" || key == "ssl.handshake_time_ms":
-		return []string{"handshake_time_ms", "handshake_duration_ms"}
-	case key == "tls.certificate_expiry_days" || key == "ssl.certificate_expiry_days":
-		return []string{"certificate_expiry_days", "days_remaining", "cert_days_remaining"}
-	case key == "ssl.certificate_valid" || key == "tls.certificate_valid":
-		return []string{"certificate_valid", "cert_valid"}
-	case key == "ssl.hostname_match" || key == "tls.hostname_match":
-		return []string{"hostname_match"}
-	case key == "ssl.chain_valid" || key == "tls.chain_valid":
-		return []string{"chain_valid", "chain_trusted"}
-	case key == "domain_expiration.days_remaining":
-		return []string{"days_remaining", "domain_days_remaining"}
-	case key == "domain_expiration.registrar_match":
-		return []string{"registrar_match"}
-	case key == "domain_expiration.nameserver_match":
-		return []string{"nameserver_match"}
-	case key == "smtp.reachability":
-		return []string{"smtp.reachability"}
-	case key == "smtp.banner_match":
-		return []string{"banner_match"}
-	case key == "smtp.starttls_available":
-		return []string{"starttls_available", "tls_available"}
-	case key == "smtp.handshake_duration_ms":
-		return []string{"handshake_duration_ms", "handshake_time_ms"}
-	case key == "ntp.reachability":
-		return []string{"ntp.reachability"}
-	case key == "ntp.offset_ms":
-		return []string{"offset_ms", "offset"}
-	case key == "ntp.round_trip_ms":
-		return []string{"round_trip_ms", "rtt_ms"}
-	case key == "ntp.jitter_ms":
-		return []string{"jitter_ms", "jitter"}
-	case key == "ntp.stratum":
-		return []string{"stratum"}
-	case key == "snmp.reachability":
-		return []string{"snmp.reachability", "reachability"}
-	case key == "snmp.device_health":
-		return []string{"device_health"}
-	case key == "snmp.cpu_percent":
-		return []string{"device.cpu_percent", "cpu_percent"}
-	case key == "snmp.memory_percent":
-		return []string{"device.memory_percent", "memory_percent"}
-	case key == "snmp.temperature_celsius":
-		return []string{"device.temperature_celsius", "temperature_celsius"}
-	case key == "snmp.uptime_seconds":
-		return []string{"device.uptime_seconds", "uptime_seconds"}
-	case key == "snmp.interface_oper_status":
-		return []string{"snmp.interface_oper_status"}
-	case key == "snmp.interface_utilization_percent":
-		return []string{"snmp.interface_utilization_percent"}
+	if aliases, ok := paramKeyAliases[key]; ok {
+		return aliases
 	}
-
-	return parts
+	return []string{key}
 }
 
 func toFloat64(v any) (float64, bool) {
@@ -303,30 +263,37 @@ func evaluateDirectional(recentValues []float64, rule *ParameterRule, catDef Par
 // evaluateThresholds applies error/warning/recovery thresholds against a single
 // aggregated value and persists the resulting health state.
 func evaluateThresholds(aggValue float64, rule *ParameterRule, repo Repository, ctx context.Context, monitorID, paramKey string, compare func(value, threshold float64, op string) bool) (HealthState, *EvaluateOutcome) {
-	newState := HealthOK
-
-	if rule.ErrorValue != nil {
-		if compare(aggValue, *rule.ErrorValue, rule.ErrorOperator) {
-			newState = HealthError
-		}
-	}
-
-	if rule.WarningValue != nil && newState == HealthOK {
-		if compare(aggValue, *rule.WarningValue, rule.WarningOperator) {
-			newState = HealthWarning
-		}
-	}
+	newState := thresholdState(aggValue, rule, compare)
 
 	if rule.RecoveryValue != nil {
-		previousState, err := repo.GetHealthState(ctx, monitorID, paramKey)
-		if err == nil && previousState.CurrentState != HealthOK && previousState.CurrentState != HealthUnknown {
-			if !compare(aggValue, *rule.RecoveryValue, rule.WarningOperator) {
-				newState = HealthOK
-			}
-		}
+		applyRecovery(ctx, repo, monitorID, paramKey, aggValue, rule, compare, &newState)
 	}
 
 	return persistAndReturn(repo, ctx, monitorID, paramKey, newState, aggValue)
+}
+
+// thresholdState computes the state from error/warning thresholds, warning
+// only applying when the error threshold has not already fired.
+func thresholdState(aggValue float64, rule *ParameterRule, compare func(value, threshold float64, op string) bool) HealthState {
+	if rule.ErrorValue != nil && compare(aggValue, *rule.ErrorValue, rule.ErrorOperator) {
+		return HealthError
+	}
+	if rule.WarningValue != nil && compare(aggValue, *rule.WarningValue, rule.WarningOperator) {
+		return HealthWarning
+	}
+	return HealthOK
+}
+
+// applyRecovery clears an error/warning state once the aggregated value drops
+// back below the recovery threshold (higher-is-worse direction).
+func applyRecovery(ctx context.Context, repo Repository, monitorID, paramKey string, aggValue float64, rule *ParameterRule, compare func(value, threshold float64, op string) bool, newState *HealthState) {
+	previousState, err := repo.GetHealthState(ctx, monitorID, paramKey)
+	if err != nil || previousState.CurrentState == HealthOK || previousState.CurrentState == HealthUnknown {
+		return
+	}
+	if !compare(aggValue, *rule.RecoveryValue, rule.WarningOperator) {
+		*newState = HealthOK
+	}
 }
 
 func evaluateBooleanFailure(recentValues []float64, rule *ParameterRule, repo Repository, ctx context.Context, monitorID, paramKey string) (HealthState, *EvaluateOutcome) {

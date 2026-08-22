@@ -57,43 +57,7 @@ export function HttpProbeLocations({ probeHealth, isFa, isLoading }: HttpProbeLo
               </thead>
               <tbody>
                 {probeHealth.map((stat) => (
-                  <tr
-                    key={stat.probeId}
-                    onClick={() => setSelected(stat)}
-                    className="cursor-pointer border-b border-border/40 transition-colors last:border-0 hover:bg-muted/30"
-                  >
-                    <td className="py-2.5 pe-3 text-sm font-medium" dir="auto">{stat.location}</td>
-                    <td className="py-2.5 pe-3">
-                      <StatusBadge tone={healthTone(stat.health)} label={healthLabel(stat.health, isFa)} />
-                    </td>
-                    <td className="py-2.5 pe-3 text-right tabular-nums text-[13px] text-muted-foreground" dir="ltr">
-                      {stat.responseTimeMs == null ? "—" : `${Math.round(stat.responseTimeMs)} ms`}
-                    </td>
-                    <td className="py-2.5 pe-3 text-right tabular-nums text-[13px] text-muted-foreground" dir="ltr">
-                      {stat.breakdown.dns == null ? "—" : `${Math.round(stat.breakdown.dns)} ms`}
-                    </td>
-                    <td className="py-2.5 pe-3 text-right tabular-nums text-[13px] text-muted-foreground" dir="ltr">
-                      {stat.breakdown.connect == null ? "—" : `${Math.round(stat.breakdown.connect)} ms`}
-                    </td>
-                    <td className="py-2.5 pe-3 text-right tabular-nums text-[13px] text-muted-foreground" dir="ltr">
-                      {stat.breakdown.tls == null ? "—" : `${Math.round(stat.breakdown.tls)} ms`}
-                    </td>
-                    <td className="py-2.5 pe-3 text-right tabular-nums text-[13px] text-muted-foreground" dir="ltr">
-                      {stat.breakdown.ttfb == null ? "—" : `${Math.round(stat.breakdown.ttfb)} ms`}
-                    </td>
-                    <td className="py-2.5 pe-3 text-right tabular-nums text-[13px] text-muted-foreground" dir="ltr">
-                      {stat.statusCode ?? "—"}
-                    </td>
-                    <td className="py-2.5 pe-3 text-right tabular-nums text-[13px] text-muted-foreground" dir="ltr">
-                      {stat.responseSize == null ? "—" : `${Math.round(stat.responseSize / 1024)} KB`}
-                    </td>
-                    <td className="py-2.5 pe-3 text-right tabular-nums text-[13px] text-muted-foreground" dir="ltr">
-                      {stat.availability == null ? "—" : `${Math.round(stat.availability)}%`}
-                    </td>
-                    <td className="py-2.5 text-right text-xs text-muted-foreground">
-                      {stat.lastCheckedAt ? formatRelativeTime(stat.lastCheckedAt, isFa ? "fa" : "en") : "—"}
-                    </td>
-                  </tr>
+                  <HttpProbeRow key={stat.probeId} stat={stat} isFa={isFa} onSelect={setSelected} />
                 ))}
               </tbody>
             </table>
@@ -120,6 +84,54 @@ function BreakdownRow({ label, value, unit = "ms" }: { label: string; value: num
         {value == null ? "—" : `${Math.round(value)} ${unit}`}
       </span>
     </div>
+  );
+}
+
+function msCell(value: number | null): string {
+  return value == null ? "—" : `${Math.round(value)} ms`;
+}
+
+function kbCell(value: number | null): string {
+  return value == null ? "—" : `${Math.round(value / 1024)} KB`;
+}
+
+function percentCell(value: number | null): string {
+  return value == null ? "—" : `${Math.round(value)}%`;
+}
+
+const numericCellClass =
+  "py-2.5 pe-3 text-right tabular-nums text-[13px] text-muted-foreground";
+
+function HttpProbeRow({
+  stat,
+  isFa,
+  onSelect,
+}: {
+  stat: HttpProbeHealth;
+  isFa: boolean;
+  onSelect: (probe: HttpProbeHealth) => void;
+}) {
+  return (
+    <tr
+      onClick={() => onSelect(stat)}
+      className="cursor-pointer border-b border-border/40 transition-colors last:border-0 hover:bg-muted/30"
+    >
+      <td className="py-2.5 pe-3 text-sm font-medium" dir="auto">{stat.location}</td>
+      <td className="py-2.5 pe-3">
+        <StatusBadge tone={healthTone(stat.health)} label={healthLabel(stat.health, isFa)} />
+      </td>
+      <td className={`${numericCellClass} ltr`} dir="ltr">{msCell(stat.responseTimeMs)}</td>
+      <td className={`${numericCellClass} ltr`} dir="ltr">{msCell(stat.breakdown.dns)}</td>
+      <td className={`${numericCellClass} ltr`} dir="ltr">{msCell(stat.breakdown.connect)}</td>
+      <td className={`${numericCellClass} ltr`} dir="ltr">{msCell(stat.breakdown.tls)}</td>
+      <td className={`${numericCellClass} ltr`} dir="ltr">{msCell(stat.breakdown.ttfb)}</td>
+      <td className={`${numericCellClass} ltr`} dir="ltr">{stat.statusCode ?? "—"}</td>
+      <td className={`${numericCellClass} ltr`} dir="ltr">{kbCell(stat.responseSize)}</td>
+      <td className={`${numericCellClass} ltr`} dir="ltr">{percentCell(stat.availability)}</td>
+      <td className="py-2.5 text-right text-xs text-muted-foreground">
+        {stat.lastCheckedAt ? formatRelativeTime(stat.lastCheckedAt, isFa ? "fa" : "en") : "—"}
+      </td>
+    </tr>
   );
 }
 

@@ -138,6 +138,15 @@ func pollIdentity(ctx context.Context, client *gosnmp.GoSNMP) (domain.SNMPDevice
 		return domain.SNMPDeviceIdentity{}, "", 0, fmt.Errorf("%s", packet.Error)
 	}
 
+	id, sysObjectID, uptimeSeconds := identityFromPacket(packet)
+	if sysObjectID == "" {
+		return id, "", 0, fmt.Errorf("device did not return sysObjectID")
+	}
+	return id, sysObjectID, uptimeSeconds, nil
+}
+
+// identityFromPacket maps the sys* variable bindings into the device identity.
+func identityFromPacket(packet *gosnmp.SnmpPacket) (domain.SNMPDeviceIdentity, string, float64) {
 	var id domain.SNMPDeviceIdentity
 	var sysObjectID string
 	var uptimeSeconds float64
@@ -159,10 +168,7 @@ func pollIdentity(ctx context.Context, client *gosnmp.GoSNMP) (domain.SNMPDevice
 			}
 		}
 	}
-	if sysObjectID == "" {
-		return id, "", 0, fmt.Errorf("device did not return sysObjectID")
-	}
-	return id, sysObjectID, uptimeSeconds, nil
+	return id, sysObjectID, uptimeSeconds
 }
 
 // sysUpTimeTicks extracts the sysUpTime TimeTicks value from a PDU, tolerating
@@ -385,75 +391,11 @@ func pollInterfaces(ctx context.Context, client *gosnmp.GoSNMP, opts PollOptions
 	walkNum(oidIfSpeed, "speed")
 
 	// Counter columns — 64-bit preferred, 32-bit fallback.
-	counterCols := []struct {
-		metric string
-		hc     string
-		legacy string
-	}{
-		{"in_octets", oidIfHCInOctets, oidIfInOctets},
-		{"out_octets", oidIfHCOutOctets, oidIfOutOctets},
-		{"in_packets", oidIfHCInUcastPkts, oidIfInUcastPkts},
-		{"out_packets", oidIfHCOutUcastPkts, oidIfOutUcastPkts},
-		{"in_errors", "", oidIfInErrors},
-		{"out_errors", "", oidIfOutErrors},
-		{"in_discards", "", oidIfInDiscards},
-		{"out_discards", "", oidIfOutDiscards},
-	}
-	for _, cc := range counterCols {
-		root := cc.legacy
-		bits := Bits32
-		if cc.hc != "" {
-			// Try the 64-bit column first; fall back to 32-bit on absence.
-			n := 0
-			n, _ = walkNumericColumn(ctx, client, cc.hc, func(idx int) *polledInterface { return ensure(idx) }, data, cc.metric)
-			sent++
-			recv += n
-			if n > 0 {
-				bits = Bits64
-			} else {
-				walkNumericColumn(ctx, client, cc.legacy, func(idx int) *polledInterface { return ensure(idx) }, data, cc.metric)
-				sent++
-				partial = append(partial, "fallback:"+cc.metric)
-			}
-		} else {
-			walkNumericColumn(ctx, client, root, func(idx int) *polledInterface { return ensure(idx) }, data, cc.metric)
-			sent++
-		}
-		for _, d := range data {
-			if _, ok := d.counters[cc.metric]; ok {
-				d.counterBits[cc.metric] = bits
-			}
-		}
-	}
+	partial = append(partial, pollCounterColumns(ctx, client, ensure, data, &sent, &recv)...)
 
 	// Meta columns only when no discovery cache exists (first contact).
 	if len(cache) == 0 {
-		walkMeta := func(root, field string) {
-			_ = client.BulkWalk(root, func(pdu gosnmp.SnmpPDU) error {
-				if isMissingPDU(pdu) {
-					return nil
-				}
-				idx, ok := indexFromOID(pdu.Name)
-				if !ok {
-					return nil
-				}
-				d := ensure(idx)
-				text := pduString(pdu)
-				switch field {
-				case "name":
-					d.name = text
-				case "descr":
-					d.descr = text
-				case "alias":
-					d.alias = text
-				}
-				return nil
-			})
-			sent++
-		}
-		walkMeta(oidIfName, "name")
-		walkMeta(oidIfDescr, "descr")
-		walkMeta(oidIfAlias, "alias")
+		sent += pollMetaColumns(ctx, client, ensure)
 	}
 
 	snapshots := make([]InterfaceSnapshot, 0, len(order))
@@ -466,58 +408,7 @@ func pollInterfaces(ctx context.Context, client *gosnmp.GoSNMP, opts PollOptions
 			continue
 		}
 
-		snap := InterfaceSnapshot{}
-		snap.IfIndex = idx
-		snap.IfName = firstNonEmpty(d.name, cached.IfName)
-		snap.IfDescr = firstNonEmpty(d.descr, cached.IfDescr)
-		snap.IfAlias = firstNonEmpty(d.alias, cached.IfAlias)
-		snap.IfType = int(firstNonZero(d.ifType, float64(cached.IfType)))
-		snap.IfMtu = int(firstNonZero(d.mtu, float64(cached.IfMtu)))
-		snap.IfOperStatus = int(firstNonZero(d.operStatus, float64(cached.IfOperStatus)))
-		snap.IfAdminStatus = int(firstNonZero(d.adminStatus, float64(cached.IfAdminStatus)))
-		snap.IfSpeed = int64(firstNonZero(d.speed, float64(cached.IfSpeed)))
-		if snap.IfSpeed == 0 || snap.IfSpeed >= 4294967295 {
-			if d.highSpeed > 0 {
-				snap.IfSpeed = int64(d.highSpeed) * 1_000_000
-			} else if cached.IfSpeed > 0 && cached.IfSpeed < 4294967295 {
-				snap.IfSpeed = cached.IfSpeed
-			}
-		}
-
-		for metric, value := range d.counters {
-			switch metric {
-			case "in_octets":
-				snap.IfInOctets = uint64(value)
-				if d.counterBits[metric] == Bits64 {
-					snap.Has64BitIn = true
-				}
-			case "out_octets":
-				snap.IfOutOctets = uint64(value)
-				if d.counterBits[metric] == Bits64 {
-					snap.Has64BitOut = true
-				}
-			case "in_packets":
-				snap.IfInPackets = uint64(value)
-			case "out_packets":
-				snap.IfOutPackets = uint64(value)
-			case "in_errors":
-				snap.IfInErrors = uint64(value)
-			case "out_errors":
-				snap.IfOutErrors = uint64(value)
-			case "in_discards":
-				snap.IfInDiscards = uint64(value)
-			case "out_discards":
-				snap.IfOutDiscards = uint64(value)
-			}
-		}
-		if !snap.Has64BitIn && cached.Has64BitIn {
-			snap.Has64BitIn = true
-		}
-		if !snap.Has64BitOut && cached.Has64BitOut {
-			snap.Has64BitOut = true
-		}
-
-		// Rates from counter deltas (wrap-safe per bit width).
+		snap := buildInterfaceSnapshot(idx, d, cached)
 		snap.InBps = counterRate(opts, idx, "in_octets", snap.IfInOctets, rateBits(snap.Has64BitIn), now)
 		snap.OutBps = counterRate(opts, idx, "out_octets", snap.IfOutOctets, rateBits(snap.Has64BitOut), now)
 		counterRate(opts, idx, "in_packets", snap.IfInPackets, Bits32, now)
@@ -526,7 +417,6 @@ func pollInterfaces(ctx context.Context, client *gosnmp.GoSNMP, opts PollOptions
 		counterRate(opts, idx, "out_errors", snap.IfOutErrors, Bits32, now)
 		counterRate(opts, idx, "in_discards", snap.IfInDiscards, Bits32, now)
 		counterRate(opts, idx, "out_discards", snap.IfOutDiscards, Bits32, now)
-
 		snap.Utilization = Utilization(snap.InBps, snap.OutBps, snap.IfSpeed)
 		snapshots = append(snapshots, snap)
 	}
@@ -535,6 +425,143 @@ func pollInterfaces(ctx context.Context, client *gosnmp.GoSNMP, opts PollOptions
 		return snapshots, domain.SNMPStateTimeout, append(partial, "no interface data"), sent, recv
 	}
 	return snapshots, domain.SNMPStateSuccess, partial, sent, recv
+}
+
+// counterColumnSpec identifies the OIDs to walk for one counter metric.
+type counterColumnSpec struct {
+	metric string
+	hc     string
+	legacy string
+}
+
+var counterColumns = []counterColumnSpec{
+	{"in_octets", oidIfHCInOctets, oidIfInOctets},
+	{"out_octets", oidIfHCOutOctets, oidIfOutOctets},
+	{"in_packets", oidIfHCInUcastPkts, oidIfInUcastPkts},
+	{"out_packets", oidIfHCOutUcastPkts, oidIfOutUcastPkts},
+	{"in_errors", "", oidIfInErrors},
+	{"out_errors", "", oidIfOutErrors},
+	{"in_discards", "", oidIfInDiscards},
+	{"out_discards", "", oidIfOutDiscards},
+}
+
+// pollCounterColumns walks the counter columns, preferring 64-bit IFX-MIB OIDs
+// and falling back to 32-bit IF-MIB on absence. Returns any fallback markers.
+func pollCounterColumns(ctx context.Context, client *gosnmp.GoSNMP, ensure func(int) *polledInterface, data map[int]*polledInterface, sent, recv *int) []string {
+	partial := []string{}
+	for _, cc := range counterColumns {
+		bits := Bits32
+		if cc.hc != "" {
+			// Try the 64-bit column first; fall back to 32-bit on absence.
+			n, _ := walkNumericColumn(ctx, client, cc.hc, ensure, data, cc.metric)
+			*sent++
+			*recv += n
+			if n > 0 {
+				bits = Bits64
+			} else {
+				walkNumericColumn(ctx, client, cc.legacy, ensure, data, cc.metric)
+				*sent++
+				partial = append(partial, "fallback:"+cc.metric)
+			}
+		} else {
+			walkNumericColumn(ctx, client, cc.legacy, ensure, data, cc.metric)
+			*sent++
+		}
+		for _, d := range data {
+			if _, ok := d.counters[cc.metric]; ok {
+				d.counterBits[cc.metric] = bits
+			}
+		}
+	}
+	return partial
+}
+
+// pollMetaColumns walks name/descr/alias columns on first contact (no cache).
+func pollMetaColumns(ctx context.Context, client *gosnmp.GoSNMP, ensure func(int) *polledInterface) int {
+	sent := 0
+	walkMeta := func(root, field string) {
+		_ = client.BulkWalk(root, func(pdu gosnmp.SnmpPDU) error {
+			if isMissingPDU(pdu) {
+				return nil
+			}
+			idx, ok := indexFromOID(pdu.Name)
+			if !ok {
+				return nil
+			}
+			d := ensure(idx)
+			text := pduString(pdu)
+			switch field {
+			case "name":
+				d.name = text
+			case "descr":
+				d.descr = text
+			case "alias":
+				d.alias = text
+			}
+			return nil
+		})
+		sent++
+	}
+	walkMeta(oidIfName, "name")
+	walkMeta(oidIfDescr, "descr")
+	walkMeta(oidIfAlias, "alias")
+	return sent
+}
+
+// buildInterfaceSnapshot assembles a snapshot from the polled data and the
+// discovery cache, reconciling 64/32-bit counter flags and highSpeed.
+func buildInterfaceSnapshot(idx int, d *polledInterface, cached domain.SNMPInterfaceInfo) InterfaceSnapshot {
+	snap := InterfaceSnapshot{}
+	snap.IfIndex = idx
+	snap.IfName = firstNonEmpty(d.name, cached.IfName)
+	snap.IfDescr = firstNonEmpty(d.descr, cached.IfDescr)
+	snap.IfAlias = firstNonEmpty(d.alias, cached.IfAlias)
+	snap.IfType = int(firstNonZero(d.ifType, float64(cached.IfType)))
+	snap.IfMtu = int(firstNonZero(d.mtu, float64(cached.IfMtu)))
+	snap.IfOperStatus = int(firstNonZero(d.operStatus, float64(cached.IfOperStatus)))
+	snap.IfAdminStatus = int(firstNonZero(d.adminStatus, float64(cached.IfAdminStatus)))
+	snap.IfSpeed = int64(firstNonZero(d.speed, float64(cached.IfSpeed)))
+	if snap.IfSpeed == 0 || snap.IfSpeed >= 4294967295 {
+		if d.highSpeed > 0 {
+			snap.IfSpeed = int64(d.highSpeed) * 1_000_000
+		} else if cached.IfSpeed > 0 && cached.IfSpeed < 4294967295 {
+			snap.IfSpeed = cached.IfSpeed
+		}
+	}
+
+	for metric, value := range d.counters {
+		switch metric {
+		case "in_octets":
+			snap.IfInOctets = uint64(value)
+			if d.counterBits[metric] == Bits64 {
+				snap.Has64BitIn = true
+			}
+		case "out_octets":
+			snap.IfOutOctets = uint64(value)
+			if d.counterBits[metric] == Bits64 {
+				snap.Has64BitOut = true
+			}
+		case "in_packets":
+			snap.IfInPackets = uint64(value)
+		case "out_packets":
+			snap.IfOutPackets = uint64(value)
+		case "in_errors":
+			snap.IfInErrors = uint64(value)
+		case "out_errors":
+			snap.IfOutErrors = uint64(value)
+		case "in_discards":
+			snap.IfInDiscards = uint64(value)
+		case "out_discards":
+			snap.IfOutDiscards = uint64(value)
+		}
+	}
+	if !snap.Has64BitIn && cached.Has64BitIn {
+		snap.Has64BitIn = true
+	}
+	if !snap.Has64BitOut && cached.Has64BitOut {
+		snap.Has64BitOut = true
+	}
+	return snap
 }
 
 func rateBits(is64 bool) Bits {

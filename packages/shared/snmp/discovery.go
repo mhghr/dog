@@ -101,7 +101,22 @@ func TestDevice(ctx context.Context, params ConnectParams) TestResult {
 	}
 	result.Steps = append(result.Steps, "SNMP response: ok")
 
-	for _, v := range packet.Variables {
+	applyTestIdentity(packet.Variables, &result)
+
+	if result.SysObjectID == "" {
+		result.Steps = append(result.Steps, "SNMP response: device did not return sysObjectID")
+		return TestResult{State: domain.SNMPStateUnsupported, Detail: "device did not return sysObjectID", Steps: result.Steps}
+	}
+	result.Steps = append(result.Steps, "Authentication: ok")
+	result.OK = true
+	result.State = domain.SNMPStateSuccess
+	result.Detail = "connected"
+	return result
+}
+
+// applyTestIdentity copies the sys* variable bindings into the test result.
+func applyTestIdentity(variables []gosnmp.SnmpPDU, result *TestResult) {
+	for _, v := range variables {
 		switch strings.TrimPrefix(v.Name, ".") {
 		case oidSysName:
 			result.SysName = pduStringName2(v)
@@ -117,16 +132,6 @@ func TestDevice(ctx context.Context, params ConnectParams) TestResult {
 			}
 		}
 	}
-
-	if result.SysObjectID == "" {
-		result.Steps = append(result.Steps, "SNMP response: device did not return sysObjectID")
-		return TestResult{State: domain.SNMPStateUnsupported, Detail: "device did not return sysObjectID", Steps: result.Steps}
-	}
-	result.Steps = append(result.Steps, "Authentication: ok")
-	result.OK = true
-	result.State = domain.SNMPStateSuccess
-	result.Detail = "connected"
-	return result
 }
 
 func pduStringName2(v gosnmp.SnmpPDU) string {
@@ -205,13 +210,24 @@ func discoverIdentity(ctx context.Context, client *gosnmp.GoSNMP) (domain.SNMPDe
 		return domain.SNMPDeviceIdentity{}, fmt.Errorf("get system identity: %w", err)
 	}
 
+	id := identityFromSystemGet(result.Variables)
+	if id.SysObjectID == "" {
+		return domain.SNMPDeviceIdentity{}, errors.New("device did not return sysObjectID")
+	}
+
+	vendor, model := ClassifyVendorModel(id.SysDescr, id.SysObjectID)
+	id.Vendor = vendor
+	id.Model = model
+	return id, nil
+}
+
+// identityFromSystemGet maps the sys* variable bindings of a system-identity
+// GET into the device identity.
+func identityFromSystemGet(variables []gosnmp.SnmpPDU) domain.SNMPDeviceIdentity {
 	var id domain.SNMPDeviceIdentity
-	for _, v := range result.Variables {
+	for _, v := range variables {
 		name := strings.TrimPrefix(v.Name, ".")
-		text, _ := v.Value.(string)
-		if bytes, ok := v.Value.([]byte); ok {
-			text = string(bytes)
-		}
+		text := pduText(v)
 		switch name {
 		case oidSysName:
 			id.SysName = text
@@ -227,15 +243,18 @@ func discoverIdentity(ctx context.Context, client *gosnmp.GoSNMP) (domain.SNMPDe
 			}
 		}
 	}
+	return id
+}
 
-	if id.SysObjectID == "" {
-		return domain.SNMPDeviceIdentity{}, errors.New("device did not return sysObjectID")
+// pduText extracts a string from a PDU value (OctetString or string).
+func pduText(v gosnmp.SnmpPDU) string {
+	if text, ok := v.Value.(string); ok {
+		return text
 	}
-
-	vendor, model := ClassifyVendorModel(id.SysDescr, id.SysObjectID)
-	id.Vendor = vendor
-	id.Model = model
-	return id, nil
+	if bytes, ok := v.Value.([]byte); ok {
+		return string(bytes)
+	}
+	return ""
 }
 
 // discoverInterfaces walks the IF-MIB/IFX-MIB tables. 64-bit counters are
