@@ -145,6 +145,43 @@ export function validateMonitoringConfig(values: ValidationValues): FieldErrors 
       }
       break;
     }
+    case "snmp": {
+      const host = typeof values.config.host === "string" ? values.config.host.trim() : "";
+      if (host === "") {
+        errors.host = { en: "Device address is required", fa: "آدرس دستگاه الزامی است" };
+      } else if (!isValidHostname(host)) {
+        errors.host = { en: "Enter a valid IP or hostname", fa: "آدرس IP یا نام میزبان معتبر وارد کنید" };
+      }
+      if (!isValidPort(values.config.port)) {
+        errors.port = { en: "Port must be between 1 and 65535", fa: "پورت باید بین ۱ تا ۶۵۵۳۵ باشد" };
+      }
+      const version = String(values.config.version ?? "2c");
+      if (!["1", "2c", "3"].includes(version)) {
+        errors.version = { en: "Invalid SNMP version", fa: "نسخه SNMP نامعتبر است" };
+      }
+      if (version === "1" || version === "2c") {
+        if (typeof values.config.community !== "string" || values.config.community.trim() === "") {
+          errors.community = { en: "Community string is required", fa: "رشته Community الزامی است" };
+        }
+      }
+      if (version === "3") {
+        if (typeof values.config.username !== "string" || values.config.username.trim() === "") {
+          errors.username = { en: "SNMPv3 username is required", fa: "نام کاربری SNMPv3 الزامی است" };
+        }
+        const level = String(values.config.security_level ?? "noAuthNoPriv");
+        if (level === "authNoPriv" || level === "authPriv") {
+          if (typeof values.config.authentication_secret !== "string" || values.config.authentication_secret.trim() === "") {
+            errors.authentication_secret = { en: "Authentication secret is required", fa: "رمز احراز هویت الزامی است" };
+          }
+        }
+        if (level === "authPriv") {
+          if (typeof values.config.privacy_secret !== "string" || values.config.privacy_secret.trim() === "") {
+            errors.privacy_secret = { en: "Privacy secret is required", fa: "رمز رمزنگاری الزامی است" };
+          }
+        }
+      }
+      break;
+    }
     default:
       break;
   }

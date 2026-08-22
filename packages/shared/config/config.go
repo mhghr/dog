@@ -88,6 +88,17 @@ type Config struct {
 	NATSURL string
 
 	TelemetryPipeline TelemetryPipelineConfig
+
+	// SNMPCollectorSourceIPs are the public source IPs of the SNMP collectors
+	// that customers must allow on their firewall (UDP/161). Managed via the
+	// SNMP_SOURCE_IPS environment variable (comma-separated), never hard-coded
+	// in the frontend.
+	SNMPCollectorSourceIPsValue []string
+}
+
+// SNMPCollectorSourceIPs returns the configured collector source IPs.
+func (c *Config) SNMPCollectorSourceIPs() []string {
+	return c.SNMPCollectorSourceIPsValue
 }
 
 func Load() *Config {
@@ -166,6 +177,8 @@ func Load() *Config {
 		OTELIngestTLSKeyFile:  getString("OTEL_INGEST_TLS_KEY", ""),
 
 		NATSURL: getString("NATS_URL", "nats://localhost:4222"),
+
+		SNMPCollectorSourceIPsValue: getSlice("SNMP_SOURCE_IPS", []string{}),
 
 		TelemetryPipeline: TelemetryPipelineConfig{
 			Mode: getString("TELEMETRY_PIPELINE_MODE", "legacy"),

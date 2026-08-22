@@ -98,7 +98,8 @@
     "tls": "SSL/TLS Certificate",
     "domain_expiration": "Domain Expiration",
     "smtp": "SMTP Service",
-    "ntp": "NTP Time Server"
+    "ntp": "NTP Time Server",
+    "snmp": "SNMP Network Device"
   },
   "typeGroups": {
     "web": "Web & API",
@@ -121,7 +122,19 @@
     "certificatesExpiring": "Certificates expiring soon",
     "domainsExpiring": "Domains expiring soon",
     "smtpFailures": "STARTTLS failures",
-    "ntpHighOffset": "NTP clock drift"
+    "ntpHighOffset": "NTP clock drift",
+    "statusUp": "Up",
+    "statusDown": "Down",
+    "statusUnknown": "Unknown",
+    "statusPaused": "Paused",
+    "trend24h": "24h availability trend",
+    "statusDistribution": "Status distribution",
+    "mapTitle": "Global coverage",
+    "mapLive": "live",
+    "live": "Live",
+    "lastUpdated": "Last updated",
+    "allGood": "All clear",
+    "noAttention": "Nothing needs attention"
   },
   "nodes": {
     "title": "Nodes",

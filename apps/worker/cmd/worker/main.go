@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -23,6 +25,7 @@ import (
 	"monitoring-platform/packages/shared/probe"
 	"monitoring-platform/packages/shared/queue"
 	"monitoring-platform/packages/shared/security"
+	snmplib "monitoring-platform/packages/shared/snmp"
 	"monitoring-platform/packages/shared/worker"
 )
 
@@ -69,6 +72,7 @@ func main() {
 		Guard:          guard,
 		Logger:         logger,
 		PingPrivileged: cfg.PingPrivileged,
+		SNMPKey:        cfg.AgentSecretEncryptionKey,
 	})
 
 	resultClient := worker.NewResultClient(cfg.APIBaseURL, cfg.WorkerToken)
@@ -119,6 +123,15 @@ func main() {
 			os.Exit(1)
 		}
 		jobQueue = natsQueue
+
+		// On-demand SNMP operations (test connection / discovery) run on this
+		// worker — the same collector used for production polling. The API
+		// publishes to snmp.tasks.* and the result is returned on the reply
+		// subject.
+		if err := startSNMPTaskConsumer(ctx, natsBus, cfg.AgentSecretEncryptionKey, logger); err != nil {
+			logger.Error("SNMP task consumer setup failed", "error", err)
+			os.Exit(1)
+		}
 	}
 
 	batcher := spool.NewBatcher(resultSpool, sender, spool.DefaultBatcherConfig(), logger)
@@ -152,6 +165,45 @@ func main() {
 	}
 
 	logger.Info("worker stopped")
+}
+
+// startSNMPTaskConsumer subscribes to on-demand SNMP tasks and runs them with
+// the same collector code used for production polling. Results are published
+// back to the task's reply subject.
+func startSNMPTaskConsumer(ctx context.Context, bus *messagebus.NATSBus, snmpKey string, logger *slog.Logger) error {
+	return bus.Subscribe(ctx, messagebus.SubscribeOptions{
+		Subject:    "snmp.tasks.>",
+		Queue:      "snmp-task-workers",
+		Durable:    "snmp-task-worker",
+		DeliverNew: true,
+	}, func(ctx context.Context, msg messagebus.Message) error {
+		var task domain.SNMPTask
+		if err := json.Unmarshal(msg.Data, &task); err != nil {
+			logger.Error("snmp task decode failed", "error", err)
+			return nil
+		}
+
+		result, _ := snmplib.ExecuteTask(ctx, task.Kind, task.Config, snmpKey, snmplib.DefaultRegistry())
+		payload, _ := json.Marshal(result)
+		headers := map[string]string{"task_id": task.TaskID, "kind": string(task.Kind)}
+		subject := task.ReplySubject
+		if subject == "" {
+			subject = "snmp.tasks.result." + task.TaskID
+		}
+		if err := bus.Publish(ctx, messagebus.PublishOptions{Subject: subject, Data: payload, Headers: headers}); err != nil {
+			logger.Error("snmp task result publish failed", "error", err, "task_id", task.TaskID)
+			return err
+		}
+		logger.Info("snmp task executed",
+			"task_id", task.TaskID,
+			"kind", task.Kind,
+			"monitor_id", task.MonitorID,
+			"resource_id", task.ResourceID,
+			"ok", result.OK,
+			"state", result.State,
+		)
+		return nil
+	})
 }
 
 func workerHealthMux(redisClient *redis.Client, promHandler http.Handler) http.Handler {

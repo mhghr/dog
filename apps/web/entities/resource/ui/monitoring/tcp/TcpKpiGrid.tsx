@@ -53,12 +53,12 @@ export function TcpKpiGrid({
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-2">
       <MonitorKpiCard
         title={t("Availability", "دسترس‌پذیری")}
-        value={availability == null ? "—" : availability.toFixed(2)}
+        value={availability == null ? "—" : String(Math.round(availability))}
         unit="%"
         secondary={{ value: `${successChecks}/${totalChecks || 1}`, label: t("healthy", "موفق") }}
         spark={sparkOf(statusSeries, (v) => v * 100)}
         health={healthOf(availability)}
-        reason={availability != null && availability < 99 ? `${availability.toFixed(2)}%` : undefined}
+        reason={availability != null && availability < 99 ? `${Math.round(availability)}%` : undefined}
       />
 
       <MonitorKpiCard

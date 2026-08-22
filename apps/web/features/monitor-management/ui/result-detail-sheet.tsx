@@ -40,7 +40,7 @@ function DetailRow({
 
 function formatValue(value: unknown): string {
   if (value === null || value === undefined) {
-    return "â€”";
+    return "—";
   }
   if (typeof value === "object") {
     return JSON.stringify(value);

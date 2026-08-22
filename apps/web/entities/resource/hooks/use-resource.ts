@@ -19,6 +19,7 @@ export {
   isDnsMonitor,
   isHttpMonitor,
   isPingMonitor,
+  isSnmpMonitor,
   isTcpMonitor,
   isTlsMonitor,
   resourceListQueryString,
@@ -137,4 +138,29 @@ export function useResourceMonitorStatus(
   range: MetricsRange,
 ) {
   return useResourceMonitorMetrics(resourceId, monitorId, range, "status");
+}
+
+// Chart drill-down: returns the probe result closest to `at` (RFC3339) so the
+// HTTP view can render a timing waterfall / failure details for one specific
+// check. Pass `metric` to keep the series payload aligned with the chart.
+export function useResourceMonitorResultAt(
+  resourceId: string | undefined,
+  monitorId: string | undefined,
+  range: MetricsRange,
+  at: string | null,
+  metric?: string,
+) {
+  return useQuery({
+    queryKey: ["resources", resourceId, "monitors", monitorId, "result-at", range, at ?? "", metric ?? ""],
+    queryFn: () =>
+      resourcesApi.getMonitorMetrics(
+        resourceId!,
+        monitorId!,
+        `${buildMetricsQueryString(range, metric)}&at=${encodeURIComponent(at!)}`,
+      ),
+    enabled: Boolean(resourceId) && Boolean(monitorId) && Boolean(at),
+    staleTime: 60_000,
+    placeholderData: (prev) => prev,
+    select: (data) => data.selected ?? null,
+  });
 }

@@ -69,12 +69,12 @@ export function DnsKpiGrid({
 
       <MonitorKpiCard
         title={t("Resolution Success", "موفقیت تفکیک")}
-        value={availability == null ? "—" : availability.toFixed(2)}
+        value={availability == null ? "—" : String(Math.round(availability))}
         unit="%"
         secondary={{ value: `${successChecks}/${totalChecks || 1}`, label: t("successful", "موفق") }}
         spark={sparkOf(statusSeries, (v) => v * 100)}
         health={healthOf(availability)}
-        reason={availability != null && availability < 99 ? `${availability.toFixed(2)}%` : undefined}
+        reason={availability != null && availability < 99 ? `${Math.round(availability)}%` : undefined}
       />
 
       <MonitorKpiCard

@@ -32,29 +32,24 @@
       );
     background-attachment: fixed;
   }
-  /* Cobalt canvas — deep navy with a luminous cobalt bloom on top and a
-     soft navy underglow bottom-left. Restrained so surfaces stay readable
-     while the page reads alive. */
+  /* Cobalt canvas — near-OLED navy with a single restrained cobalt bloom
+     top-center and a soft navy underglow bottom. Kept quiet so surfaces
+     and data stay legible while the page still reads alive. */
   .dark body {
     background-image:
       radial-gradient(
-        80rem 44rem at 50% -18%,
-        color-mix(in oklch, var(--brand-accent) 9%, transparent),
+        76rem 42rem at 50% -16%,
+        color-mix(in oklch, var(--brand-accent) 7%, transparent),
         transparent
       ),
       radial-gradient(
-        64rem 40rem at 86% -8%,
-        color-mix(in oklch, var(--brand-accent) 8%, transparent),
+        52rem 34rem at 88% -10%,
+        color-mix(in oklch, var(--brand-accent) 5%, transparent),
         transparent
       ),
       radial-gradient(
-        56rem 38rem at -10% 62%,
-        color-mix(in oklch, #1E2A52 12%, transparent),
-        transparent
-      ),
-      radial-gradient(
-        40rem 28rem at 110% 100%,
-        color-mix(in oklch, #3B5BDB 5%, transparent),
+        48rem 34rem at -8% 64%,
+        color-mix(in oklch, #16224A 10%, transparent),
         transparent
       );
   }

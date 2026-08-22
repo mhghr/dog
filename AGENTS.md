@@ -251,15 +251,39 @@ Avoid:
 
 # Context Efficiency Rules
 
-Optimize context usage:
+Optimize context usage. The goal is maximum accuracy with minimum context consumption.
 
-- Prefer Repowise context over reading many files.
-- Read only required source files.
-- Avoid loading entire directories.
-- Avoid repeated searches.
-- Use skeleton/context information when available.
+## Mandatory Repowise usage patterns
 
-The goal is maximum accuracy with minimum context consumption.
+- Use `repowise_get_answer` directly for "how does X work" / "where is Y" / "why is Z" questions. Do NOT call `search_codebase` first and then read files: `get_answer` already returns cited answers plus `symbol_bodies` (full function bodies). When it does, use them and skip the follow-up `get_symbol` / `Read`.
+- For a whole file, use `repowise_get_context` with `include=["skeleton"]` — one call returns the file body-elided with line numbers. Do not `Read` the file unless the skeleton is insufficient.
+- For one specific function/type, use `repowise_get_symbol` (its `verified: true` bounds mean no follow-up `Read` is needed).
+- Batch multiple targets in a single `repowise_get_context` call instead of calling it once per file.
+- Call `repowise_get_risk` BEFORE editing any bug-fixed, busy, or risky file to avoid rework.
+- Never scan whole directories or the repository broadly. Read only the files Repowise identifies.
+
+## Batch tool calls
+
+- Issue independent tool calls in parallel (one message), never serially one at a time.
+
+## Delegate exploration to subagents
+
+- For broad/uncertain lookups, dispatch the `explore` subagent instead of doing the searching yourself. Its context is isolated and only the summary returns to you.
+
+## Use process skills to avoid rework
+
+Rework is the biggest token waste. Activate the relevant skill instead of improvising:
+
+- `brainstorming` before any creative/feature work — prevents starting on the wrong design.
+- `systematic-debugging` on any bug — prevents symptom patching and random exploration.
+- `test-driven-development` when implementing — prevents rework from untested changes.
+- `verification-before-completion` before claiming done — verify first, then report.
+
+## Forbidden waste
+
+- Do not read a file "just to be safe" when Repowise context already answers.
+- Do not repeat searches or re-fetch context already available in the conversation.
+- Do not open random files or guess file locations.
 
 ---
 

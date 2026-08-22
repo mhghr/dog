@@ -136,6 +136,22 @@ function deriveCard(
         probes,
       };
     }
+    case "snmp": {
+      const first = latest[0];
+      const metrics = first?.metrics ?? {};
+      const cpu = metrics["device.cpu_percent"];
+      const mem = metrics["device.memory_percent"];
+      return {
+        monitorId: monitor.id,
+        title: typeName,
+        type: "snmp",
+        value: cpu != null && typeof cpu === "number" ? `${Math.round(cpu)}` : "—",
+        unit: "%",
+        sub: mem != null && typeof mem === "number" ? `Mem ${Math.round(mem)}%` : "CPU utilization",
+        health,
+        probes,
+      };
+    }
     default: {
       // Generic fallback: average total duration across probes.
       const s = avg(latest, (r) => r.duration_millis);

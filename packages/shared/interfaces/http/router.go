@@ -13,6 +13,7 @@ import (
 
 	"monitoring-platform/packages/shared/agents"
 	"monitoring-platform/packages/shared/alerting"
+	"monitoring-platform/packages/shared/application/metricquery"
 	"monitoring-platform/packages/shared/auth"
 	"monitoring-platform/packages/shared/config"
 	"monitoring-platform/packages/shared/events"
@@ -28,6 +29,7 @@ type Deps struct {
 	Config           *config.Config
 	Logger           *slog.Logger
 	Results          repository.ResultRepository
+	MetricQuery      metricquery.QueryService
 	Locations        repository.LocationRepository
 	StatusPages      repository.StatusPageRepository
 	Orgs             repository.OrganizationRepository
@@ -54,6 +56,8 @@ type Deps struct {
 	AgentConfigs     repository.AgentConfigRepository
 	MonitorTypeParams *postgres.MonitorTypeParameterRepository
 	MonitorRepo       repository.MonitorRepository
+	SNMP              repository.SNMPRepository
+	SNMPRunner        SNMPTaskRunner
 }
 
 func NewRouter(deps Deps) http.Handler {
@@ -177,8 +181,20 @@ func NewRouter(deps Deps) http.Handler {
 							r.Delete("/", handler.deleteResourceMonitor)
 							r.Get("/results", handler.listResourceMonitorResults)
 							r.Get("/metrics", handler.resourceMonitorMetrics)
+
+							// SNMP network-device collector endpoints.
+							r.Post("/snmp/test", handler.snmpTestConnection)
+							r.Post("/snmp/discover", handler.snmpDiscover)
+							r.Get("/snmp/discovery", handler.snmpGetDiscovery)
+							r.Get("/snmp/interfaces", handler.snmpListInterfaces)
+							r.Put("/snmp/interfaces/{ifIndex}", handler.snmpUpdateInterface)
+							r.Get("/snmp/events", handler.snmpListEvents)
+							r.Get("/snmp/diagnostics", handler.snmpDiagnostics)
 						})
 					})
+					r.Get("/snmp/source-ips", handler.snmpSourceIPs)
+					r.Get("/snmp/tasks/{taskID}", handler.snmpGetTask)
+					r.Post("/snmp/tasks/{taskID}/apply", handler.snmpApplyTask)
 				})
 			})
 

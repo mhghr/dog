@@ -11,6 +11,7 @@ var AllParameters = map[string][]ParameterDefinition{
 	"domain_expiration":  DomainExpirationParameters,
 	"smtp":               SMTPParameters,
 	"ntp":                NTPParameters,
+	"snmp":               SNMPParameters,
 }
 
 var PingParameters = []ParameterDefinition{
@@ -204,5 +205,48 @@ var NTPParameters = []ParameterDefinition{
 		Key: "ntp.stratum", Name: "Stratum",
 		DataType: "NUMBER", Direction: "HIGHER_IS_WORSE", Unit: "",
 		DefaultWarning: ptr(4.0), DefaultError: ptr(5.0), Recovery: ptr(3.0),
+	},
+}
+
+// SNMPParameters is the health catalog for network-device (SNMP) monitors.
+// Per-interface signals are aggregated to the device level: the device is
+// critical when a monitored interface is operationally down or utilization
+// crosses its threshold. Per-interface detail stays available as raw metrics.
+var SNMPParameters = []ParameterDefinition{
+	{
+		Key: "snmp.reachability", Name: "Reachability",
+		DataType: "BOOLEAN", Direction: "BOOLEAN_FAILURE", Unit: "",
+	},
+	{
+		Key: "snmp.device_health", Name: "Device Health",
+		DataType: "BOOLEAN", Direction: "BOOLEAN_FAILURE", Unit: "",
+	},
+	{
+		Key: "snmp.cpu_percent", Name: "CPU Utilization",
+		DataType: "PERCENTAGE", Direction: "HIGHER_IS_WORSE", Unit: "%",
+		DefaultWarning: ptr(80.0), DefaultError: ptr(95.0), Recovery: ptr(70.0),
+	},
+	{
+		Key: "snmp.memory_percent", Name: "Memory Utilization",
+		DataType: "PERCENTAGE", Direction: "HIGHER_IS_WORSE", Unit: "%",
+		DefaultWarning: ptr(80.0), DefaultError: ptr(95.0), Recovery: ptr(70.0),
+	},
+	{
+		Key: "snmp.temperature_celsius", Name: "Temperature",
+		DataType: "NUMBER", Direction: "HIGHER_IS_WORSE", Unit: "°C",
+		DefaultWarning: ptr(60.0), DefaultError: ptr(75.0), Recovery: ptr(55.0),
+	},
+	{
+		Key: "snmp.uptime_seconds", Name: "Uptime",
+		DataType: "NUMBER", Direction: "NONE", Unit: "s",
+	},
+	{
+		Key: "snmp.interface_oper_status", Name: "Interface Down",
+		DataType: "ENUM", Direction: "ENUM_STATE", Unit: "",
+	},
+	{
+		Key: "snmp.interface_utilization_percent", Name: "Interface Utilization",
+		DataType: "PERCENTAGE", Direction: "HIGHER_IS_WORSE", Unit: "%",
+		DefaultWarning: ptr(80.0), DefaultError: ptr(95.0), Recovery: ptr(70.0),
 	},
 }

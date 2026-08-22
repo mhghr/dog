@@ -6,8 +6,11 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
+	"time"
 
+	"github.com/nats-io/nats.go"
 	"github.com/redis/go-redis/v9"
 
 	"monitoring-platform/packages/shared/agents"
@@ -73,6 +76,35 @@ func main() {
 
 	bus := events.NewBus()
 
+	// Distributed SSE: when LIVE_EVENTS_NATS=1, live events are fanned out to a
+	// shared NATS bus so every API replica serves the same stream to its own
+	// browsers. The local bus is always the delivery target; the publisher
+	// chooses local-only vs local+NATS. The relay on each replica forwards
+	// events from other instances into this instance's local bus.
+	var livePublisher events.Publisher = bus
+	if os.Getenv("LIVE_EVENTS_NATS") == "1" && cfg.NATSURL != "" {
+		nc, err := nats.Connect(cfg.NATSURL,
+			nats.Name("dog-api-live-events"),
+			nats.Timeout(10*time.Second),
+			nats.ReconnectWait(2*time.Second),
+			nats.MaxReconnects(-1),
+		)
+		if err != nil {
+			logger.Warn("distributed live events disabled: NATS connect failed", "error", err)
+		} else {
+			origin := events.CleanNATSURL(cfg.NATSURL) + "-" + hostnameSuffix()
+			livePublisher = events.NewDistributedPublisher(bus, nc, origin, logger)
+
+			relay := events.NewNATSRelay(bus, nc, origin, logger)
+			go func() {
+				if err := relay.Start(ctx); err != nil {
+					logger.Warn("live event relay stopped", "error", err)
+				}
+			}()
+			logger.Info("distributed live events enabled", "origin", origin, "nats_url", cfg.NATSURL)
+		}
+	}
+
 	monitorRepo := postgres.NewMonitorRepository(pool)
 	resultRepo := postgres.NewResultRepository(pool)
 	locationRepo := postgres.NewLocationRepository(pool)
@@ -93,6 +125,19 @@ func main() {
 	agentRepo := agents.NewRepository(pool)
 	resourceRepo := postgres.NewResourceRepository(pool)
 	monitorTypeParams := postgres.NewMonitorTypeParameterRepository(pool)
+	snmpRepo := postgres.NewSNMPRepository(pool)
+	metricSeriesRepo := postgres.NewMetricSeriesRepository(pool)
+
+	// On-demand SNMP operations (test connection / discovery) run on the SNMP
+	// collector — via the worker in NATS mode, inline otherwise.
+	snmpRunner, snmpRunnerIsNATS := api.SelectSNMPTaskRunner(cfg, snmpRepo, logger)
+	if snmpRunnerIsNATS {
+		go func() {
+			if err := snmpRunner.Start(ctx); err != nil {
+				logger.Error("snmp task result consumer failed", "error", err)
+			}
+		}()
+	}
 
 	var ca *agents.CertAuthority
 	caCertPEM := os.Getenv("AGENT_CA_CERT")
@@ -165,7 +210,7 @@ func main() {
 		monitorRepo,
 		locationRepo,
 		victoria,
-		bus,
+		livePublisher,
 		logger,
 		ingestionMetrics,
 		healthEngine,
@@ -182,6 +227,7 @@ func main() {
 		Config:           cfg,
 		Logger:           logger,
 		Results:          resultRepo,
+		MetricQuery:      postgres.NewMetricQueryService(resultRepo, metricSeriesRepo),
 		Locations:        locationRepo,
 		StatusPages:      postgres.NewStatusPageRepository(pool),
 		Orgs:             postgres.NewOrganizationRepository(pool),
@@ -208,7 +254,31 @@ func main() {
 		AgentConfigs:     postgres.NewAgentConfigRepository(pool),
 		MonitorTypeParams: monitorTypeParams,
 		MonitorRepo:      monitorRepo,
+		SNMP:             snmpRepo,
+		SNMPRunner:       snmpRunner,
 	})
+
+	// SNMP trap receiver (UDP 162). Enabled via SNMP_TRAP_ENABLED=true and
+	// SNMP_TRAP_ADDRESS (default ":162"). Traps are normalized and persisted
+	// as events; polling remains the primary metric source.
+	if os.Getenv("SNMP_TRAP_ENABLED") == "true" {
+		trapAddr := os.Getenv("SNMP_TRAP_ADDRESS")
+		if trapAddr == "" {
+			trapAddr = ":162"
+		}
+		trapReceiver := api.NewSNMPTrapReceiver(api.Deps{
+			Config:     cfg,
+			Logger:     logger,
+			MonitorRepo: monitorRepo,
+			SNMP:       snmpRepo,
+		}, trapAddr)
+		if err := trapReceiver.Start(); err != nil {
+			logger.Error("failed to start snmp trap receiver", "error", err)
+			os.Exit(1)
+		}
+		logger.Info("snmp trap receiver started", "address", trapAddr)
+		defer trapReceiver.Close()
+	}
 
 	server := httpserver.New(cfg.HTTPAddress, router)
 	if err := httpserver.Run(ctx, server, logger); err != nil {
@@ -244,4 +314,19 @@ func consumeGatewayResults(ctx context.Context, rdb *redis.Client, svc *ingestio
 			}
 		}
 	}
+}
+
+// hostnameSuffix returns a short, stable per-process suffix used to build the
+// distributed live-event origin. It keeps replicas distinct even when several
+// run on the same host.
+func hostnameSuffix() string {
+	host, err := os.Hostname()
+	if err != nil {
+		return "unknown"
+	}
+	host = strings.TrimSuffix(host, ".local")
+	if len(host) > 24 {
+		host = host[:24]
+	}
+	return host
 }

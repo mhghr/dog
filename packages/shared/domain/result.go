@@ -71,13 +71,63 @@ type AttentionRequired struct {
 }
 
 type DashboardSummary struct {
-	TotalMonitors   int               `json:"total_monitors"`
-	StatusCounts    map[string]int    `json:"status_counts"`
-	Availability24h *float64          `json:"availability_24h"`
-	Checks24h       Checks24h         `json:"checks_24h"`
-	RecentFailures  []RecentFailure   `json:"recent_failures"`
-	SlowestMonitors []SlowMonitor     `json:"slowest_monitors"`
-	Attention       AttentionRequired `json:"attention_required"`
+	TotalMonitors   int                `json:"total_monitors"`
+	StatusCounts    map[string]int     `json:"status_counts"`
+	Availability24h *float64           `json:"availability_24h"`
+	Checks24h       Checks24h          `json:"checks_24h"`
+	AvailabilitySeries []AvailabilityPoint `json:"availability_series"`
+	RecentFailures  []RecentFailure    `json:"recent_failures"`
+	SlowestMonitors []SlowMonitor      `json:"slowest_monitors"`
+	Attention       AttentionRequired  `json:"attention_required"`
+}
+
+// AvailabilityPoint is one time-bucketed sample of probe success over a
+// monitoring window (used by the dashboard trend chart).
+type AvailabilityPoint struct {
+	Timestamp  time.Time `json:"timestamp"`
+	Successful int64     `json:"successful"`
+	Total      int64     `json:"total"`
+	Rate       float64   `json:"rate"`
+}
+
+// AggregateChecks counts successful/failed checks over a range.
+type AggregateChecks struct {
+	Total      int64 `json:"total_requests"`
+	Successful int64 `json:"successful_requests"`
+	Failed     int64 `json:"failed_requests"`
+}
+
+// MonitorAggregateMetrics is the range-scoped KPI set for an HTTP monitor
+// (optionally filtered to one probe), computed by the metric layer so the
+// frontend never derives P95 or error rates from raw data.
+type MonitorAggregateMetrics struct {
+	Checks            AggregateChecks `json:"checks"`
+	Availability      *float64        `json:"availability"`
+	AvgResponseTimeMS *float64        `json:"avg_response_time_ms"`
+	P95ResponseTimeMS *float64        `json:"p95_response_time_ms"`
+	AvgTTFBMS         *float64        `json:"avg_ttfb_ms"`
+	ErrorRate         *float64        `json:"error_rate"`
+	Codes4xx          int64           `json:"codes_4xx"`
+	Rate4xx           *float64        `json:"rate_4xx"`
+	Codes5xx          int64           `json:"codes_5xx"`
+	Rate5xx           *float64        `json:"rate_5xx"`
+}
+
+// ProbeAggregateMetrics is the per-probe KPI set over a range. Last-status
+// facts are merged by the handler from the latest result per probe.
+type ProbeAggregateMetrics struct {
+	ProbeID           string         `json:"probe_id"`
+	ProbeName         string         `json:"probe_name"`
+	Location          string         `json:"location"`
+	Checks            AggregateChecks `json:"checks"`
+	Availability      *float64       `json:"availability"`
+	AvgResponseTimeMS *float64       `json:"avg_response_time_ms"`
+	P95ResponseTimeMS *float64       `json:"p95_response_time_ms"`
+	AvgTTFBMS         *float64       `json:"avg_ttfb_ms"`
+	ErrorRate         *float64       `json:"error_rate"`
+	LastCheckedAt     *time.Time     `json:"last_checked_at"`
+	LastStatusCode    *int           `json:"last_status_code"`
+	LastSuccess       bool           `json:"last_success"`
 }
 
 type Checks24h struct {

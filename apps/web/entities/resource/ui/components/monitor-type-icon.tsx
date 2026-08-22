@@ -1,10 +1,11 @@
-import {
+﻿import {
   Broadcast,
   CalendarCheck,
   Clock,
   EnvelopeSimple,
   Gauge,
   Globe,
+  CellTower,
   PlugsConnected,
   Pulse,
   ShieldCheck,
@@ -27,6 +28,8 @@ const MONITOR_TYPE_ICONS: Record<string, typeof Pulse> = {
   "database monitor": Tray,
   "smtp check": EnvelopeSimple,
   "ntp check": Clock,
+  "snmp monitor": CellTower,
+  snmp: CellTower,
 };
 
 export function MonitorTypeIcon({
@@ -39,3 +42,5 @@ export function MonitorTypeIcon({
   const Icon = MONITOR_TYPE_ICONS[type.toLowerCase()] ?? Pulse;
   return <Icon className={cn("shrink-0", className)} aria-hidden />;
 }
+
+

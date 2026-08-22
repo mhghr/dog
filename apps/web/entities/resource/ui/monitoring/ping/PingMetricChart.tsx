@@ -71,7 +71,7 @@ export function PingMetricChart({
     typeof value === "number"
       ? unit === "ms"
         ? `${Math.round(value)} ms`
-        : `${value.toFixed(2)}%`
+        : `${Math.round(value)}%`
       : String(value);
 
   // Axis ticks show plain numbers — the unit lives in the tooltip.

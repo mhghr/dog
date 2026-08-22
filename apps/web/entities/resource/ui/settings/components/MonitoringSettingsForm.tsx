@@ -18,6 +18,7 @@ import { SettingsSection } from "./SettingsSection";
 import { ExecutionSettingsSection, type ExecutionSettingsValues, INTERVAL_MIN_SECONDS, INTERVAL_MAX_SECONDS } from "./ExecutionSettingsSection";
 import { HealthRulesBuilder, type HealthRulesState } from "./HealthRulesBuilder";
 import { SchemaFieldRenderer, SchemaToggleRow } from "./SchemaField";
+import { SnmpConnectionPanel } from "./SnmpConnectionPanel";
 
 interface MonitoringSettingsFormProps {
   resourceId: string;
@@ -299,6 +300,15 @@ export function MonitoringSettingsForm({
               isFa={isFa}
               onChange={(key, next) => setHealthRules((prev) => ({ ...prev, [key]: next }))}
             />
+          </SettingsSection>
+        )}
+
+        {/* SNMP collector: connection test + discovery + interface policy.
+            Requires a saved monitor because discovery runs against the stored
+            (encrypted) credentials. */}
+        {schema.type === "snmp" && monitor?.id && (
+          <SettingsSection title={t("Connection & Discovery", "اتصال و کشف")}>
+            <SnmpConnectionPanel resourceId={resourceId} monitorId={monitor.id} isFa={isFa} />
           </SettingsSection>
         )}
 

@@ -193,6 +193,8 @@ func MonitorTypeCode(typeName string) MonitorType {
 		return MonitorSMTP
 	case "NTP Time":
 		return MonitorNTP
+	case "SNMP Monitor":
+		return MonitorSNMP
 	default:
 		return ""
 	}

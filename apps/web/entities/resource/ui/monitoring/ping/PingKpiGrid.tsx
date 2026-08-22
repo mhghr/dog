@@ -68,15 +68,15 @@ export function PingKpiGrid({
 
       <MonitorKpiCard
         title={t("Packet Loss", "افت بسته")}
-        value={summary.packetLoss == null ? "—" : summary.packetLoss.toFixed(1)}
+        value={summary.packetLoss == null ? "—" : String(Math.round(summary.packetLoss))}
         unit="%"
         secondary={{
-          value: summary.packetLoss == null ? "—" : `${summary.packetLoss.toFixed(2)}%`,
+          value: summary.packetLoss == null ? "—" : `${Math.round(summary.packetLoss)}%`,
           label: t("Avg", "میانگین"),
         }}
         spark={sparkOf(lossSeries)}
         health={toKpi(states.packetLoss)}
-        reason={summary.packetLoss != null && summary.packetLoss > 0 ? `${summary.packetLoss.toFixed(1)}%` : undefined}
+        reason={summary.packetLoss != null && summary.packetLoss > 0 ? `${Math.round(summary.packetLoss)}%` : undefined}
       />
 
       <MonitorKpiCard
@@ -93,12 +93,12 @@ export function PingKpiGrid({
 
       <MonitorKpiCard
         title={t("Availability", "دسترس‌پذیری")}
-        value={summary.availability == null ? "—" : summary.availability.toFixed(2)}
+        value={summary.availability == null ? "—" : String(Math.round(summary.availability))}
         unit="%"
         secondary={{ value: rangeLabel, label: t("Range", "بازه") }}
         spark={sparkOf(availabilitySeries)}
         health={toKpi(states.availability)}
-        reason={summary.availability != null && summary.availability < 100 ? `${summary.availability.toFixed(2)}%` : undefined}
+        reason={summary.availability != null && summary.availability < 100 ? `${Math.round(summary.availability)}%` : undefined}
       />
 
       <MonitorKpiCard

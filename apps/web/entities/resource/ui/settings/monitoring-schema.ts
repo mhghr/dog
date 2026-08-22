@@ -43,7 +43,8 @@ export type FieldWidget =
   | "select"
   | "switch"
   | "textarea"
-  | "keyvalue";
+  | "keyvalue"
+  | "password";
 
 export interface SchemaField {
   /** configuration key, e.g. "port", "ip_version" */

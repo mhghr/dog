@@ -205,6 +205,22 @@ func splitParamKey(key string) []string {
 		return []string{"jitter_ms", "jitter"}
 	case key == "ntp.stratum":
 		return []string{"stratum"}
+	case key == "snmp.reachability":
+		return []string{"snmp.reachability", "reachability"}
+	case key == "snmp.device_health":
+		return []string{"device_health"}
+	case key == "snmp.cpu_percent":
+		return []string{"device.cpu_percent", "cpu_percent"}
+	case key == "snmp.memory_percent":
+		return []string{"device.memory_percent", "memory_percent"}
+	case key == "snmp.temperature_celsius":
+		return []string{"device.temperature_celsius", "temperature_celsius"}
+	case key == "snmp.uptime_seconds":
+		return []string{"device.uptime_seconds", "uptime_seconds"}
+	case key == "snmp.interface_oper_status":
+		return []string{"snmp.interface_oper_status"}
+	case key == "snmp.interface_utilization_percent":
+		return []string{"snmp.interface_utilization_percent"}
 	}
 
 	return parts

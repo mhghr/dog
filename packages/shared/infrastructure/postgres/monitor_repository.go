@@ -383,3 +383,32 @@ func (r *MonitorRepository) ListResults(ctx context.Context, monitorID string, l
 
 	return results, total, rows.Err()
 }
+
+// ListSnmpMonitorsByTarget returns enabled SNMP monitors whose resource target
+// matches the given address. Used by the trap receiver to bind events to
+// resources without exposing other tenants' data.
+func (r *MonitorRepository) ListSnmpMonitorsByTarget(ctx context.Context, target string) ([]domain.Monitor, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT `+monitorColumns+`
+		FROM monitors m
+		JOIN monitor_types mt ON mt.id = m.monitor_type_id
+		WHERE m.enabled = TRUE
+		  AND mt.executor_key = 'snmp'
+		  AND LOWER(m.target) = LOWER($1)
+		LIMIT 10`, target)
+	if err != nil {
+		return nil, fmt.Errorf("list snmp monitors by target: %w", err)
+	}
+	defer rows.Close()
+
+	var monitors []domain.Monitor
+	for rows.Next() {
+		m, err := scanMonitor(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan snmp monitor: %w", err)
+		}
+		m.Type = domain.MonitorSNMP
+		monitors = append(monitors, m)
+	}
+	return monitors, rows.Err()
+}

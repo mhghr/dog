@@ -61,7 +61,7 @@ func (r *AlertRepository) ListActivePolicies(ctx context.Context, monitorID stri
 		SELECT
 			id::text,
 			organization_id::text,
-			COALESCE(project_id::text, ''),
+			COALESCE(workspace_id::text, ''),
 			name,
 			scope,
 			conditions,
@@ -197,7 +197,7 @@ func (r *AlertRepository) ListPolicies(ctx context.Context, orgID string) ([]dom
 		SELECT
 			id::text,
 			organization_id::text,
-			COALESCE(project_id::text, ''),
+			COALESCE(workspace_id::text, ''),
 			name,
 			scope,
 			conditions,
@@ -263,7 +263,7 @@ func (r *AlertRepository) CreatePolicy(ctx context.Context, policy *domain.Alert
 
 	err = r.pool.QueryRow(ctx, `
 		INSERT INTO alert_policies (
-			organization_id, project_id, name, scope, conditions,
+			organization_id, workspace_id, name, scope, conditions,
 			severity, opening_failures, resolving_successes,
 			cooldown_seconds, renotify_seconds, enabled, channel_ids
 		)

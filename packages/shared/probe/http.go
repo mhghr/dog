@@ -55,6 +55,7 @@ type httpPhases struct {
 	dns, connect, tls                time.Duration
 	requestWrite, ttfb, download     time.Duration
 	dnsErr, connectErr, tlsErr       error
+	resolvedIP                       string
 }
 
 // transport returns a pooled guarded transport for the given TLS/family
@@ -168,6 +169,18 @@ func (e *HTTPExecutor) Execute(ctx context.Context, job domain.ProbeJob) domain.
 				phases.requestWrite = time.Since(phases.requestStart)
 			}
 		},
+		GotConn: func(info httptrace.GotConnInfo) {
+			if info.Conn == nil {
+				return
+			}
+			// The resolved peer IP (host only, port dropped) so the UI can
+			// show which address the request actually reached.
+			if host, _, err := net.SplitHostPort(info.Conn.RemoteAddr().String()); err == nil {
+				phases.resolvedIP = host
+			} else {
+				phases.resolvedIP = info.Conn.RemoteAddr().String()
+			}
+		},
 		GotFirstResponseByte: func() {
 			phases.firstByte = time.Now()
 			if !phases.requestStart.IsZero() {
@@ -214,6 +227,15 @@ func (e *HTTPExecutor) Execute(ctx context.Context, job domain.ProbeJob) domain.
 		return finishHTTPFailure(result, phases, err)
 	}
 	defer response.Body.Close()
+
+	// Optional, machine-readable request facts: the resolved peer IP and the
+	// response content type. Absent on transport failure — never fabricated.
+	if phases.resolvedIP != "" {
+		result.Attributes["resolved_ip"] = phases.resolvedIP
+	}
+	if contentType := response.Header.Get("Content-Type"); contentType != "" {
+		result.Attributes["content_type"] = contentType
+	}
 
 	readStartedAt := time.Now()
 	// Read one byte past the limit so an oversized body is detected
@@ -296,6 +318,7 @@ func (e *HTTPExecutor) Execute(ctx context.Context, job domain.ProbeJob) domain.
 	}
 	if !containsInt(expectedCodes, response.StatusCode) {
 		result.Attributes["error_type"] = "unexpected_status_code"
+		result.Attributes["failure_stage"] = "http"
 		return finishFailure(
 			result,
 			"unexpected_status_code",
@@ -307,6 +330,8 @@ func (e *HTTPExecutor) Execute(ctx context.Context, job domain.ProbeJob) domain.
 	if expectedBody != "" && !strings.Contains(string(responseBody), expectedBody) {
 		result.Metrics["content_assertion"] = 0.0
 		result.Attributes["error_type"] = "body_assertion_failed"
+		result.Attributes["failure_stage"] = "assertion"
+		result.Attributes["assertion_status"] = "failed"
 		return finishFailure(
 			result,
 			"body_assertion_failed",
@@ -314,6 +339,7 @@ func (e *HTTPExecutor) Execute(ctx context.Context, job domain.ProbeJob) domain.
 		)
 	}
 	result.Metrics["content_assertion"] = 1.0
+	result.Attributes["assertion_status"] = "ok"
 
 	return finishSuccess(result)
 }
@@ -346,7 +372,39 @@ func finishHTTPFailure(result domain.ProbeResult, phases httpPhases, err error) 
 	}
 
 	result.Attributes["error_type"] = errorType
+	// Machine-readable failure stage so the UI never parses error strings. The
+	// timeout_stage field is reserved for per-phase timeouts (dns/connect/tls/
+	// response/total); the probe does not distinguish them yet, so it stays
+	// empty until the executor reports a precise stage.
+	if stage := failureStageOf(code); stage != "" {
+		result.Attributes["failure_stage"] = stage
+	}
+	if code == "timeout" {
+		result.Attributes["timeout_stage"] = ""
+	}
 	return finishFailure(result, code, err)
+}
+
+// failureStageOf maps a deterministic HTTP error code to the standardized,
+// machine-readable failure stage consumed by health rules and the UI.
+func failureStageOf(code string) string {
+	switch code {
+	case "dns_resolution_failed":
+		return "dns"
+	case "connection_failed", "connection_refused":
+		return "tcp"
+	case "tls_handshake_failed", "tls_certificate_expired",
+		"tls_certificate_not_yet_valid", "tls_unknown_ca", "tls_hostname_mismatch":
+		return "tls"
+	case "timeout":
+		return "timeout"
+	case "unexpected_status_code", "response_too_large", "body_read_failed":
+		return "http"
+	case "body_assertion_failed":
+		return "assertion"
+	default:
+		return ""
+	}
 }
 
 // classifyTLSFailure maps TLS handshake errors to precise, deterministic

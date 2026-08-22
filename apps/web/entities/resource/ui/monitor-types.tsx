@@ -1,7 +1,7 @@
-"use client";
+﻿"use client";
 
 import type { LucideIcon } from "lucide-react";
-import { Globe, Radio, Network, Plug, Server, Database, Code2 } from "lucide-react";
+import { Globe, Radio, Network, Plug, Server, Database, Code2, Router } from "lucide-react";
 
 export interface MonitorTypeItem {
   id: string;
@@ -58,6 +58,15 @@ export const MONITOR_TYPE_ITEMS: MonitorTypeItem[] = [
     descriptionFa: "منابع سیستم",
     icon: Server,
     tone: "bg-violet-500/15 text-violet-500",
+  },
+  {
+    id: "snmp",
+    title: "SNMP Device",
+    titleFa: "دستگاه شبکه",
+    description: "Routers, switches and appliances via SNMP",
+    descriptionFa: "روتر، سوئیچ و تجهیزات از طریق SNMP",
+    icon: Router,
+    tone: "bg-teal-500/15 text-teal-500",
   },
   {
     id: "db",

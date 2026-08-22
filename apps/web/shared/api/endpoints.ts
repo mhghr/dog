@@ -38,6 +38,27 @@ export const endpoints = {
       `${api}/resources/${resourceId}/monitors/${monitorId}/results`,
     monitorMetrics: (resourceId: string, monitorId: string) =>
       `${api}/resources/${resourceId}/monitors/${monitorId}/metrics`,
+    snmp: {
+      test: (resourceId: string, monitorId: string) =>
+        `${api}/resources/${resourceId}/monitors/${monitorId}/snmp/test`,
+      discover: (resourceId: string, monitorId: string) =>
+        `${api}/resources/${resourceId}/monitors/${monitorId}/snmp/discover`,
+      discovery: (resourceId: string, monitorId: string) =>
+        `${api}/resources/${resourceId}/monitors/${monitorId}/snmp/discovery`,
+      interfaces: (resourceId: string, monitorId: string) =>
+        `${api}/resources/${resourceId}/monitors/${monitorId}/snmp/interfaces`,
+      interface: (resourceId: string, monitorId: string, ifIndex: number) =>
+        `${api}/resources/${resourceId}/monitors/${monitorId}/snmp/interfaces/${ifIndex}`,
+      events: (resourceId: string, monitorId: string) =>
+        `${api}/resources/${resourceId}/monitors/${monitorId}/snmp/events`,
+      diagnostics: (resourceId: string, monitorId: string) =>
+        `${api}/resources/${resourceId}/monitors/${monitorId}/snmp/diagnostics`,
+    },
+    snmpTasks: {
+      task: (taskId: string) => `${api}/snmp/tasks/${taskId}`,
+      apply: (taskId: string) => `${api}/snmp/tasks/${taskId}/apply`,
+    },
+    snmpSourceIps: `${api}/snmp/source-ips`,
   },
 
   monitor: {

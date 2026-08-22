@@ -105,7 +105,7 @@ export function PingProbeLocations({
                       )}
                       dir="ltr"
                     >
-                      {stat.packetLoss == null ? "—" : `${stat.packetLoss.toFixed(1)}%`}
+                      {stat.packetLoss == null ? "—" : `${Math.round(stat.packetLoss)}%`}
                     </td>
                     <td className={cn(NUM_CELL, "text-right")} dir="ltr">
                       {stat.jitter == null ? "—" : `${Math.round(stat.jitter)} ms`}

@@ -17,7 +17,7 @@ export interface AlertConditions {
 export interface AlertPolicy {
   id: string;
   organization_id: string;
-  project_id: string;
+  workspace_id: string;
   name: string;
   scope: AlertPolicyScope;
   conditions: AlertConditions;

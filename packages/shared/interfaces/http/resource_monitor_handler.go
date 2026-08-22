@@ -1,8 +1,10 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -75,12 +77,41 @@ func (h *Handler) createResourceMonitor(w http.ResponseWriter, r *http.Request) 
 		Retries:         input.Retries,
 		LastStatus:      domain.StatusUnknown,
 	}
+
+	// SNMP collector: encrypt community/v3 secrets before they are stored so
+	// they never appear in plaintext in the database or API responses.
+	if h.monitorTypeIs(r.Context(), input.MonitorTypeID, domain.MonitorSNMP) {
+		// Enforce tenant/target isolation: the SNMP target must be the
+		// resource's own target (public network device), never an arbitrary
+		// internal address reachable from the collector.
+		if err := h.validateSnmpTarget(r.Context(), resourceID, monitor.Configuration); err != nil {
+			writeError(w, r, http.StatusBadRequest, "invalid_target", err.Error(), nil)
+			return
+		}
+		h.ensureSNMPCredential(r.Context(), resourceID, monitor.Configuration)
+		h.encryptSNMPConfigSecrets(monitor.Configuration, h.deps.Config.AgentSecretEncryptionKey)
+	}
+
 	if err := h.deps.MonitorRepo.Create(r.Context(), monitor); err != nil {
 		h.deps.Logger.Error("create resource monitor failed", "error", err)
 		writeDomainError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, monitor)
+}
+
+// monitorTypeIs reports whether the given monitor type resolves to the given
+// executor key.
+func (h *Handler) monitorTypeIs(ctx context.Context, monitorTypeID string, executorKey domain.MonitorType) bool {
+	if monitorTypeID == "" {
+		return false
+	}
+	var key string
+	if err := h.deps.Pool.QueryRow(ctx, `
+		SELECT executor_key FROM monitor_types WHERE id = $1::uuid`, monitorTypeID).Scan(&key); err != nil {
+		return false
+	}
+	return domain.MonitorType(key) == executorKey
 }
 
 func (h *Handler) getResourceMonitor(w http.ResponseWriter, r *http.Request) {
@@ -144,6 +175,16 @@ func (h *Handler) updateResourceMonitor(w http.ResponseWriter, r *http.Request) 
 	}
 	if input.Configuration != nil {
 		monitor.Configuration = input.Configuration
+		// SNMP collector: re-encrypt secrets on update (unchanged values are
+		// masked by the UI and preserved).
+		if monitor.Type == domain.MonitorSNMP {
+			if err := h.validateSnmpTarget(r.Context(), monitor.ResourceID, monitor.Configuration); err != nil {
+				writeError(w, r, http.StatusBadRequest, "invalid_target", err.Error(), nil)
+				return
+			}
+			h.ensureSNMPCredential(r.Context(), monitor.ResourceID, monitor.Configuration)
+			h.encryptSNMPConfigSecrets(monitor.Configuration, h.deps.Config.AgentSecretEncryptionKey)
+		}
 	}
 	if input.Severity != "" {
 		monitor.Severity = input.Severity
@@ -269,12 +310,12 @@ func (h *Handler) resourceMonitorMetrics(w http.ResponseWriter, r *http.Request)
 	var series []domain.ProbeSeries
 	switch metricKey {
 	case "status":
-		series, err = h.deps.Results.StatusSeriesByProbe(r.Context(), monitorID, from, to, stepSeconds, maxChartSeries)
+		series, err = h.deps.MetricQuery.StatusSeriesByProbe(r.Context(), monitorID, from, to, stepSeconds, maxChartSeries)
 	default:
 		if metricKey != "" {
-			series, err = h.deps.Results.SeriesByProbeMetric(r.Context(), monitorID, metricKey, from, to, stepSeconds, maxChartSeries)
+			series, err = h.deps.MetricQuery.SeriesByProbeMetric(r.Context(), monitorID, metricKey, from, to, stepSeconds, maxChartSeries)
 		} else {
-			series, err = h.deps.Results.SeriesByProbe(r.Context(), monitorID, from, to, stepSeconds, maxChartSeries)
+			series, err = h.deps.MetricQuery.SeriesByProbe(r.Context(), monitorID, from, to, stepSeconds, maxChartSeries)
 		}
 	}
 	if err != nil {
@@ -300,16 +341,60 @@ func (h *Handler) resourceMonitorMetrics(w http.ResponseWriter, r *http.Request)
 		latest = []domain.ProbeResult{}
 	}
 
-	lastSuccessAt, err := h.deps.Results.LatestSuccessAt(r.Context(), monitorID)
+	lastSuccessAt, err := h.deps.MetricQuery.LatestSuccessAt(r.Context(), monitorID)
 	if err != nil {
 		h.deps.Logger.Error("query latest success failed", "monitor_id", monitorID, "error", err)
 		lastSuccessAt = nil
 	}
 
-	statusCodes, err := h.deps.Results.StatusCodeDistribution(r.Context(), monitorID, from, to)
+	statusCodes, err := h.deps.MetricQuery.StatusCodeDistribution(r.Context(), monitorID, from, to)
 	if err != nil {
 		h.deps.Logger.Error("query status code distribution failed", "monitor_id", monitorID, "error", err)
 		statusCodes = nil
+	}
+
+	// Range-scoped KPIs (aggregate or per-probe), computed in the metric layer
+	// so the frontend consumes calculated values instead of raw samples.
+	probeID := query.Get("probe_id")
+
+	aggregate, err := h.deps.MetricQuery.AggregateMetrics(r.Context(), monitorID, probeID, from, to)
+	if err != nil {
+		h.deps.Logger.Error("query aggregate metrics failed", "monitor_id", monitorID, "error", err)
+		aggregate = domain.MonitorAggregateMetrics{}
+	}
+
+	probeMetrics, err := h.deps.MetricQuery.ProbeMetrics(r.Context(), monitorID, from, to)
+	if err != nil {
+		h.deps.Logger.Error("query probe metrics failed", "monitor_id", monitorID, "error", err)
+		probeMetrics = []domain.ProbeAggregateMetrics{}
+	}
+
+	// Attach last-status facts to each probe row from the latest result set.
+	latestByProbe := make(map[string]domain.ProbeResult, len(latest))
+	for _, res := range latest {
+		if res.ProbeLocationID != "" {
+			latestByProbe[res.ProbeLocationID] = res
+		}
+	}
+	for i := range probeMetrics {
+		if latestRes, ok := latestByProbe[probeMetrics[i].ProbeID]; ok {
+			probeMetrics[i].LastStatusCode = attributeInt(latestRes.Attributes["status_code"])
+			probeMetrics[i].LastSuccess = latestRes.Success
+			at := latestRes.StartedAt
+			probeMetrics[i].LastCheckedAt = &at
+		}
+	}
+
+	// Chart drill-down: when `at` is present, return the result closest to
+	// that timestamp so the frontend can render its timing waterfall.
+	var selected *domain.ProbeResult
+	if raw := query.Get("at"); raw != "" {
+		at, err := time.Parse(time.RFC3339, raw)
+		if err == nil {
+			if res, err := h.deps.Results.ResultAt(r.Context(), monitorID, probeID, at); err == nil {
+				selected = &res
+			}
+		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -320,10 +405,37 @@ func (h *Handler) resourceMonitorMetrics(w http.ResponseWriter, r *http.Request)
 		"from":            from,
 		"to":              to,
 		"metric_key":      metricKey,
+		"probe_id":        probeID,
 		"monitor_type":    string(monitor.Type),
 		"last_success_at": lastSuccessAt,
 		"status_codes":    statusCodes,
+		"aggregate":       aggregate,
+		"probes":          probeMetrics,
+		"selected":        selected,
 	})
+}
+
+// attributeInt converts a JSON-decoded status_code attribute into *int, or nil
+// when absent/unparseable (transport failures have no HTTP status code).
+func attributeInt(raw any) *int {
+	switch v := raw.(type) {
+	case float64:
+		value := int(v)
+		return &value
+	case float32:
+		value := int(v)
+		return &value
+	case int:
+		return &v
+	case int64:
+		value := int(v)
+		return &value
+	case string:
+		if parsed, err := strconv.Atoi(v); err == nil {
+			return &parsed
+		}
+	}
+	return nil
 }
 
 const (

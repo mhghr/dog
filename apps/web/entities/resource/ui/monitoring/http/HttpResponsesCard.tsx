@@ -17,18 +17,6 @@ interface CategoryRow {
   count: number;
 }
 
-function codeClass(code: number): string {
-  if (code >= 200 && code < 300)
-    return "bg-gradient-to-r from-emerald-600/80 to-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.45)]";
-  if (code >= 300 && code < 400)
-    return "bg-gradient-to-r from-sky-600/80 to-sky-400 shadow-[0_0_10px_rgba(14,165,233,0.45)]";
-  if (code >= 400 && code < 500)
-    return "bg-gradient-to-r from-amber-600/80 to-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.45)]";
-  if (code >= 500)
-    return "bg-gradient-to-r from-rose-600/80 to-rose-400 shadow-[0_0_10px_rgba(244,63,94,0.45)]";
-  return "bg-muted-foreground/50";
-}
-
 function categoryOf(code: number): string {
   if (code >= 500) return "5xx";
   if (code >= 400) return "4xx";
@@ -90,7 +78,7 @@ export function HttpResponsesCard({
                     {t("Errors", "خطاها")}
                   </span>
                   <span className="text-[11px] tabular-nums text-destructive" dir="ltr">
-                    {errorTotal} ({(errorTotal / total) * 100 > 0 ? ((errorTotal / total) * 100).toFixed(1) : "0.0"}%)
+                    {errorTotal} ({Math.round((errorTotal / total) * 100)}%)
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -108,9 +96,10 @@ export function HttpResponsesCard({
             )}
 
             {categories
-              .filter((c) => c.count > 0)
+              .filter((c) => c.key === "5xx" || c.count > 0)
               .map((row) => {
                 const pct = (row.count / total) * 100;
+                const width = row.count > 0 ? Math.max(pct, 1.5) : 0;
                 return (
                   <div key={row.key} className="flex items-center gap-2.5">
                     <span className="w-10 shrink-0 text-xs font-semibold tabular-nums text-foreground" dir="ltr">
@@ -119,11 +108,11 @@ export function HttpResponsesCard({
                     <div className="h-3 min-w-0 flex-1 overflow-hidden rounded-full bg-muted/40">
                       <div
                         className={`h-full rounded-full transition-[width] duration-500 ease-out ${row.gradient}`}
-                        style={{ width: `${Math.max(pct, 1.5)}%` }}
+                        style={{ width: `${width}%` }}
                       />
                     </div>
                     <span className="w-24 shrink-0 text-right text-xs tabular-nums text-muted-foreground" dir="ltr">
-                      {pct.toFixed(1)}%
+                      {Math.round(pct)}%
                     </span>
                     <span className="w-10 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground/70" dir="ltr">
                       {row.count}

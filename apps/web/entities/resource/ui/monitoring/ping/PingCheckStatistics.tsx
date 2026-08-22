@@ -43,7 +43,7 @@ export function PingCheckStatistics({
     { label: t("Total", "مجموع"), value: String(s?.totalChecks ?? "—") },
     { label: t("Successful", "موفق"), value: String(s?.successChecks ?? "—"), tone: "success" },
     { label: t("Failed", "ناموفق"), value: String(s?.failedChecks ?? "—"), tone: s?.failedChecks ? "destructive" : "muted" },
-    { label: t("Success rate", "نرخ موفقیت"), value: s?.availability == null ? "—" : `${s.availability.toFixed(2)}%` },
+    { label: t("Success rate", "نرخ موفقیت"), value: s?.availability == null ? "—" : `${Math.round(s.availability)}%` },
   ];
 
   const latency: StatRow[] = [
@@ -56,7 +56,7 @@ export function PingCheckStatistics({
     { label: t("Sent", "ارسال‌شده"), value: String(s?.packetsSent ?? "—") },
     { label: t("Received", "دریافت‌شده"), value: String(s?.packetsReceived ?? "—") },
     { label: t("Lost", "از دست رفته"), value: String(s?.packetsLost ?? "—"), tone: s?.packetsLost ? "destructive" : "muted" },
-    { label: t("Loss", "درصد اتلاف"), value: s?.packetLoss == null ? "—" : `${s.packetLoss.toFixed(2)}%`, tone: s?.packetLoss ? "warning" : "muted" },
+    { label: t("Loss", "درصد اتلاف"), value: s?.packetLoss == null ? "—" : `${Math.round(s.packetLoss)}%`, tone: s?.packetLoss ? "warning" : "muted" },
   ];
 
   const jitter: StatRow[] = [

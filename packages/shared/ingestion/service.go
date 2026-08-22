@@ -22,7 +22,7 @@ type Service struct {
 	monitors     repository.MonitorRepository
 	locations    repository.LocationRepository
 	victoria     *metrics.VictoriaClient
-	bus          *events.Bus
+	publisher    events.Publisher
 	logger       *slog.Logger
 	counters     *metrics.IngestionMetrics
 	healthEngine *health.Engine
@@ -36,7 +36,7 @@ func NewService(
 	monitors repository.MonitorRepository,
 	locations repository.LocationRepository,
 	victoria *metrics.VictoriaClient,
-	bus *events.Bus,
+	publisher events.Publisher,
 	logger *slog.Logger,
 	counters *metrics.IngestionMetrics,
 	healthEngine *health.Engine,
@@ -47,7 +47,7 @@ func NewService(
 		monitors:     monitors,
 		locations:    locations,
 		victoria:     victoria,
-		bus:          bus,
+		publisher:    publisher,
 		logger:       logger,
 		counters:     counters,
 		healthEngine: healthEngine,
@@ -177,7 +177,7 @@ func (s *Service) publishEvent(result *domain.ProbeResult) {
 		return
 	}
 
-	s.bus.Publish(events.Event{
+	s.publisher.Publish(events.Event{
 		Name: "probe-result",
 		ID:   result.ID,
 		Data: payload,

@@ -167,6 +167,26 @@ func buildLines(result *domain.ProbeResult, monitorType, locationCode string) []
 		if statusCode, ok := numericValue(result.Attributes["status_code"]); ok {
 			lines = append(lines, fmt.Sprintf(`monitor_http_status_code{%s} %g %d`, labels, statusCode, timestamp))
 		}
+
+		// Error / 4xx / 5xx indicators so error-rate and class-rate series can
+		// be aggregated over any range without re-deriving from raw results.
+		errorValue := 0
+		if !result.Success {
+			errorValue = 1
+		}
+		lines = append(lines, fmt.Sprintf(`monitor_http_error{%s} %d %d`, labels, errorValue, timestamp))
+
+		if statusCode, ok := numericValue(result.Attributes["status_code"]); ok {
+			c4, c5 := 0, 0
+			if statusCode >= 400 && statusCode < 500 {
+				c4 = 1
+			}
+			if statusCode >= 500 {
+				c5 = 1
+			}
+			lines = append(lines, fmt.Sprintf(`monitor_http_4xx{%s} %d %d`, labels, c4, timestamp))
+			lines = append(lines, fmt.Sprintf(`monitor_http_5xx{%s} %d %d`, labels, c5, timestamp))
+		}
 	}
 
 	if monitorType == string(domain.MonitorPing) {

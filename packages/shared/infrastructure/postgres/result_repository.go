@@ -248,9 +248,10 @@ func (r *ResultRepository) Series(ctx context.Context, monitorID string, from, t
 
 func (r *ResultRepository) DashboardSummary(ctx context.Context) (domain.DashboardSummary, error) {
 	summary := domain.DashboardSummary{
-		StatusCounts:    map[string]int{"up": 0, "down": 0, "unknown": 0, "paused": 0},
-		RecentFailures:  []domain.RecentFailure{},
-		SlowestMonitors: []domain.SlowMonitor{},
+		StatusCounts:       map[string]int{"up": 0, "down": 0, "unknown": 0, "paused": 0},
+		AvailabilitySeries: []domain.AvailabilityPoint{},
+		RecentFailures:     []domain.RecentFailure{},
+		SlowestMonitors:    []domain.SlowMonitor{},
 	}
 
 	rows, err := r.pool.Query(ctx,
@@ -290,10 +291,11 @@ func (r *ResultRepository) DashboardSummary(ctx context.Context) (domain.Dashboa
 
 	failureRows, err := r.pool.Query(ctx, `
 		SELECT
-			m.id::text, m.name, m.type::text,
+			m.id::text, m.name, COALESCE(mt.executor_key, m.type::text),
 			pr.error_code, pr.error_message, pr.started_at
 		FROM probe_results pr
 		JOIN monitors m ON m.id = pr.monitor_id
+		LEFT JOIN monitor_types mt ON mt.id = m.monitor_type_id
 		WHERE pr.success = FALSE
 		ORDER BY pr.started_at DESC
 		LIMIT 10`)
@@ -318,8 +320,9 @@ func (r *ResultRepository) DashboardSummary(ctx context.Context) (domain.Dashboa
 	}
 
 	slowRows, err := r.pool.Query(ctx, `
-		SELECT m.id::text, m.name, m.type::text, lr.duration_millis
+		SELECT m.id::text, m.name, COALESCE(mt.executor_key, m.type::text), lr.duration_millis
 		FROM monitors m
+		LEFT JOIN monitor_types mt ON mt.id = m.monitor_type_id
 		JOIN LATERAL (
 			SELECT duration_millis
 			FROM probe_results pr
@@ -351,12 +354,13 @@ func (r *ResultRepository) DashboardSummary(ctx context.Context) (domain.Dashboa
 		WITH latest AS (
 			SELECT DISTINCT ON (pr.monitor_id)
 				pr.monitor_id,
-				m.type,
+				COALESCE(mt.executor_key, m.type::text) AS type,
 				m.config,
 				pr.error_code,
 				pr.metrics
 			FROM probe_results pr
 			JOIN monitors m ON m.id = pr.monitor_id
+			LEFT JOIN monitor_types mt ON mt.id = m.monitor_type_id
 			WHERE m.enabled = TRUE
 			ORDER BY pr.monitor_id, pr.started_at DESC
 		)
@@ -388,6 +392,39 @@ func (r *ResultRepository) DashboardSummary(ctx context.Context) (domain.Dashboa
 	)
 	if err != nil {
 		return summary, fmt.Errorf("query attention summary: %w", err)
+	}
+
+	seriesRows, err := r.pool.Query(ctx, `
+		SELECT
+			date_trunc('hour', started_at) AS bucket,
+			COUNT(*) FILTER (WHERE success),
+			COUNT(*)
+		FROM probe_results
+		WHERE started_at > NOW() - INTERVAL '24 hours'
+		GROUP BY bucket
+		ORDER BY bucket`)
+	if err != nil {
+		return summary, fmt.Errorf("query availability series: %w", err)
+	}
+
+	for seriesRows.Next() {
+		var (
+			point domain.AvailabilityPoint
+			total int64
+		)
+		if err := seriesRows.Scan(&point.Timestamp, &point.Successful, &total); err != nil {
+			seriesRows.Close()
+			return summary, err
+		}
+		point.Total = total
+		if total > 0 {
+			point.Rate = float64(point.Successful) / float64(total) * 100
+		}
+		summary.AvailabilitySeries = append(summary.AvailabilitySeries, point)
+	}
+	seriesRows.Close()
+	if err := seriesRows.Err(); err != nil {
+		return summary, err
 	}
 
 	return summary, nil
@@ -567,35 +604,190 @@ func (r *ResultRepository) LatestResultsByProbe(ctx context.Context, monitorID s
 
 	results := make([]domain.ProbeResult, 0)
 	for rows.Next() {
-		var (
-			result         domain.ProbeResult
-			metricsJSON    []byte
-			attributesJSON []byte
-			probeName      string
-			probeCode      string
-		)
-		if err := rows.Scan(
-			&result.ID, &result.JobID, &result.MonitorID, &result.ProbeLocationID,
-			&result.Status, &result.Success,
-			&result.ErrorCode, &result.ErrorMessage,
-			&result.DurationMillis, &metricsJSON, &attributesJSON,
-			&result.StartedAt, &result.FinishedAt, &probeName, &probeCode,
-		); err != nil {
+		result, err := scanResultWithLocation(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan latest result: %w", err)
 		}
-		json.Unmarshal(metricsJSON, &result.Metrics)
-		if err := json.Unmarshal(attributesJSON, &result.Attributes); err != nil {
-			result.Attributes = map[string]any{}
-		}
-		if result.Attributes == nil {
-			result.Attributes = map[string]any{}
-		}
-		result.Attributes["probe_name"] = probeName
-		result.Attributes["probe_code"] = probeCode
 		results = append(results, result)
 	}
 
 	return results, rows.Err()
+}
+
+// ResultAt returns the probe result closest to a given timestamp, optionally
+// restricted to one probe. Used for chart drill-down to a specific check.
+func (r *ResultRepository) ResultAt(ctx context.Context, monitorID, probeID string, at time.Time) (domain.ProbeResult, error) {
+	result, err := scanResultWithLocation(r.pool.QueryRow(ctx, `
+		SELECT
+			pr.id::text, pr.job_id::text, pr.monitor_id::text,
+			COALESCE(pr.probe_location_id::text, ''),
+			pr.status::text, pr.success,
+			COALESCE(pr.error_code, ''), COALESCE(pr.error_message, ''),
+			pr.duration_millis, pr.metrics, pr.attributes, pr.started_at, pr.finished_at,
+			COALESCE(pl.name, ''), COALESCE(pl.code, '')
+		FROM probe_results pr
+		LEFT JOIN probe_locations pl ON pl.id = pr.probe_location_id
+		WHERE pr.monitor_id = $1::uuid
+		  AND ($2 = '' OR pr.probe_location_id = $2::uuid)
+		ORDER BY ABS(EXTRACT(EPOCH FROM (pr.started_at - $3)))
+		LIMIT 1`,
+		monitorID, probeID, at))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ProbeResult{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return domain.ProbeResult{}, fmt.Errorf("query result at: %w", err)
+	}
+	return result, nil
+}
+
+// AggregateMetrics computes the range-scoped KPI set for a monitor over
+// probe_results (optionally filtered to one probe). P95 is computed in SQL so
+// the frontend never derives it from raw samples.
+func (r *ResultRepository) AggregateMetrics(ctx context.Context, monitorID, probeID string, from, to time.Time) (domain.MonitorAggregateMetrics, error) {
+	var (
+		agg             domain.MonitorAggregateMetrics
+		availability    *float64
+		avgRT, p95, ttfb *float64
+	)
+	err := r.pool.QueryRow(ctx, `
+		SELECT
+			COUNT(*),
+			COUNT(*) FILTER (WHERE success),
+			COUNT(*) FILTER (WHERE NOT success),
+			AVG(CASE WHEN success THEN 1 ELSE 0 END)::float8 * 100,
+			AVG((metrics->>'response_time_ms')::numeric)::float8,
+			percentile_cont(0.95) WITHIN GROUP (ORDER BY (metrics->>'response_time_ms')::numeric)::float8,
+			AVG((metrics->>'ttfb_ms')::numeric)::float8,
+			COUNT(*) FILTER (WHERE (metrics->>'status_code')::int >= 400 AND (metrics->>'status_code')::int < 500),
+			COUNT(*) FILTER (WHERE (metrics->>'status_code')::int >= 500)
+		FROM probe_results
+		WHERE monitor_id = $1::uuid
+		  AND started_at >= $2 AND started_at < $3
+		  AND ($4 = '' OR probe_location_id = $4::uuid)`,
+		monitorID, from, to, probeID,
+	).Scan(
+		&agg.Checks.Total, &agg.Checks.Successful, &agg.Checks.Failed,
+		&availability, &avgRT, &p95, &ttfb,
+		&agg.Codes4xx, &agg.Codes5xx,
+	)
+	if err != nil {
+		return agg, fmt.Errorf("query aggregate metrics: %w", err)
+	}
+
+	agg.Availability = availability
+	agg.AvgResponseTimeMS = avgRT
+	agg.P95ResponseTimeMS = p95
+	agg.AvgTTFBMS = ttfb
+
+	if agg.Checks.Total > 0 {
+		total := float64(agg.Checks.Total)
+		errorRate := float64(agg.Checks.Failed) / total * 100
+		rate4xx := float64(agg.Codes4xx) / total * 100
+		rate5xx := float64(agg.Codes5xx) / total * 100
+		agg.ErrorRate = &errorRate
+		agg.Rate4xx = &rate4xx
+		agg.Rate5xx = &rate5xx
+	}
+
+	return agg, nil
+}
+
+// ProbeMetrics computes the range-scoped KPI set per probe location. Last
+// status facts are attached by the handler from the latest result per probe.
+func (r *ResultRepository) ProbeMetrics(ctx context.Context, monitorID string, from, to time.Time) ([]domain.ProbeAggregateMetrics, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT
+			COALESCE(pr.probe_location_id::text, ''),
+			COALESCE(pl.name, ''),
+			COALESCE(pl.code, ''),
+			COUNT(*),
+			COUNT(*) FILTER (WHERE success),
+			COUNT(*) FILTER (WHERE NOT success),
+			AVG(CASE WHEN success THEN 1 ELSE 0 END)::float8 * 100,
+			AVG((metrics->>'response_time_ms')::numeric)::float8,
+			percentile_cont(0.95) WITHIN GROUP (ORDER BY (metrics->>'response_time_ms')::numeric)::float8,
+			AVG((metrics->>'ttfb_ms')::numeric)::float8,
+			MAX(started_at)
+		FROM probe_results pr
+		LEFT JOIN probe_locations pl ON pl.id = pr.probe_location_id
+		WHERE pr.monitor_id = $1::uuid
+		  AND pr.started_at >= $2 AND pr.started_at < $3
+		GROUP BY pr.probe_location_id, pl.name, pl.code
+		ORDER BY pl.name`,
+		monitorID, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("query probe metrics: %w", err)
+	}
+	defer rows.Close()
+
+	probes := make([]domain.ProbeAggregateMetrics, 0)
+	for rows.Next() {
+		var (
+			p            domain.ProbeAggregateMetrics
+			availability *float64
+			avgRT, p95, ttfb *float64
+			lastChecked  *time.Time
+		)
+		if err := rows.Scan(
+			&p.ProbeID, &p.ProbeName, &p.Location,
+			&p.Checks.Total, &p.Checks.Successful, &p.Checks.Failed,
+			&availability, &avgRT, &p95, &ttfb, &lastChecked,
+		); err != nil {
+			return nil, fmt.Errorf("scan probe metrics: %w", err)
+		}
+		p.Availability = availability
+		p.AvgResponseTimeMS = avgRT
+		p.P95ResponseTimeMS = p95
+		p.AvgTTFBMS = ttfb
+		p.LastCheckedAt = lastChecked
+		if p.Checks.Total > 0 {
+			total := float64(p.Checks.Total)
+			errorRate := float64(p.Checks.Failed) / total * 100
+			p.ErrorRate = &errorRate
+		}
+		probes = append(probes, p)
+	}
+
+	return probes, rows.Err()
+}
+
+// scanResultWithLocation scans a probe result row joined with probe location
+// metadata (id, job_id, monitor_id, probe_location_id, status, success,
+// error_code, error_message, duration_millis, metrics, attributes,
+// started_at, finished_at, probe_name, probe_code).
+func scanResultWithLocation(row pgx.Row) (domain.ProbeResult, error) {
+	var (
+		result         domain.ProbeResult
+		metricsJSON    []byte
+		attributesJSON []byte
+		probeName      string
+		probeCode      string
+	)
+	if err := row.Scan(
+		&result.ID, &result.JobID, &result.MonitorID, &result.ProbeLocationID,
+		&result.Status, &result.Success,
+		&result.ErrorCode, &result.ErrorMessage,
+		&result.DurationMillis, &metricsJSON, &attributesJSON,
+		&result.StartedAt, &result.FinishedAt, &probeName, &probeCode,
+	); err != nil {
+		return result, err
+	}
+	if err := json.Unmarshal(metricsJSON, &result.Metrics); err != nil {
+		result.Metrics = map[string]any{}
+	}
+	if result.Metrics == nil {
+		result.Metrics = map[string]any{}
+	}
+	if err := json.Unmarshal(attributesJSON, &result.Attributes); err != nil {
+		result.Attributes = map[string]any{}
+	}
+	if result.Attributes == nil {
+		result.Attributes = map[string]any{}
+	}
+	result.Attributes["probe_name"] = probeName
+	result.Attributes["probe_code"] = probeCode
+	return result, nil
 }
 
 // StatusSeriesByProbe returns one time-bucketed success-ratio series per

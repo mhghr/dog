@@ -16,8 +16,8 @@ interface HttpProbeLocationsProps {
   isLoading: boolean;
 }
 
-// Probe locations table with a detail drawer per probe. No map tab — the table
-// is the primary surface and stays scroll-free by compressing its columns.
+// Probe names with a detail drawer per probe. No map tab — clicking a probe
+// name opens the per-probe performance breakdown.
 export function HttpProbeLocations({ probeHealth, isFa, isLoading }: HttpProbeLocationsProps) {
   const t = (en: string, fa: string) => (isFa ? fa : en);
   const [selected, setSelected] = useState<HttpProbeHealth | null>(null);
@@ -38,44 +38,66 @@ export function HttpProbeLocations({ probeHealth, isFa, isLoading }: HttpProbeLo
             {t("No probe has recent data", "هیچ پرابی داده اخیر ندارد")}
           </p>
         ) : (
-          <table className="w-full border-collapse text-left">
-            <thead>
-              <tr className="border-b border-border/60 text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
-                <th className="py-2 pe-2 font-semibold">{t("Location", "موقعیت")}</th>
-                <th className="py-2 pe-2 font-semibold">{t("Status", "وضعیت")}</th>
-                <th className="py-2 pe-2 text-right font-semibold">{t("Response", "پاسخ")}</th>
-                <th className="py-2 pe-2 text-right font-semibold">{t("HTTP", "HTTP")}</th>
-                <th className="py-2 pe-2 text-right font-semibold">{t("Uptime", "آپ‌تایم")}</th>
-                <th className="py-2 text-right font-semibold">{t("Last check", "آخرین بررسی")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {probeHealth.map((stat) => (
-                <tr
-                  key={stat.probeId}
-                  onClick={() => setSelected(stat)}
-                  className="cursor-pointer border-b border-border/40 transition-colors last:border-0 hover:bg-muted/30"
-                >
-                  <td className="py-2.5 pe-2 text-sm font-medium" dir="auto">{stat.location}</td>
-                  <td className="py-2.5 pe-2">
-                    <StatusBadge tone={healthTone(stat.health)} label={healthLabel(stat.health, isFa)} />
-                  </td>
-                  <td className="py-2.5 pe-2 text-right tabular-nums text-[13px] text-muted-foreground" dir="ltr">
-                    {stat.responseTimeMs == null ? "—" : `${Math.round(stat.responseTimeMs)} ms`}
-                  </td>
-                  <td className="py-2.5 pe-2 text-right tabular-nums text-[13px] text-muted-foreground" dir="ltr">
-                    {stat.statusCode ?? "—"}
-                  </td>
-                  <td className="py-2.5 pe-2 text-right tabular-nums text-[13px] text-muted-foreground" dir="ltr">
-                    {stat.availability == null ? "—" : `${stat.availability.toFixed(2)}%`}
-                  </td>
-                  <td className="py-2.5 text-right text-xs text-muted-foreground">
-                    {formatRelativeTime(stat.lastCheckedAt, "en")}
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-left">
+              <thead>
+                <tr className="border-b border-border/60 text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
+                  <th className="py-2 pe-3 text-start font-semibold">{t("Probe", "پراب")}</th>
+                  <th className="py-2 pe-3 font-semibold">{t("Status", "وضعیت")}</th>
+                  <th className="py-2 pe-3 text-right font-semibold">{t("Response", "پاسخ")}</th>
+                  <th className="py-2 pe-3 text-right font-semibold">{t("DNS", "DNS")}</th>
+                  <th className="py-2 pe-3 text-right font-semibold">{t("TCP", "TCP")}</th>
+                  <th className="py-2 pe-3 text-right font-semibold">{t("TLS", "TLS")}</th>
+                  <th className="py-2 pe-3 text-right font-semibold">{t("TTFB", "TTFB")}</th>
+                  <th className="py-2 pe-3 text-right font-semibold">{t("HTTP", "HTTP")}</th>
+                  <th className="py-2 pe-3 text-right font-semibold">{t("Size", "حجم")}</th>
+                  <th className="py-2 pe-3 text-right font-semibold">{t("Uptime", "آپ‌تایم")}</th>
+                  <th className="py-2 text-right font-semibold">{t("Last check", "آخرین بررسی")}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {probeHealth.map((stat) => (
+                  <tr
+                    key={stat.probeId}
+                    onClick={() => setSelected(stat)}
+                    className="cursor-pointer border-b border-border/40 transition-colors last:border-0 hover:bg-muted/30"
+                  >
+                    <td className="py-2.5 pe-3 text-sm font-medium" dir="auto">{stat.location}</td>
+                    <td className="py-2.5 pe-3">
+                      <StatusBadge tone={healthTone(stat.health)} label={healthLabel(stat.health, isFa)} />
+                    </td>
+                    <td className="py-2.5 pe-3 text-right tabular-nums text-[13px] text-muted-foreground" dir="ltr">
+                      {stat.responseTimeMs == null ? "—" : `${Math.round(stat.responseTimeMs)} ms`}
+                    </td>
+                    <td className="py-2.5 pe-3 text-right tabular-nums text-[13px] text-muted-foreground" dir="ltr">
+                      {stat.breakdown.dns == null ? "—" : `${Math.round(stat.breakdown.dns)} ms`}
+                    </td>
+                    <td className="py-2.5 pe-3 text-right tabular-nums text-[13px] text-muted-foreground" dir="ltr">
+                      {stat.breakdown.connect == null ? "—" : `${Math.round(stat.breakdown.connect)} ms`}
+                    </td>
+                    <td className="py-2.5 pe-3 text-right tabular-nums text-[13px] text-muted-foreground" dir="ltr">
+                      {stat.breakdown.tls == null ? "—" : `${Math.round(stat.breakdown.tls)} ms`}
+                    </td>
+                    <td className="py-2.5 pe-3 text-right tabular-nums text-[13px] text-muted-foreground" dir="ltr">
+                      {stat.breakdown.ttfb == null ? "—" : `${Math.round(stat.breakdown.ttfb)} ms`}
+                    </td>
+                    <td className="py-2.5 pe-3 text-right tabular-nums text-[13px] text-muted-foreground" dir="ltr">
+                      {stat.statusCode ?? "—"}
+                    </td>
+                    <td className="py-2.5 pe-3 text-right tabular-nums text-[13px] text-muted-foreground" dir="ltr">
+                      {stat.responseSize == null ? "—" : `${Math.round(stat.responseSize / 1024)} KB`}
+                    </td>
+                    <td className="py-2.5 pe-3 text-right tabular-nums text-[13px] text-muted-foreground" dir="ltr">
+                      {stat.availability == null ? "—" : `${Math.round(stat.availability)}%`}
+                    </td>
+                    <td className="py-2.5 text-right text-xs text-muted-foreground">
+                      {stat.lastCheckedAt ? formatRelativeTime(stat.lastCheckedAt, isFa ? "fa" : "en") : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </CardContent>
 

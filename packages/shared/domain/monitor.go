@@ -17,6 +17,7 @@ const (
 	MonitorDomainExpiration MonitorType = "domain_expiration"
 	MonitorSMTP             MonitorType = "smtp"
 	MonitorNTP              MonitorType = "ntp"
+	MonitorSNMP             MonitorType = "snmp"
 )
 
 var AllMonitorTypes = []MonitorType{
@@ -28,6 +29,7 @@ var AllMonitorTypes = []MonitorType{
 	MonitorDomainExpiration,
 	MonitorSMTP,
 	MonitorNTP,
+	MonitorSNMP,
 }
 
 type MonitorStatus string
@@ -58,6 +60,7 @@ var MinIntervalSeconds = map[MonitorType]int{
 	MonitorDomainExpiration: 3600,
 	MonitorSMTP:             30,
 	MonitorNTP:              60,
+	MonitorSNMP:             60,
 }
 
 // DefaultIntervalSeconds is used when the client omits interval_seconds.
@@ -70,6 +73,7 @@ var DefaultIntervalSeconds = map[MonitorType]int{
 	MonitorDomainExpiration: 43200,
 	MonitorSMTP:             60,
 	MonitorNTP:              300,
+	MonitorSNMP:             300,
 }
 
 type ProbeLocation struct {

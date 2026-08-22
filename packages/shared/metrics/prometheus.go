@@ -104,3 +104,61 @@ func NewIngestionMetrics(registry *prometheus.Registry) *IngestionMetrics {
 		}),
 	}
 }
+
+// SNMPMetrics is the internal observability surface of the SNMP collector.
+type SNMPMetrics struct {
+	PollDuration      prometheus.Histogram
+	PollSuccessTotal  prometheus.Counter
+	PollFailureTotal  prometheus.Counter
+	TimeoutTotal      prometheus.Counter
+	AuthFailureTotal  prometheus.Counter
+	PacketsSentTotal  prometheus.Counter
+	PacketsReceivedTotal prometheus.Counter
+	DiscoveryDuration prometheus.Histogram
+	DiscoveryFailureTotal prometheus.Counter
+}
+
+func NewSNMPMetrics(registry *prometheus.Registry) *SNMPMetrics {
+	factory := promauto.With(registry)
+
+	return &SNMPMetrics{
+		PollDuration: factory.NewHistogram(prometheus.HistogramOpts{
+			Name:    "snmp_poll_duration_ms",
+			Help:    "SNMP poll duration in milliseconds.",
+			Buckets: []float64{10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000},
+		}),
+		PollSuccessTotal: factory.NewCounter(prometheus.CounterOpts{
+			Name: "snmp_poll_success_total",
+			Help: "Total number of successful SNMP poll cycles.",
+		}),
+		PollFailureTotal: factory.NewCounter(prometheus.CounterOpts{
+			Name: "snmp_poll_failure_total",
+			Help: "Total number of failed SNMP poll cycles.",
+		}),
+		TimeoutTotal: factory.NewCounter(prometheus.CounterOpts{
+			Name: "snmp_timeout_total",
+			Help: "Total number of SNMP timeouts.",
+		}),
+		AuthFailureTotal: factory.NewCounter(prometheus.CounterOpts{
+			Name: "snmp_authentication_failure_total",
+			Help: "Total number of SNMP authentication/authorization failures.",
+		}),
+		PacketsSentTotal: factory.NewCounter(prometheus.CounterOpts{
+			Name: "snmp_packets_sent_total",
+			Help: "Total number of SNMP packets sent.",
+		}),
+		PacketsReceivedTotal: factory.NewCounter(prometheus.CounterOpts{
+			Name: "snmp_packets_received_total",
+			Help: "Total number of SNMP packets received.",
+		}),
+		DiscoveryDuration: factory.NewHistogram(prometheus.HistogramOpts{
+			Name:    "snmp_discovery_duration_ms",
+			Help:    "SNMP discovery duration in milliseconds.",
+			Buckets: []float64{25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000},
+		}),
+		DiscoveryFailureTotal: factory.NewCounter(prometheus.CounterOpts{
+			Name: "snmp_discovery_failure_total",
+			Help: "Total number of failed SNMP discovery runs.",
+		}),
+	}
+}

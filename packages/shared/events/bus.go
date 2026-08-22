@@ -1,6 +1,7 @@
-// Package events provides an in-process pub/sub bus used by the SSE gateway.
-// The Bus interface is intentionally small so it can later be replaced by a
-// Redis-backed implementation for multi-instance deployments.
+// Package events provides the pub/sub bus used by the SSE gateway. The Bus is
+// the in-process implementation; DistributedPublisher + NATSRelay extend it to
+// multi-instance deployments where every API replica must fan out the same live
+// stream.
 package events
 
 import (
@@ -13,6 +14,14 @@ type Event struct {
 	Data []byte
 }
 
+// Publisher is the minimal surface ingestion needs to emit a live event.
+// Consumers (SSE) subscribe through the concrete Bus. Implementations may
+// deliver locally (Bus) or fan out to a shared broker (DistributedPublisher).
+type Publisher interface {
+	Publish(event Event)
+}
+
+// Bus is the in-process pub/sub bus. A Bus always satisfies Publisher.
 type Bus struct {
 	mu          sync.RWMutex
 	subscribers map[chan Event]struct{}

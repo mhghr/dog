@@ -203,6 +203,27 @@ export function SchemaFieldRenderer({ field, value, isFa, error, onChange }: Sch
           data-invalid={error ? "true" : undefined}
           onChange={(e) => onChange(Number(e.target.value))}
         />
+      ) : field.widget === "password" ? (
+        <Input
+          type="password"
+          autoComplete="new-password"
+          value={typeof value === "string" ? value : ""}
+          placeholder={field.placeholder ?? "••••••••"}
+          className="h-10"
+          dir="ltr"
+          data-invalid={error ? "true" : undefined}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      ) : field.widget === "text" ? (
+        <Input
+          type="text"
+          value={typeof value === "string" ? value : String(field.defaultValue ?? "")}
+          placeholder={field.placeholder}
+          className="h-10"
+          dir="ltr"
+          data-invalid={error ? "true" : undefined}
+          onChange={(e) => onChange(e.target.value)}
+        />
       ) : (
         <Input
           type="text"

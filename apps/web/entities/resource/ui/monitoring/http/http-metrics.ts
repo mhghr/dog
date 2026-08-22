@@ -13,6 +13,8 @@ export interface HttpSeriesPoint {
 export interface HttpChartSeries {
   /** metric key, e.g. "response_time_ms", "ttfb_ms" */
   metric: string;
+  /** probe location id (empty/absent for pooled/aggregate series). */
+  probeId?: string;
   location: string;
   probeName: string;
   points: HttpSeriesPoint[];
@@ -272,6 +274,7 @@ export function toHttpChartSeries(
 ): HttpChartSeries[] {
   return series.map((s) => ({
     metric,
+    probeId: s.probe_id ?? "",
     location: s.location || s.probe_name,
     probeName: s.probe_name || s.location || s.probe_id,
     points: (s.points ?? []).map((p) => ({
@@ -279,6 +282,34 @@ export function toHttpChartSeries(
       value: p.value,
     })),
   }));
+}
+
+export interface HttpDownInterval {
+  start: string;
+  end: string;
+}
+
+// Builds contiguous downtime ranges from the explicit status series (value 0 =
+// failed check), mirroring the Ping pattern so the timeline can shade failure
+// windows instead of relying on data gaps.
+export function buildDownIntervals(series: HttpChartSeries[]): HttpDownInterval[] {
+  const intervals: HttpDownInterval[] = [];
+
+  for (const s of series) {
+    let start: string | null = null;
+    for (const p of s.points) {
+      if (p.value === 0) {
+        if (start === null) start = p.time;
+      } else if (start !== null) {
+        intervals.push({ start, end: p.time });
+        start = null;
+      }
+    }
+    if (start !== null && s.points.length > 0) {
+      intervals.push({ start, end: s.points[s.points.length - 1].time });
+    }
+  }
+  return intervals;
 }
 
 /** Format a KPI value, keeping integers whole and embedding no unit. */
@@ -294,4 +325,113 @@ export function formatHttpKpiValue(
   }
   if (down) return format === "bytes" ? "—" : "∞";
   return "N/A";
+}
+
+// ── Enterprise HTTP helpers ────────────────────────────────────
+
+// Timing phases a single HTTP check records, in execution order. Each phase
+// reads a dedicated executor metric so the waterfall never parses error text.
+export interface HttpTimingPhase {
+  key: string;
+  label: { en: string; fa: string };
+  /** Duration in ms, null when the phase did not happen (e.g. no DNS). */
+  ms: number | null;
+  color: string;
+}
+
+export function breakdownOfResult(result: ProbeResult): HttpBreakdown {
+  return {
+    dns: numberValue(result, HTTP_METRIC_KEYS.dns),
+    connect: numberValue(result, HTTP_METRIC_KEYS.connect),
+    tls: numberValue(result, HTTP_METRIC_KEYS.tls),
+    ttfb: numberValue(result, HTTP_METRIC_KEYS.ttfb),
+    download: numberValue(result, HTTP_METRIC_KEYS.download),
+  };
+}
+
+export interface HttpWaterfallPhase {
+  key: string;
+  label: { en: string; fa: string };
+  ms: number | null;
+  color: string;
+}
+
+// Phases ordered by execution: DNS → TCP → TLS → TTFB → Download. Total is the
+// full response time. Colors match the chart palette roles (sky/cyan/violet/
+// primary/success/muted).
+export function waterfallPhasesOf(result: ProbeResult): HttpWaterfallPhase[] {
+  const b = breakdownOfResult(result);
+  return [
+    { key: "dns", label: { en: "DNS", fa: "DNS" }, ms: b.dns, color: "#0EA5E9" },
+    { key: "connect", label: { en: "Connect", fa: "اتصال" }, ms: b.connect, color: "#06B6D4" },
+    { key: "tls", label: { en: "TLS", fa: "TLS" }, ms: b.tls, color: "#8B5CF6" },
+    { key: "ttfb", label: { en: "TTFB", fa: "TTFB" }, ms: b.ttfb, color: "#3B82F6" },
+    { key: "download", label: { en: "Download", fa: "دریافت" }, ms: b.download, color: "#10B981" },
+  ];
+}
+
+// Human-readable, machine-label-free rendering of a failure stage. Stages come
+// straight from the probe's `attributes.failure_stage` (dns/tcp/tls/timeout/
+// http/assertion), never parsed from error strings.
+export function failureStageLabel(stage: string | null, isFa: boolean): string {
+  if (!stage) return isFa ? "نامشخص" : "Unknown";
+  const map: Record<string, { en: string; fa: string }> = {
+    dns: { en: "DNS Resolution", fa: "تفکیک DNS" },
+    tcp: { en: "TCP Connection", fa: "اتصال TCP" },
+    tls: { en: "TLS Handshake", fa: "دست‌داد TLS" },
+    timeout: { en: "Timeout", fa: "مهلت" },
+    http: { en: "HTTP Response", fa: "پاسخ HTTP" },
+    assertion: { en: "Content Assertion", fa: "تطابق محتوا" },
+  };
+  const entry = map[stage];
+  return entry ? (isFa ? entry.fa : entry.en) : stage;
+}
+
+// Failure-stages mapped to their user-facing explanation and remediation hint.
+export interface FailureStageInfo {
+  title: { en: string; fa: string };
+  detail: { en: string; fa: string };
+  hint: { en: string; fa: string };
+}
+
+export const FAILURE_STAGE_INFO: Record<string, FailureStageInfo> = {
+  dns: {
+    title: { en: "DNS resolution failed", fa: "خطا در تفکیک DNS" },
+    detail: { en: "The hostname could not be resolved to an IP address.", fa: "نام دامنه به آدرس IP تبدیل نشد." },
+    hint: { en: "Check the domain spelling and the upstream DNS servers.", fa: "املای دامنه و سرورهای DNS بالادستی را بررسی کنید." },
+  },
+  tcp: {
+    title: { en: "Connection refused or failed", fa: "اتصال برقرار نشد" },
+    detail: { en: "The TCP connection to the target could not be established.", fa: "اتصال TCP به مقصد برقرار نشد." },
+    hint: { en: "Verify the host and port are reachable and the firewall allows it.", fa: "میزان دسترس‌پذیری هاست و پورت و فایروال را بررسی کنید." },
+  },
+  tls: {
+    title: { en: "TLS handshake failed", fa: "خطا در دست‌داد TLS" },
+    detail: { en: "The TLS handshake with the server failed or the certificate is invalid.", fa: "دست‌داد TLS با سرور ناموفق بود یا گواهی نامعتبر است." },
+    hint: { en: "Check the certificate validity, chain and hostname match.", fa: "اعتبار، زنجیره و تطابق نام میزبان گواهی را بررسی کنید." },
+  },
+  timeout: {
+    title: { en: "Request timed out", fa: "مهلت درخواست به پایان رسید" },
+    detail: { en: "The request exceeded the configured timeout.", fa: "درخواست از مهلت تنظیم‌شده تجاوز کرد." },
+    hint: { en: "Check server load or raise the timeout in the monitor settings.", fa: "بار سرور را بررسی یا مهلت را در تنظیمات افزایش دهید." },
+  },
+  http: {
+    title: { en: "Unexpected HTTP response", fa: "پاسخ HTTP غیرمنتظره" },
+    detail: { en: "The response did not match the expected status codes.", fa: "پاسخ با کدهای وضعیت مورد انتظار مطابقت نداشت." },
+    hint: { en: "Review the expected status codes and the endpoint behavior.", fa: "کدهای وضعیت مورد انتظار و رفتار نقطه پایانی را بررسی کنید." },
+  },
+  assertion: {
+    title: { en: "Content assertion failed", fa: "تطابق محتوا ناموفق بود" },
+    detail: { en: "The response body did not contain the expected text.", fa: "بدنه پاسخ متن مورد انتظار را نداشت." },
+    hint: { en: "Confirm the expected text still appears in the page content.", fa: "مطمئن شوید متن مورد انتظار همچنان در محتوای صفحه است." },
+  },
+};
+
+// Maps a probe error code to a stable tone for the failure analysis card.
+export function failureToneOf(errorCode: string | null): "warning" | "destructive" | "info" {
+  if (!errorCode) return "info";
+  if (errorCode === "timeout" || errorCode === "body_assertion_failed" || errorCode === "unexpected_status_code") {
+    return "warning";
+  }
+  return "destructive";
 }

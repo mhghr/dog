@@ -14,6 +14,7 @@ import {
   isDnsMonitor,
   isHttpMonitor,
   isPingMonitor,
+  isSnmpMonitor,
   isTcpMonitor,
   isTlsMonitor,
   useMonitorTypes,
@@ -31,6 +32,8 @@ import { HttpMonitoringView } from "./monitoring/http/HttpMonitoringView";
 import { TcpMonitoringView } from "./monitoring/tcp/TcpMonitoringView";
 import { DnsMonitoringView } from "./monitoring/dns/DnsMonitoringView";
 import { TlsMonitoringView } from "./monitoring/tls/TlsMonitoringView";
+import { SnmpMonitoringView } from "./monitoring/snmp/SnmpMonitoringView";
+import { SnmpWizard } from "./monitoring/snmp/wizard/SnmpWizard";
 
 const TAB_ICONS = {
   monitoring: "text-primary",
@@ -135,7 +138,26 @@ function SettingsPanel({ resourceId, monitors }: { resourceId: string; monitors:
       />
       <div>
         {st ? (
-          <MonitoringSettingsForm resourceId={resourceId} type={st} monitor={sm} target={target} isFa={isFa} />
+          st.executor_key === "snmp" && !sm ? (
+            <SnmpWizard
+              resourceId={resourceId}
+              resource={resourceQuery.data}
+              type={st}
+              isFa={isFa}
+              onDone={() => {
+                void tq.refetch();
+              }}
+            />
+          ) : (
+            <MonitoringSettingsForm
+              key={`${st.id}:${sm?.id ?? "new"}`}
+              resourceId={resourceId}
+              type={st}
+              monitor={sm}
+              target={target}
+              isFa={isFa}
+            />
+          )
         ) : (
           <div className="panel flex items-center justify-center py-20">
             <p className="text-sm text-muted-foreground">
@@ -183,6 +205,7 @@ function MonitoringPanel({ resourceId, onManage }: { resourceId: string; onManag
   const tcpMonitors = monitors.filter((m) => isTcpMonitor(m, types));
   const dnsMonitors = monitors.filter((m) => isDnsMonitor(m, types));
   const tlsMonitors = monitors.filter((m) => isTlsMonitor(m, types));
+  const snmpMonitors = monitors.filter((m) => isSnmpMonitor(m, types));
 
   if (mq.isPending || tq.isPending) return <GridSkel n={4} />;
 
@@ -204,7 +227,8 @@ function MonitoringPanel({ resourceId, onManage }: { resourceId: string; onManag
     httpMonitors.length > 0 ||
     tcpMonitors.length > 0 ||
     dnsMonitors.length > 0 ||
-    tlsMonitors.length > 0;
+    tlsMonitors.length > 0 ||
+    snmpMonitors.length > 0;
 
   if (!hasAny) {
     return (
@@ -212,8 +236,8 @@ function MonitoringPanel({ resourceId, onManage }: { resourceId: string; onManag
         <p className="text-sm font-medium">{fa ? "هیچ مانیتوری پیکربندی نشده است" : "No monitor configured"}</p>
         <p className="text-sm text-muted-foreground">
           {fa
-            ? "برای شروع، از تب تنظیمات یک مانیتور پینگ، HTTP، TCP، DNS یا SSL را فعال و ذخیره کنید."
-            : "Enable and save a Ping, HTTP, TCP, DNS or SSL monitor from the Settings tab."}
+            ? "برای شروع، از تب تنظیمات یک مانیتور پینگ، HTTP، TCP، DNS، SSL یا SNMP را فعال و ذخیره کنید."
+            : "Enable and save a Ping, HTTP, TCP, DNS, SSL or SNMP monitor from the Settings tab."}
         </p>
         <Button type="button" size="sm" className="mt-2" onClick={onManage}>
           <Plus className="size-4" />
@@ -264,6 +288,11 @@ function MonitoringPanel({ resourceId, onManage }: { resourceId: string; onManag
       {tlsMonitors.map((m) => (
         <section key={m.id} {...sectionProps(m.id)}>
           <TlsMonitoringView resourceId={resourceId} monitor={m} />
+        </section>
+      ))}
+      {snmpMonitors.map((m) => (
+        <section key={m.id} {...sectionProps(m.id)}>
+          <SnmpMonitoringView resourceId={resourceId} monitor={m} />
         </section>
       ))}
     </div>

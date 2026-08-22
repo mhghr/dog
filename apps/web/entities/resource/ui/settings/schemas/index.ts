@@ -10,6 +10,7 @@ import { httpSchema } from "./http";
 import { tcpSchema } from "./tcp";
 import { dnsSchema } from "./dns";
 import { tlsSchema } from "./tls";
+import { snmpSchema } from "./snmp";
 
 const explicitSchemas: Record<string, MonitoringTypeSchema> = {
   ping: pingSchema,
@@ -17,6 +18,7 @@ const explicitSchemas: Record<string, MonitoringTypeSchema> = {
   tcp: tcpSchema,
   dns: dnsSchema,
   tls: tlsSchema,
+  snmp: snmpSchema,
 };
 
 // Fallback labels so a type without an explicit schema still renders readable

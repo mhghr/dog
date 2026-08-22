@@ -98,7 +98,8 @@
     "tls": "گواهی SSL/TLS",
     "domain_expiration": "انقضای دامنه",
     "smtp": "سرویس SMTP",
-    "ntp": "سرور زمان NTP"
+    "ntp": "سرور زمان NTP",
+    "snmp": "دستگاه شبکه SNMP"
   },
   "typeGroups": {
     "web": "وب و API",
@@ -121,7 +122,19 @@
     "certificatesExpiring": "گواهی‌های در حال انقضا",
     "domainsExpiring": "دامنه‌های در حال انقضا",
     "smtpFailures": "خطاهای STARTTLS",
-    "ntpHighOffset": "انحراف زمانی NTP"
+    "ntpHighOffset": "انحراف زمانی NTP",
+    "statusUp": "بالا",
+    "statusDown": "پایین",
+    "statusUnknown": "نامشخص",
+    "statusPaused": "متوقف",
+    "trend24h": "روند دسترس‌پذیری ۲۴ ساعت",
+    "statusDistribution": "توزیع وضعیت",
+    "mapTitle": "پوشش جهانی",
+    "mapLive": "زنده",
+    "live": "زنده",
+    "lastUpdated": "آخرین به‌روزرسانی",
+    "allGood": "همه‌چیز خوب است",
+    "noAttention": "موردی نیازمند توجه نیست"
   },
   "monitors": {
     "title": "نودها",

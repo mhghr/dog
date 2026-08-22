@@ -31,6 +31,14 @@ type ResultRepository interface {
 	LatestSuccessAt(ctx context.Context, monitorID string) (*time.Time, error)
 	// LatestResultsByProbe returns the most recent result per probe location.
 	LatestResultsByProbe(ctx context.Context, monitorID string, limit int) ([]domain.ProbeResult, error)
+	// AggregateMetrics returns range-scoped KPIs for a monitor, optionally
+	// filtered to one probe (empty probeID = all probes).
+	AggregateMetrics(ctx context.Context, monitorID, probeID string, from, to time.Time) (domain.MonitorAggregateMetrics, error)
+	// ProbeMetrics returns range-scoped KPIs grouped per probe location.
+	ProbeMetrics(ctx context.Context, monitorID string, from, to time.Time) ([]domain.ProbeAggregateMetrics, error)
+	// ResultAt returns the probe result closest to a given timestamp for a
+	// monitor (optionally filtered to one probe), used for chart drill-down.
+	ResultAt(ctx context.Context, monitorID, probeID string, at time.Time) (domain.ProbeResult, error)
 	// StatusCodeDistribution returns the HTTP status-code counts for a monitor
 	// over a time window, ordered by count descending.
 	StatusCodeDistribution(ctx context.Context, monitorID string, from, to time.Time) ([]domain.StatusCodeCount, error)

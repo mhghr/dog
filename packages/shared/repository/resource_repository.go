@@ -37,4 +37,8 @@ type MonitorRepository interface {
 	ClaimDue(ctx context.Context, batchSize int, fn func(domain.Monitor) error) (int, error)
 	UpdateRunResult(ctx context.Context, monitorID string, status domain.MonitorStatus, checkedAt time.Time) error
 	ListResults(ctx context.Context, monitorID string, limit, offset int) ([]domain.ProbeResult, int, error)
+	// ListSnmpMonitorsByTarget returns enabled SNMP monitors whose resource
+	// target matches the given address (used by the trap receiver to bind
+	// events to resources).
+	ListSnmpMonitorsByTarget(ctx context.Context, target string) ([]domain.Monitor, error)
 }

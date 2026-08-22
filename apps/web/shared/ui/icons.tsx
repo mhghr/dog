@@ -22,6 +22,7 @@ import {
   SquaresFour as SquaresFourBase,
   Sun as SunBase,
   Timer as TimerBase,
+  CellTower as CellTowerBase,
   Tray as TrayBase,
   TreeStructure as TreeStructureBase,
   UserCircle as UserCircleBase,
@@ -60,6 +61,7 @@ export const SignOut = regular(SignOutBase);
 export const SquaresFour = regular(SquaresFourBase);
 export const Sun = regular(SunBase);
 export const Timer = regular(TimerBase);
+export const CellTower = regular(CellTowerBase);
 export const Tray = regular(TrayBase);
 export const TreeStructure = regular(TreeStructureBase);
 export const UserCircle = regular(UserCircleBase);

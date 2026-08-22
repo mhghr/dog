@@ -32,6 +32,10 @@ type Deps struct {
 	Logger         *slog.Logger
 	PingPrivileged bool
 	Secrets        SecretResolver
+	// SNMPKey is the master AES encryption key used to decrypt SNMP
+	// community strings and v3 passphrases stored encrypted in monitor
+	// configuration. Empty disables SNMP secret decryption.
+	SNMPKey string
 }
 
 type Registry struct {
@@ -82,5 +86,6 @@ func DefaultRegistry(deps Deps) *Registry {
 		NewDomainExpirationExecutor(deps),
 		NewSMTPExecutor(deps),
 		NewNTPExecutor(deps),
+		NewSNMPExecutor(deps),
 	)
 }

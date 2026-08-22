@@ -141,3 +141,16 @@ export function isTlsMonitor(
     (type?.name?.toLowerCase().includes("certificate") ?? false)
   );
 }
+
+// Classifies a resource monitor as an SNMP network-device collector.
+export function isSnmpMonitor(
+  monitor: Monitor,
+  types: MonitorTypeDef[],
+): boolean {
+  const type = types.find((t) => t.id === monitor.monitor_type_id);
+  return (
+    type?.executor_key === "snmp" ||
+    type?.slug === "snmp" ||
+    (type?.name?.toLowerCase().includes("snmp") ?? false)
+  );
+}
