@@ -18,11 +18,24 @@
 | **1+2** | ایزولهسازی legacy `monitors.type` — queryها به `monitor_types.executor_key` + `COALESCE` fallback | `packages/shared/infrastructure/postgres/result_repository.go` |
 | **6** | `MetricQueryService` — پورت application + آداپتر PostgreSQL | `packages/shared/application/metricquery/query_service.go`, `packages/shared/infrastructure/postgres/metric_query_service.go`, wiring در `apps/api/cmd/api/main.go` |
 | **8** | Distributed SSE — `Publisher` + `NATSRelay` (فعالسازی opt-in با `LIVE_EVENTS_NATS=1`) | `packages/shared/events/bus.go`, `packages/shared/events/nats.go`, `packages/shared/ingestion/service.go` |
+| **10** | **Health Engine مستقل** — `apps/monitor-engine` پر شد؛ consumer روی `engine.health.eval` (durable queue-group) + health endpoint | `apps/monitor-engine/cmd/monitor-engine/main.go`, `packages/shared/engines/consumer.go`, `packages/shared/health/engine.go` |
+| **11** | **Alert Engine مستقل** — `apps/alert-engine` پر شد؛ consumer روی `engine.alert.eval` (durable queue-group) + health endpoint | `apps/alert-engine/cmd/alert-engine/main.go`, `packages/shared/engines/consumer.go` |
+
+> فازهای ۱۰+۱۱ با «ResultRouter» (پکیج `packages/shared/engines`) از مسیر synchronous خارج شدند.
+> `ResultRouter` تک نقطهای است که بعد از persist نتیجه، engineها را صدا میزند. حالت هر engine
+> با `MONITOR_ENGINE_MODE` / `ALERT_ENGINE_MODE` (`inline` پیشفرض | `nats`) قابل بازگشت است.
+> در حالت `nats`، API نتیجه را روی `engine.health.eval` / `engine.alert.eval` (stream جدید
+> `ENGINE_EVENTS`) publish میکند و باینری مستقل مصرف میکند. دو تغییر رفتاری پذیرفتهشده:
+> (الف) نتایج مسیر gateway هم alert میگیرند، (ب) health notifications فعال شدند
+> (`EvaluateResult` حالا `[]EvaluateOutcome` برمیگرداند و `NotificationEngine` دیگر dead code نیست).
 
 ### تستهای اضافهشده
 - `packages/shared/infrastructure/postgres/metric_query_service_test.go` (delegation)
 - `packages/shared/interfaces/http/metric_query_service_test.go` (downsampling/`resolveStep`)
 - `packages/shared/events/nats_test.go` (echo-drop, wire format, URL clean)
+- `packages/shared/engines/router_test.go` (inline vs nats publish، mixed mode، nil-safe)
+- `packages/shared/engines/consumer_test.go` (decode، redelivery on error، malformed ack)
+- `packages/shared/health/outcomes_test.go` (state transition → outcome)
 
 ## فازهای باقیمانده ⏳
 
@@ -33,37 +46,30 @@
 | **5** | SNMP → Collection Method (نه نوع مانیتور) | بازطراحی UX + `monitor_types` |
 | **7** | VictoriaMetrics به‌عنوان primary query (آداپتر دوم برای MetricQueryService) | آداپتر جدید + جایگزینی در `main.go` |
 | **9** | Distributed Scheduler/Worker hardening (misfire, jitter, retry) | افزایش به `scheduler/scheduler.go` + `worker/` |
-| **10** | **Health Engine مستقل** — `apps/monitor-engine` (فعلاً stub) | جابه‌جایی منطق health از API به اپ مستقل + مصرف از queue |
-| **11** | **Alert Engine مستقل** — `apps/alert-engine` (فعلاً stub) | همانند فاز ۱۰ برای alerting |
 | **12** | Signal architecture (Event/Error/Log/Trace مدل‌های کانونیکال) | مدل‌ها + registry |
 | **13** | Extension points برای Logs/Traces/Errors | بدون backend کامل — فقط ساختار |
 | **14** | Load/Failure testing | k6/scripts + سناریوها |
 | **15** | Legacy cleanup — حذف کامل `monitors.type` | backfill `monitor_type_id` + migration drop ستون |
 
-## قدم بعدی پیشنهادی (فاز ۱۰ و ۱۱)
+## قدم بعدی پیشنهادی (فاز ۹)
 
-بزرگ‌ترین و مهم‌ترین قدم باقی‌مانده، خالی‌سازی stub های `monitor-engine` و
-`alert-engine` است. منطق فعلاً داخل `apps/api` اجرا می‌شود
-(`health.NewEngine` و `alerting.NewEngine` در `apps/api/cmd/api/main.go`).
+با انجام فازهای ۱۰+۱۱، sink اصلی ingestion دیگر synchronous نیست. قدم بعدی
+سختسازی Scheduler/Worker است: `misfire` (اجرای jobهای از دسترفته)، `jitter`
+(جلوگیری از thundering herd)، و `retry` با backoff.
 
-### شروع فاز ۱۰ (Health Engine مستقل) — گام‌ها
+### شروع فاز ۹ (Scheduler/Worker hardening) — گام‌ها
 
-1. **بررسی قبلی**: `packages/shared/health/engine.go`, `health/repository.go`,
-   `health/catalog.go`, `apps/monitor-engine/cmd/monitor-engine/main.go` (استاب).
-2. **درک مرز**: health evaluation الان در `ingestion.Service.Ingest`
-   (`s.healthEngine.EvaluateResult`) صدا زده می‌شود — این را باید از مسیر
-   synchronous خارج کرد.
-3. **طراحی**: نتیجه در `probe_results` ذخیره می‌شود → publish رویداد
-   (`telemetry.probe.result` یا subject جدید `health.eval`) → monitor-engine
-   consume کند → `resource_health_state` آپدیت شود.
-4. **فایلها**:
-   - `apps/monitor-engine/cmd/monitor-engine/main.go` — wiring کامل (مثل API)
-   - consumer جدید در `packages/shared/health/` برای مصرف queue
-   - `ingestion.Service` → به‌جای اجرای synchronous، رویداد را publish کند
-5. **Validation**: `go build ./...`, `go test ./...`, سپس تست یکپارچه‌سازی queue.
+1. **بررسی قبلی**: `packages/shared/scheduler/scheduler.go`, `packages/shared/worker/`,
+   `packages/shared/queue/nats_queue.go`.
+2. **درک مرز**: scheduler فعلاً `ClaimDue` + `FOR UPDATE SKIP LOCKED` روی
+   PostgreSQL انجام میدهد؛ در حالت NATS job روی `probe.jobs.*` publish میشود.
+3. **طراحی**: jitter تصادفی به اسکن scheduler، تشخیص misfire از روی
+   `next_run_at` جاافتاده، و retry برای اجراهای ناموفق.
+4. **فایلها**: `scheduler/scheduler.go` + گزینههای config جدید.
+5. **Validation**: `go build ./...`, `go test ./...` + تست integration queue.
 
-> ⚠️ مرز سرویس‌ها را رعایت کن (AGENTS.md): منطق health نباید دوباره در دو جا
-> کپی شود. جابه‌جایی از API به اپ مستقل باید با feature flag قابل بازگشت باشد.
+> ⚠️ فاز ۷ (VictoriaMetrics به‌عنوان primary query) جایگزین سادهتری است اگر بخواهی
+> مسیر query را قبل از مقیاسپذیری اجرا بهبود بدهی.
 
 ## دستورات Validation
 

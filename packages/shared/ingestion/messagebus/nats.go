@@ -106,6 +106,15 @@ func (b *NATSBus) ensureStreams() error {
 			maxBytes:  50 * 1024 * 1024 * 1024,
 		},
 		{
+			// Result routing to the standalone monitor-engine / alert-engine
+			// binaries. Each subject has its own durable queue-group consumer.
+			name:      "ENGINE_EVENTS",
+			subjects:  []string{"engine.health.eval", "engine.alert.eval"},
+			retention: nats.WorkQueuePolicy,
+			maxAge:    24 * time.Hour,
+			maxBytes:  50 * 1024 * 1024 * 1024,
+		},
+		{
 			// Enterprise execution backbone: scheduler → worker probe jobs.
 			name:      "PROBE_JOBS",
 			subjects:  []string{"probe.jobs.>"},

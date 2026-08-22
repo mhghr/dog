@@ -134,7 +134,8 @@ func runPipeline(t *testing.T, job domain.ProbeJob) (domain.ProbeResult, *record
 
 	repo := newRecordingHealthRepo()
 	engine := health.NewEngine(repo, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	if err := engine.EvaluateResult(ctx, &result); err != nil {
+	_, err := engine.EvaluateResult(ctx, &result)
+	if err != nil {
 		t.Fatalf("health evaluation failed: %v", err)
 	}
 
@@ -170,7 +171,8 @@ func reachabilityState(engine *health.Engine, key string, value float64) health.
 		MissingDataPolicy: "IGNORE",
 		Enabled:           true,
 	}
-	return engine.EvaluateParameter(context.Background(), "monitor-1", key, []float64{value}, &rule, def)
+	state, _ := engine.EvaluateParameter(context.Background(), "monitor-1", key, []float64{value}, &rule, def)
+	return state
 }
 
 func startTCPListenerForTest(t *testing.T) net.Listener {

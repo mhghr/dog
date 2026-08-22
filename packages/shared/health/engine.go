@@ -19,18 +19,23 @@ func NewEngine(repo Repository, logger *slog.Logger) *Engine {
 	return &Engine{repo: repo, logger: logger}
 }
 
-func (e *Engine) EvaluateResult(ctx context.Context, result *domain.ProbeResult) error {
+// EvaluateResult evaluates a probe result against the parameter catalog for its
+// monitor type, persisting health states. It returns an outcome for every
+// parameter whose state transitioned, so callers can trigger notifications.
+func (e *Engine) EvaluateResult(ctx context.Context, result *domain.ProbeResult) ([]EvaluateOutcome, error) {
 	monitorType := detectMonitorType(result)
 	if monitorType == "" {
-		return nil
+		return nil, nil
 	}
 
 	catalogDefs, ok := AllParameters[monitorType]
 	if !ok {
-		return nil
+		return nil, nil
 	}
 
 	rulesByKey := e.rulesByKey(ctx, result.MonitorID)
+
+	var outcomes []EvaluateOutcome
 
 	for _, catDef := range catalogDefs {
 		rule, hasRule := rulesByKey[catDef.Key]
@@ -48,16 +53,20 @@ func (e *Engine) EvaluateResult(ctx context.Context, result *domain.ProbeResult)
 			recentValues = []float64{value}
 		}
 
-		newState := e.EvaluateParameter(ctx, result.MonitorID, catDef.Key, recentValues, &rule, catDef)
+		newState, outcome := e.EvaluateParameter(ctx, result.MonitorID, catDef.Key, recentValues, &rule, catDef)
 		e.logger.Debug("health parameter evaluated",
 			"monitor_id", result.MonitorID,
 			"parameter", catDef.Key,
 			"state", newState,
 			"value", value,
 		)
+
+		if outcome != nil {
+			outcomes = append(outcomes, *outcome)
+		}
 	}
 
-	return nil
+	return outcomes, nil
 }
 
 func detectMonitorType(result *domain.ProbeResult) string {
@@ -248,16 +257,16 @@ func toFloat64(v any) (float64, bool) {
 	}
 }
 
-func (e *Engine) EvaluateParameter(ctx context.Context, monitorID, paramKey string, recentValues []float64, rule *ParameterRule, catDef ParameterDefinition) HealthState {
+func (e *Engine) EvaluateParameter(ctx context.Context, monitorID, paramKey string, recentValues []float64, rule *ParameterRule, catDef ParameterDefinition) (HealthState, *EvaluateOutcome) {
 	if rule == nil || !rule.Enabled || rule.Mode == ModeDisabled {
-		return HealthUnknown
+		return HealthUnknown, nil
 	}
 
 	direction := catDef.Direction
 
 	switch direction {
 	case DirBooleanFailure:
-		return evaluateBooleanFailure(recentValues, rule)
+		return evaluateBooleanFailure(recentValues, rule, e.repo, ctx, monitorID, paramKey)
 	case DirHigherIsWorse:
 		return evaluateHigherIsWorse(recentValues, rule, catDef, e.repo, ctx, monitorID, paramKey)
 	case DirLowerIsWorse:
@@ -271,17 +280,17 @@ func (e *Engine) EvaluateParameter(ctx context.Context, monitorID, paramKey stri
 	}
 }
 
-func evaluateHigherIsWorse(recentValues []float64, rule *ParameterRule, catDef ParameterDefinition, repo Repository, ctx context.Context, monitorID, paramKey string) HealthState {
+func evaluateHigherIsWorse(recentValues []float64, rule *ParameterRule, catDef ParameterDefinition, repo Repository, ctx context.Context, monitorID, paramKey string) (HealthState, *EvaluateOutcome) {
 	return evaluateDirectional(recentValues, rule, catDef, repo, ctx, monitorID, paramKey, compareValue)
 }
 
-func evaluateLowerIsWorse(recentValues []float64, rule *ParameterRule, catDef ParameterDefinition, repo Repository, ctx context.Context, monitorID, paramKey string) HealthState {
+func evaluateLowerIsWorse(recentValues []float64, rule *ParameterRule, catDef ParameterDefinition, repo Repository, ctx context.Context, monitorID, paramKey string) (HealthState, *EvaluateOutcome) {
 	return evaluateDirectional(recentValues, rule, catDef, repo, ctx, monitorID, paramKey, compareValueLower)
 }
 
 // evaluateDirectional applies threshold rules whose direction (higher vs lower
 // is worse) is encoded in the compare function.
-func evaluateDirectional(recentValues []float64, rule *ParameterRule, catDef ParameterDefinition, repo Repository, ctx context.Context, monitorID, paramKey string, compare func(value, threshold float64, op string) bool) HealthState {
+func evaluateDirectional(recentValues []float64, rule *ParameterRule, catDef ParameterDefinition, repo Repository, ctx context.Context, monitorID, paramKey string, compare func(value, threshold float64, op string) bool) (HealthState, *EvaluateOutcome) {
 	if len(recentValues) == 0 {
 		return evaluateMissingData(rule, repo, ctx, monitorID, paramKey)
 	}
@@ -293,7 +302,7 @@ func evaluateDirectional(recentValues []float64, rule *ParameterRule, catDef Par
 
 // evaluateThresholds applies error/warning/recovery thresholds against a single
 // aggregated value and persists the resulting health state.
-func evaluateThresholds(aggValue float64, rule *ParameterRule, repo Repository, ctx context.Context, monitorID, paramKey string, compare func(value, threshold float64, op string) bool) HealthState {
+func evaluateThresholds(aggValue float64, rule *ParameterRule, repo Repository, ctx context.Context, monitorID, paramKey string, compare func(value, threshold float64, op string) bool) (HealthState, *EvaluateOutcome) {
 	newState := HealthOK
 
 	if rule.ErrorValue != nil {
@@ -320,20 +329,42 @@ func evaluateThresholds(aggValue float64, rule *ParameterRule, repo Repository, 
 	return persistAndReturn(repo, ctx, monitorID, paramKey, newState, aggValue)
 }
 
-func evaluateBooleanFailure(recentValues []float64, rule *ParameterRule) HealthState {
+func evaluateBooleanFailure(recentValues []float64, rule *ParameterRule, repo Repository, ctx context.Context, monitorID, paramKey string) (HealthState, *EvaluateOutcome) {
 	if len(recentValues) == 0 {
-		return HealthUnknown
+		return HealthUnknown, nil
 	}
 
-	if recentValues[len(recentValues)-1] < 1.0 {
-		return HealthError
+	currentValue := recentValues[len(recentValues)-1]
+	newState := HealthOK
+	if currentValue < 1.0 {
+		newState = HealthError
 	}
-	return HealthOK
+
+	previous, err := repo.GetHealthState(ctx, monitorID, paramKey)
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return newState, nil
+	}
+
+	oldState := HealthUnknown
+	if err == nil {
+		if previous.CurrentState == newState {
+			return newState, nil
+		}
+		oldState = previous.CurrentState
+	}
+
+	return newState, &EvaluateOutcome{
+		MonitorID:    monitorID,
+		ParameterKey: paramKey,
+		OldState:     oldState,
+		NewState:     newState,
+		CurrentValue: currentValue,
+	}
 }
 
-func evaluateEnumState(recentValues []float64, rule *ParameterRule, catDef ParameterDefinition, repo Repository, ctx context.Context, monitorID, paramKey string) HealthState {
+func evaluateEnumState(recentValues []float64, rule *ParameterRule, catDef ParameterDefinition, repo Repository, ctx context.Context, monitorID, paramKey string) (HealthState, *EvaluateOutcome) {
 	if len(recentValues) == 0 {
-		return HealthUnknown
+		return HealthUnknown, nil
 	}
 
 	aggValue := recentValues[len(recentValues)-1]
@@ -353,9 +384,9 @@ func evaluateEnumState(recentValues []float64, rule *ParameterRule, catDef Param
 	return persistAndReturn(repo, ctx, monitorID, paramKey, newState, aggValue)
 }
 
-func evaluateRangeDeviation(recentValues []float64, rule *ParameterRule, catDef ParameterDefinition, repo Repository, ctx context.Context, monitorID, paramKey string) HealthState {
+func evaluateRangeDeviation(recentValues []float64, rule *ParameterRule, catDef ParameterDefinition, repo Repository, ctx context.Context, monitorID, paramKey string) (HealthState, *EvaluateOutcome) {
 	if len(recentValues) < 2 {
-		return HealthUnknown
+		return HealthUnknown, nil
 	}
 
 	mean := 0.0
@@ -381,9 +412,9 @@ func evaluateRangeDeviation(recentValues []float64, rule *ParameterRule, catDef 
 	return persistAndReturn(repo, ctx, monitorID, paramKey, newState, stddev)
 }
 
-func evaluateMissingData(rule *ParameterRule, repo Repository, ctx context.Context, monitorID, paramKey string) HealthState {
+func evaluateMissingData(rule *ParameterRule, repo Repository, ctx context.Context, monitorID, paramKey string) (HealthState, *EvaluateOutcome) {
 	if rule.MissingDataPolicy == "IGNORE" {
-		return HealthUnknown
+		return HealthUnknown, nil
 	}
 
 	if rule.MissingDataPolicy == "ERROR" {
@@ -394,7 +425,7 @@ func evaluateMissingData(rule *ParameterRule, repo Repository, ctx context.Conte
 		return persistAndReturn(repo, ctx, monitorID, paramKey, HealthWarning, 0)
 	}
 
-	return HealthUnknown
+	return HealthUnknown, nil
 }
 
 func aggregateValues(values []float64, agg string) float64 {
@@ -482,25 +513,28 @@ func (s HealthState) valueOrZero() float64 {
 	return weights[s]
 }
 
-func persistAndReturn(repo Repository, ctx context.Context, monitorID, paramKey string, newState HealthState, currentValue float64) HealthState {
+func persistAndReturn(repo Repository, ctx context.Context, monitorID, paramKey string, newState HealthState, currentValue float64) (HealthState, *EvaluateOutcome) {
 	now := time.Now().UTC()
 
 	existing, err := repo.GetHealthState(ctx, monitorID, paramKey)
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
-		return newState
+		return newState, nil
 	}
 
 	var previousState *HealthState
 	var stateChangedAt *time.Time
+	changed := false
 
 	if errors.Is(err, domain.ErrNotFound) {
 		if newState != HealthUnknown {
 			stateChangedAt = &now
+			changed = true
 		}
 	} else {
 		if existing.CurrentState != newState {
 			previousState = &existing.CurrentState
 			stateChangedAt = &now
+			changed = true
 		} else {
 			previousState = existing.PreviousState
 			stateChangedAt = existing.StateChangedAt
@@ -517,7 +551,22 @@ func persistAndReturn(repo Repository, ctx context.Context, monitorID, paramKey 
 		StateChangedAt: stateChangedAt,
 	})
 
-	return newState
+	if !changed {
+		return newState, nil
+	}
+
+	oldState := HealthUnknown
+	if previousState != nil {
+		oldState = *previousState
+	}
+
+	return newState, &EvaluateOutcome{
+		MonitorID:    monitorID,
+		ParameterKey: paramKey,
+		OldState:     oldState,
+		NewState:     newState,
+		CurrentValue: currentValue,
+	}
 }
 
 type MonitorHealth struct {
@@ -555,7 +604,7 @@ func (e *Engine) EvaluateMonitor(ctx context.Context, monitor *domain.Monitor, r
 			}
 		}
 
-		state := e.EvaluateParameter(ctx, monitor.ID, catDef.Key, values, &rule, catDef)
+		state, _ := e.EvaluateParameter(ctx, monitor.ID, catDef.Key, values, &rule, catDef)
 		paramStates[catDef.Key] = state
 
 		if state.valueOrZero() > worstState.valueOrZero() {

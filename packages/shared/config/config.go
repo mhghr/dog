@@ -87,6 +87,16 @@ type Config struct {
 
 	NATSURL string
 
+	// MonitorEngineMode controls where health evaluation runs: "inline" (inside
+	// the API, the default) or "nats" (publish to engine.health.eval, consumed by
+	// the standalone monitor-engine binary).
+	MonitorEngineMode string
+
+	// AlertEngineMode controls where alert evaluation runs: "inline" (inside the
+	// API, the default) or "nats" (publish to engine.alert.eval, consumed by the
+	// standalone alert-engine binary).
+	AlertEngineMode string
+
 	TelemetryPipeline TelemetryPipelineConfig
 
 	// SNMPCollectorSourceIPs are the public source IPs of the SNMP collectors
@@ -177,6 +187,9 @@ func Load() *Config {
 		OTELIngestTLSKeyFile:  getString("OTEL_INGEST_TLS_KEY", ""),
 
 		NATSURL: getString("NATS_URL", "nats://localhost:4222"),
+
+		MonitorEngineMode: getString("MONITOR_ENGINE_MODE", "inline"),
+		AlertEngineMode:   getString("ALERT_ENGINE_MODE", "inline"),
 
 		SNMPCollectorSourceIPsValue: getSlice("SNMP_SOURCE_IPS", []string{}),
 

@@ -19,10 +19,12 @@ import (
 	"monitoring-platform/packages/shared/auth"
 	"monitoring-platform/packages/shared/config"
 	"monitoring-platform/packages/shared/domain"
+	"monitoring-platform/packages/shared/engines"
 	"monitoring-platform/packages/shared/events"
 	"monitoring-platform/packages/shared/health"
 	"monitoring-platform/packages/shared/httpserver"
 	"monitoring-platform/packages/shared/ingestion"
+	"monitoring-platform/packages/shared/ingestion/messagebus"
 	"monitoring-platform/packages/shared/logging"
 	"monitoring-platform/packages/shared/metrics"
 	"monitoring-platform/packages/shared/infrastructure/postgres"
@@ -122,6 +124,38 @@ func main() {
 	healthEngine := health.NewEngine(healthRepo, logger)
 	healthNotifier := health.NewNotificationEngine(healthRepo, logger)
 
+	// Engine routing: inline (default) runs health/alert evaluation in-process;
+	// "nats" publishes results to engine.health.eval / engine.alert.eval for the
+	// standalone monitor-engine / alert-engine binaries. Reversible per engine.
+	var engineBus *messagebus.NATSBus
+	if cfg.MonitorEngineMode == engines.ModeNATS || cfg.AlertEngineMode == engines.ModeNATS {
+		if cfg.NATSURL == "" {
+			logger.Error("engine mode requires NATS_URL")
+			os.Exit(1)
+		}
+		engineBus, err = messagebus.NewNATSBus(messagebus.NATSConfig{
+			URL:       cfg.NATSURL,
+			Reconnect: true,
+			MaxReconn: 10,
+		}, logger)
+		if err != nil {
+			logger.Error("connect to NATS for engines failed", "error", err)
+			os.Exit(1)
+		}
+		defer engineBus.Close()
+	}
+
+	resultRouter := engines.NewRouter(
+		cfg.MonitorEngineMode,
+		cfg.AlertEngineMode,
+		engineBus,
+		healthEngine,
+		healthNotifier,
+		alertEngine,
+		alertNotifier,
+		logger,
+	)
+
 	agentRepo := agents.NewRepository(pool)
 	resourceRepo := postgres.NewResourceRepository(pool)
 	monitorTypeParams := postgres.NewMonitorTypeParameterRepository(pool)
@@ -213,8 +247,7 @@ func main() {
 		livePublisher,
 		logger,
 		ingestionMetrics,
-		healthEngine,
-		healthNotifier,
+		resultRouter,
 	)
 
 	go watchQueueDepth(ctx, probeQueue, ingestionMetrics)
@@ -233,8 +266,6 @@ func main() {
 		Orgs:             postgres.NewOrganizationRepository(pool),
 		AlertRepo:        alertRepo,
 		ChannelRepo:      channelRepo,
-		AlertEngine:      alertEngine,
-		Notifier:         alertNotifier,
 		HealthRepo:       healthRepo,
 		HealthNotifier:   healthNotifier,
 		Ingestion:        ingestionService,

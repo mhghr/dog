@@ -1,7 +1,7 @@
 # Standalone Monitor & Alert Engines — Design
 
 **Date:** 2026-08-22
-**Status:** Approved by user
+**Status:** Implemented (phases 10-11)
 **Scope:** Backend (API seam / monitor-engine app / alert-engine app / NATS subjects / config / tests)
 
 ## Problem

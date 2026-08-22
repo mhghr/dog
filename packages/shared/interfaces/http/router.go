@@ -12,7 +12,6 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"monitoring-platform/packages/shared/agents"
-	"monitoring-platform/packages/shared/alerting"
 	"monitoring-platform/packages/shared/application/metricquery"
 	"monitoring-platform/packages/shared/auth"
 	"monitoring-platform/packages/shared/config"
@@ -35,8 +34,6 @@ type Deps struct {
 	Orgs             repository.OrganizationRepository
 	AlertRepo        *postgres.AlertRepository
 	ChannelRepo      *postgres.ChannelRepository
-	AlertEngine      *alerting.Engine
-	Notifier         *alerting.Notifier
 	HealthRepo       *postgres.HealthRepository
 	HealthNotifier   *health.NotificationEngine
 	Ingestion        *ingestion.Service

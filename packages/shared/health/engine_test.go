@@ -67,13 +67,16 @@ func (stubHealthRepo) UpdateNotificationPolicy(ctx context.Context, policy *Noti
 func (stubHealthRepo) DeleteNotificationPolicy(ctx context.Context, id string) error { return nil }
 
 func TestEvaluateBooleanFailure(t *testing.T) {
-	if got := evaluateBooleanFailure([]float64{1}, nil); got != HealthOK {
+	ctx := context.Background()
+	repo := stubHealthRepo{}
+
+	if got, _ := evaluateBooleanFailure([]float64{1}, nil, repo, ctx, "m1", "ping.reachability"); got != HealthOK {
 		t.Fatalf("value 1 (reachable) should be HealthOK, got %s", got)
 	}
-	if got := evaluateBooleanFailure([]float64{0}, nil); got != HealthError {
+	if got, _ := evaluateBooleanFailure([]float64{0}, nil, repo, ctx, "m1", "ping.reachability"); got != HealthError {
 		t.Fatalf("value 0 (down) should be HealthError, got %s", got)
 	}
-	if got := evaluateBooleanFailure(nil, nil); got != HealthUnknown {
+	if got, _ := evaluateBooleanFailure(nil, nil, repo, ctx, "m1", "ping.reachability"); got != HealthUnknown {
 		t.Fatalf("no values should be HealthUnknown, got %s", got)
 	}
 }
@@ -85,11 +88,11 @@ func TestEngineEvaluatePingReachability(t *testing.T) {
 	def := pingReachabilityDef()
 	rule := defaultRuleFromCatalog(def, "m1")
 
-	state := engine.EvaluateParameter(context.Background(), "m1", "ping.reachability", []float64{0}, &rule, def)
+	state, _ := engine.EvaluateParameter(context.Background(), "m1", "ping.reachability", []float64{0}, &rule, def)
 	if state != HealthError {
 		t.Fatalf("down ping reachability should be HealthError, got %s", state)
 	}
-	state = engine.EvaluateParameter(context.Background(), "m1", "ping.reachability", []float64{1}, &rule, def)
+	state, _ = engine.EvaluateParameter(context.Background(), "m1", "ping.reachability", []float64{1}, &rule, def)
 	if state != HealthOK {
 		t.Fatalf("up ping reachability should be HealthOK, got %s", state)
 	}
@@ -120,11 +123,11 @@ func TestEngineEvaluateHTTPReachability(t *testing.T) {
 	def := httpDef("http.reachability")
 	rule := defaultRuleFromCatalog(def, "m1")
 
-	state := engine.EvaluateParameter(context.Background(), "m1", "http.reachability", []float64{0}, &rule, def)
+	state, _ := engine.EvaluateParameter(context.Background(), "m1", "http.reachability", []float64{0}, &rule, def)
 	if state != HealthError {
 		t.Fatalf("down http reachability should be HealthError, got %s", state)
 	}
-	state = engine.EvaluateParameter(context.Background(), "m1", "http.reachability", []float64{1}, &rule, def)
+	state, _ = engine.EvaluateParameter(context.Background(), "m1", "http.reachability", []float64{1}, &rule, def)
 	if state != HealthOK {
 		t.Fatalf("up http reachability should be HealthOK, got %s", state)
 	}
@@ -137,11 +140,11 @@ func TestEngineEvaluateHTTPContentAssertion(t *testing.T) {
 	def := httpDef("http.content_assertion")
 	rule := defaultRuleFromCatalog(def, "m1")
 
-	state := engine.EvaluateParameter(context.Background(), "m1", "http.content_assertion", []float64{0}, &rule, def)
+	state, _ := engine.EvaluateParameter(context.Background(), "m1", "http.content_assertion", []float64{0}, &rule, def)
 	if state != HealthError {
 		t.Fatalf("failed content assertion should be HealthError, got %s", state)
 	}
-	state = engine.EvaluateParameter(context.Background(), "m1", "http.content_assertion", []float64{1}, &rule, def)
+	state, _ = engine.EvaluateParameter(context.Background(), "m1", "http.content_assertion", []float64{1}, &rule, def)
 	if state != HealthOK {
 		t.Fatalf("passed content assertion should be HealthOK, got %s", state)
 	}
@@ -245,7 +248,7 @@ func TestEvaluateThresholds(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := evaluateThresholds(tc.value, &tc.rule, stubHealthRepo{}, context.Background(), "m1", "param", compare)
+			got, _ := evaluateThresholds(tc.value, &tc.rule, stubHealthRepo{}, context.Background(), "m1", "param", compare)
 			if got != tc.expectedState {
 				t.Fatalf("expected %s, got %s", tc.expectedState, got)
 			}
@@ -260,30 +263,30 @@ func TestEvaluateDirectionalLowerIsWorse(t *testing.T) {
 		WarningOperator: "gte",
 		WarningValue:    floatPtr(50),
 	}
-	if got := evaluateDirectional([]float64{10}, &rule, ParameterDefinition{}, stubHealthRepo{}, context.Background(), "m1", "param", compareValueLower); got != HealthError {
+	if got, _ := evaluateDirectional([]float64{10}, &rule, ParameterDefinition{}, stubHealthRepo{}, context.Background(), "m1", "param", compareValueLower); got != HealthError {
 		t.Fatalf("low value should be HealthError, got %s", got)
 	}
-	if got := evaluateDirectional([]float64{30}, &rule, ParameterDefinition{}, stubHealthRepo{}, context.Background(), "m1", "param", compareValueLower); got != HealthWarning {
+	if got, _ := evaluateDirectional([]float64{30}, &rule, ParameterDefinition{}, stubHealthRepo{}, context.Background(), "m1", "param", compareValueLower); got != HealthWarning {
 		t.Fatalf("mid value should be HealthWarning, got %s", got)
 	}
-	if got := evaluateDirectional([]float64{80}, &rule, ParameterDefinition{}, stubHealthRepo{}, context.Background(), "m1", "param", compareValueLower); got != HealthOK {
+	if got, _ := evaluateDirectional([]float64{80}, &rule, ParameterDefinition{}, stubHealthRepo{}, context.Background(), "m1", "param", compareValueLower); got != HealthOK {
 		t.Fatalf("high value should be HealthOK, got %s", got)
 	}
 }
 
 func TestEvaluateDirectionalMissingData(t *testing.T) {
 	rule := ParameterRule{MissingDataPolicy: "IGNORE"}
-	if got := evaluateDirectional(nil, &rule, ParameterDefinition{}, stubHealthRepo{}, context.Background(), "m1", "param", compareValue); got != HealthUnknown {
+	if got, _ := evaluateDirectional(nil, &rule, ParameterDefinition{}, stubHealthRepo{}, context.Background(), "m1", "param", compareValue); got != HealthUnknown {
 		t.Fatalf("IGNORE policy should be HealthUnknown, got %s", got)
 	}
 
 	rule = ParameterRule{MissingDataPolicy: "ERROR"}
-	if got := evaluateDirectional(nil, &rule, ParameterDefinition{}, stubHealthRepo{}, context.Background(), "m1", "param", compareValue); got != HealthError {
+	if got, _ := evaluateDirectional(nil, &rule, ParameterDefinition{}, stubHealthRepo{}, context.Background(), "m1", "param", compareValue); got != HealthError {
 		t.Fatalf("ERROR policy should be HealthError, got %s", got)
 	}
 
 	rule = ParameterRule{MissingDataPolicy: "WARNING"}
-	if got := evaluateDirectional(nil, &rule, ParameterDefinition{}, stubHealthRepo{}, context.Background(), "m1", "param", compareValue); got != HealthWarning {
+	if got, _ := evaluateDirectional(nil, &rule, ParameterDefinition{}, stubHealthRepo{}, context.Background(), "m1", "param", compareValue); got != HealthWarning {
 		t.Fatalf("WARNING policy should be HealthWarning, got %s", got)
 	}
 }

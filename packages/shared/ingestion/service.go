@@ -11,22 +11,21 @@ import (
 	"time"
 
 	"monitoring-platform/packages/shared/domain"
+	"monitoring-platform/packages/shared/engines"
 	"monitoring-platform/packages/shared/events"
-	"monitoring-platform/packages/shared/health"
 	"monitoring-platform/packages/shared/metrics"
 	"monitoring-platform/packages/shared/repository"
 )
 
 type Service struct {
-	results      repository.ResultRepository
-	monitors     repository.MonitorRepository
-	locations    repository.LocationRepository
-	victoria     *metrics.VictoriaClient
-	publisher    events.Publisher
-	logger       *slog.Logger
-	counters     *metrics.IngestionMetrics
-	healthEngine *health.Engine
-	healthNotif  *health.NotificationEngine
+	results   repository.ResultRepository
+	monitors  repository.MonitorRepository
+	locations repository.LocationRepository
+	victoria  *metrics.VictoriaClient
+	publisher events.Publisher
+	logger    *slog.Logger
+	counters  *metrics.IngestionMetrics
+	router    *engines.Router
 
 	locationCodes sync.Map // location id -> code
 }
@@ -39,19 +38,17 @@ func NewService(
 	publisher events.Publisher,
 	logger *slog.Logger,
 	counters *metrics.IngestionMetrics,
-	healthEngine *health.Engine,
-	healthNotif *health.NotificationEngine,
+	router *engines.Router,
 ) *Service {
 	return &Service{
-		results:      results,
-		monitors:     monitors,
-		locations:    locations,
-		victoria:     victoria,
-		publisher:    publisher,
-		logger:       logger,
-		counters:     counters,
-		healthEngine: healthEngine,
-		healthNotif:  healthNotif,
+		results:   results,
+		monitors:  monitors,
+		locations: locations,
+		victoria:  victoria,
+		publisher: publisher,
+		logger:    logger,
+		counters:  counters,
+		router:    router,
 	}
 }
 
@@ -103,10 +100,8 @@ func (s *Service) Ingest(ctx context.Context, result *domain.ProbeResult) (bool,
 	s.victoria.Enqueue(result, string(monitor.Type), locationCode)
 	s.publishEvent(result)
 
-	if s.healthEngine != nil {
-		if err := s.healthEngine.EvaluateResult(ctx, result); err != nil {
-			s.logger.Warn("health evaluation failed", "error", err)
-		}
+	if s.router != nil {
+		s.router.RouteResult(ctx, result)
 	}
 
 	s.logger.Info(
